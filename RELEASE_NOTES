@@ -1,0 +1,661 @@
+cpuminer-opt is a console program run from the command line using the
+keyboard, not the mouse.
+
+cpuminer-opt now supports HW SHA acceleration available on AMD Ryzen CPUs.
+This feature requires recent SW including GCC version 5 or higher and
+openssl version 1.1 or higher. It may also require using "-march=znver1"
+compile flag.
+
+cpuminer-opt is a console program, if you're using a mouse you're doing it
+wrong.
+
+Security warning
+----------------
+
+Miner programs are often flagged as malware by antivirus programs. This is
+a false positive, they are flagged simply because they are cryptocurrency 
+miners. The source code is open for anyone to inspect. If you don't trust 
+the software, don't use it.
+
+The cryptographic hashing code has been taken from trusted sources but has been
+modified for speed at the expense of accepted security practices. This
+code should not be imported into applications where secure cryptography is
+required.
+
+Compile Instructions
+--------------------
+
+See INSTALL_LINUX or INSTALL_WINDOWS fror compile instruuctions
+
+Requirements
+------------
+
+Intel Core2 or newer, or AMD Steamroller or newer CPU. ARM CPUs are not
+supported.
+
+64 bit Linux or Windows operating system. Apple and Android are not supported.
+
+Change Log
+----------
+
+v3.9.6.1
+
+New algos: x21s, hex (alias x16r-hex).
+
+v3.9.6
+
+New algos: bmw512, x16rt, x16rt-veil (alias veil), x13bcd (alias bcd).
+
+v3.9.5.4
+
+Fixed sha256q AVX2 poor performance.
+Fixed skein2 buffer overflow and restored bswap-interleave optimization.
+More restructuring.
+
+v3.9.5.3
+
+Fix crash mining hodl with aes-sse42.
+More restructuring and share report tweaks.
+
+v3.9.5.2
+
+Revert bswap-interleave optimization for causing crashes on Windows.
+
+v3.9.5.1
+
+Fixed skein2 crash on Windows.
+
+Fixed CPU temperature reading on Ubuntu 19.04.
+
+Realigned log message colours, blue is used to report normal activity and
+yellow is only used to report abnormal activity.
+
+Changed stats colours, yellow now means below average, white is average
+range. Tweaked colour thresholds.
+
+Changed colour of stratum difficulty change messages to blue to match other
+normal protocol messages. Blue messages (block, stratum, submit) will no
+longer be displayed when using -q option.
+
+Added job id to new block, share submit, and share result messages and added
+new nessage when a new job is received for an existing block. This will for
+better troubleshooting of invalid job id rejects seen at zergpool.
+
+Some more restructuring.
+
+v3.9.5
+
+New share reporting information includes calculation of equivalent hashrate
+based on share difficulty, network latency, 5 minute summary.
+Per-thread hash rate reports are disabled by default.
+New command line option --hash-meter added to enable per-thread hash rates.
+
+
+v3.9.4
+
+Faster AVX2 for lyra2v3, quark, anime.
+Fixed skein AVX2 regression (invalid shares since v3.9.0) and faster.
+Faster skein2 with 4way AVX2 enabled.
+Automatic SHA override on Ryzen CPUs, no need for -DRYZEN compile flag.
+Ongoing restructuring.
+
+v3.9.3.1
+
+Skipped v3.9.3 due to misidentification of v3.9.2.5 as v3.9.3.
+Fixed x16r algo 25% invalid share reject rate. The bug may have also
+affected other algos.
+
+v3.9.2.5
+
+Fixed 2 regressions: hodl AES detection, x16r invalid shares with AVX2.
+More restructuring.
+
+v3.9.2.4
+
+Yet another affinity fix. Hopefully the last one.
+
+v3.9.2.3
+
+Another cpu-affinity fix.
+Disabled test code that fails to compile on some CPUs with limited
+AVX512 capabilities.
+
+v3.9.2.2
+
+Fixed some day one cpu-affinity issues.
+
+v3.9.2
+
+Added sha256q algo.
+Yespower now uses openssl SHA256, but no observable hash rate increase
+on Ryzen.
+Ongoing rearchitecting.
+Lyra2z now hashes 8-way on CPUs with AVX2.
+Lyra2 (all including phi2) now runs optimized code with SSE2.
+
+v3.9.1.1
+
+Fixed lyra2v3 AVX and below.
+
+Compiling on Windows using Cygwin now works. Simply use "./build.sh"
+just like on Linux. It isn't portable therefore the binaries package will
+continue to use the existing procedure.
+The Cygwin procedure will be documented in more detail later and will
+include a list of packages that need to be installed.
+
+v3.9.1
+
+Fixed AVX2 version of anime algo.
+
+Added sonoa algo.
+
+Added "-DRYZEN_" compile option for Ryzen to override 4-way hashing when algo 
+contains sha256 and use SHA instead. This is due to a combination of
+the introduction of HW SHA support combined with the poor performance
+of AVX2 on Ryzen. The Windows binaries package replaces cpuminer-avx2-sha
+with cpuminer-zen compiled with the override. Refer to the build instructions
+for more information.
+
+Ongoing restructuring to streamline the process, reduce latency,
+reduce memory usage and unnecessary copying of data. Most of these
+will not result in a notoceably higher reported hashrate as the
+change simply reduces the time wasted that wasn't factored into the
+hash rate reported by the miner. In short, less dead time resulting in
+a higher net hashrate.
+
+One of these measures to reduce latency also results in an enhanced
+share submission message including the share number*, the CPU thread,
+and the vector lane that found the solution. The time difference between
+the share submission and acceptance (or rejection) response indicates
+network ltatency. One other effect of this change is a reduction in hash
+meter messages because the scan function no longer exits when a share is 
+found. Scan cycles will go longer and submit multiple shares per cycle.
+*the share number is antcipated and includes both accepted and rejected
+shares. Because the share is antipated and not synchronized it may be
+incorrect in time of very rapid share submission. Under most conditions
+it should be easy to match the submission with the corresponding response.
+
+Removed "-DUSE_SPH_SHA" option, all users should have a recent version of
+openssl installed: v1.0.2 (Ubuntu 16.04) or better. Ryzen SHA requires
+v1.1.0 or better. Ryzen SHA is not used when hashing multi-way parallel.
+Ryzen SHA is available in the Windows binaries release package.
+
+Improved compile instructions, now in seperate files: INSTALL_LINUX and
+INSTALL_WINDOWS. The Windows instructions are used to build the binaries
+release package. It's built on a Linux system either running as a virtual
+machine or a seperate computer. At this time there is no known way to
+build natively on a Windows system.
+
+v3.9.0.1
+
+Isolate Windows CPU groups code when CPU groups support not explicitly defined.
+
+v3.9.0
+
+Added support for Windows CPU groups.
+Fixed BIP34 coinbase height.
+Prep work for AVX512.
+Added lyra2rev3 for the vertcoin algo change.
+Added yespower, yespowerr16 (Yenten)
+Added phi2 algo for LUX
+Discontinued support for cryptonight and variants.
+
+v3.8.8.1
+
+Fixed x16r.
+Removed cryptonight variant check due to false positives.
+API displays hashrate before shares are submitted.
+
+v3.8.8
+
+Added cryptonightv7 for Monero.
+
+v3.8.7.2
+
+Fixed argon2d-dyn regression in v3.8.7.1.
+Changed compile options for aes-sse42 Windows build to -march=westmere
+
+v3.8.7.1
+
+Fixed argon2d-uis low difficulty rejects.
+Fixed argon2d aliases.
+
+v3.8.7
+
+Added argon2d4096 (alias argon2d-uis) for Unitus (UIS).
+argon2d-crds and argon2d-dyn renamed to argon2d250 and argon2d500 respectively.
+  The old names are recognized as aliases.
+AVX512 is now supported for argon2d algos, Linux only.
+AVX is no longer a reported feature and an AVX Windows binary is no longer
+  provided. Use AES-SSE42 build instead.
+
+v3.8.6.1
+
+Faster argon2d* AVX2.
+Untested AVX-512 for argon2d*, YMMV.
+
+v3.8.6
+
+Fixed argon2 regression in v3.8.5.
+Added x16s algo for Pigeoncoin.
+Some code cleanup.
+
+v3.8.5
+
+Added argon2d-crds and argon2d-dyn algos.
+sha256t 8 way AVX2 & 4 way SSE4.2 optimized.
+CPUs with SSE4.2 get optimizations previously reserved for AVX.
+
+v3.8.4.1
+
+Fixed sha256t low difficulty rejects.
+Fixed compile error on CPUs with AVX512.
+
+v3.8.4
+
+Added yescryptr32 algo for WAVI coin.
+Added URL to API data.
+Improved detection of __int128 support (linux only)
+Compile support for CPUs without SSSE3 (no binary support)
+
+v3.8.3.3
+
+Integrated getblocktemplate with algo_gate.
+Added support for hodl gbt (untested).
+Reworked some recent quick fixes.
+
+v3.8.3.2
+
+Reverted gbt changes from v3.8.0 that broke getwork.
+Reverted scaled hash rate for API, added HS term in addition to KHS. 
+Added blocks solved to console display and API.
+
+v3.8.3.1
+
+Fixed regression in v3.8.3 that broke several algos.
+
+v3.8.3
+
+More restoration of lost lyra2 hash.
+8 way AVX2 and 4way AVX optimization for blakecoin, vanilla & blake2s.
+8 way AVX2 for lbry.
+Scaled hashrate for API output.
+A couple of GBT fixes.
+
+v3.8.2.1
+
+Fixed low difficulty rejects with allium.
+Fixed qubit AVX2.
+Restored lyra2z lost hash.
+Fixed build.sh
+
+v3.8.2
+
+Fixed and faster myr-gr.
+Added x12 algo (Galaxie Cash), allium algo (Garlicoin).
+Faster lyra2rev2, lbry, skein.
+Large reduction in compiler warnings.
+
+v3.8.1.1
+
+Fixed Windows AVX2 crash.
+
+v3.8.1
+
+Fixes x16r on CPUs with only SSE2.
+More Optimizations for X algos, qubit & deep.
+Corrected algo optimizations for scrypt and yescrypt, no new optimizations.
+
+v3.8.0.1
+
+Fixed x16r AVX2 low hash rate.
+
+v3.8.0
+
+4way no longer a seperate feature, included in AVX2.
+Added x16r algo for Ravencoin, anime algo for Animecoin.
+More 4way optimizations for X13 and up.
+Tweaked CPU affinity to better support more than 64 CPUs.
+Fixed compile problem on some old AMD CPUs.
+
+v3.7.10
+
+4way optimizations for lyra2rev2, lyra2h, quark, timetravel8, timetravel10
+   x11evo, blakecoin.
+Faster x13sm3 (hsr).
+Added share difficulty to accepted message.
+
+v3.7.9
+
+Partial 4way optimizations for veltor, skunk, polytimos, lyra2z.
+Additional 4way optimizations for X algos.
+New algo yescryptr8 for BitZeny, not to be confused with original
+yescrypt Globalboost-Y.
+
+v3.7.8
+
+Partial 4way optimization for most X algos including c11, xevan, phi, hsr
+
+v3.7.7
+
+Fixed regression caused by 64 CPU support.
+Fixed lyra2h.
+
+v3.7.6
+
+Added lyra2h algo for Hppcoin.
+Added support for more than 64 CPUs.
+Optimized shavite512 with AES, improves x11 etc.
+
+v3.7.5
+
+New algo keccakc for Creative coin with 4way optimizations
+
+Rewrote some AVX/AVX2 code for more consistent implementation and some
+optimizing.
+
+Enhanced capabilities check to support 4way, more precise reporting of
+features (not all algos use SSE2), and better error messages when using
+an incompatible pre-built version (Windows users).
+
+v3.7.4
+
+Removed unnecessary build options.
+
+Added 4way support for tribus and nist5.
+
+v3.7.3
+
+Added polytimos algo.
+
+Introducing 4-way AVX2 optimization giving up to 4x performance inprovement
+on many compute bound algos. First supported algos: skein, skein2, blake &
+keccak. This feature is only available when compiled from source. See above
+for instcuctions how to enable 4-way during compilation.
+
+Updated Dockerfile.
+
+v3.7.2
+
+Fixed yescryptr16
+Changed default sha256 and sha512 to openssl. This should be used when
+compiling with openssl 1.0.2 or higher (Ubuntu 16.04).
+This should increase the hashrate for yescrypt, yescryptr16, m7m, xevan, skein,
+myr-gr & others  when openssl 1.0.2 is installed.
+Note: -DUSE_SPH_SHA has been removed in v3.9.1.
+Users with openssl 1.0.1 (Ubuntu 14.04) may get better perforance by adding
+"-DUSE_SPH_SHA" to CLAGS. 
+Windows binaries are compiled with -DUSE_SPH_SHA and won't get the speedup.
+
+v3.7.1
+
+Added yescryptr16 algo for Yenten coin
+Added SHA support to yescrypt and yescryptr16
+Small code cleanup
+
+v3.7.0
+
+Fixed x14 misalignment bug.
+Fixed decred stake version bug.
+Getwork fixes for algos that use big endian data encoding: m7m, zr5, neoscrypt,
+decred.
+
+v3.6.10
+
+Fixed misalignment bug in hsr.
+
+v3.6.9
+
+Added phi1612 algo for LUX coin
+Added x13sm3 algo, alias hsr, for Hshare coin
+
+v3.6.8
+
+Fixed timetravel10 on Windows.
+
+v3.6.7
+
+Skunk algo added.
+Tribus a little faster.
+Minor restructuring.
+
+v3.6.6
+
+added tribus algo for Denarius (DNR)
+
+configure removed from .gitignore. This should allow git clone to compile
+on Windows/mingw.
+
+Fixed CPU temperature monitoring on some CPUs (Linux only).
+
+Fixed a compile error on FreeBSD (unsupported YMMV).
+
+v3.6.5
+
+Cryptonight a little faster.
+Added jha algo (Jackpotcoin) with AES optimizations.
+
+v3.6.4
+
+Added support for Bitcore (BTX) using the timetravel10 algo, optimized for
+AES and AVX2. 
+"-a bitcore" works as an alias and is less typing that "-a timetravel10".
+
+v3.6.3
+
+Fixed all known issues with SHA support on AMD Ryzen CPUs, still no
+ Windows binaries.
+
+v3.6.2
+
+SHA accceleration is now supported on AMD Ryzen CPUs when compiled from source,
+  Windows binaries not yet available.
+Fixed groestl algo.
+Fixed dmd-gr (Diamond) algo.
+Fixed lbry compile error on Ryzen.
+Added SHA support to m7m algo.
+Hodl support for CPUs without AES has been removed, use legacy version.
+
+v3.6.1
+
+Fixed data alignment issue that broke lyra2rev2 AVX2 on Windows.
+Added preliminary support for HW accelerated SHA.
+Solo mining most algos should now work, cryptonight confirmed exception.
+
+v3.6.0
+
+Preliminary support for solo mining using getwork.
+
+v3.5.13
+
+Found more speed in Cubehash, algo improvement depends on chain length,
+  deep +8%, timetravel +1% , xevan +1%
+Fixed a getwork bug, solo mining is not yet supported but testing is encouraged
+
+v3.5.12
+
+New algo sha256t for Onecoin (OC), 29% faster than ocminer version.
+lyra2zoin algo renamed to lyra2z330, lyra2zoin and zoin still work
+  as aliases.
+
+v3.5.11
+
+Fixed hmq1725 crash on Ubuntu 16.04
+Fixed compile error in hodl.cpp with gcc 6.3
+Fixed x11 crash on Windows with AVX2
+
+v3.5.10
+
+Some AVX2 optimizations introduced for Luffa, shorter chained algos such
+  as Qubit and Deep should see the biggest gains, but many other algos should
+  also see improvement, longer chains like xevan not so much.
+Rewrite of Groestl AES, now 100% vectorized, small improvement.
+build.sh and winbuild.sh initialize with distclean instead of clean.
+Implemented a workaround for a compile error in hodl code when compiling
+  with gcc 6.3.
+
+V3.5.9
+
+Reduced stack usage for hmq1725 and small speedup.
+Added Deep algo optimized for AES and AVX2
+Rewrite of SSE2 Luffa, midstate now supported in deep, qubit & timetravel
+Small changes to algo-gate.
+
+v3.5.8
+
+Lyra2RE fixed on Windows, broken in v3.5.6.
+Ported AES cryptonight optimizations from v3.5.7 to non-AES version
+  with little improvement.
+Marginal improvements to xevan and veltor.
+
+v3.5.7
+
+Cryptonight 5% faster
+
+v3.5.6
+
+Updated Lyra2z algo for new zcoin algo post block 2050.
+Cleaned up Lyra2 code and increased performance
+  - Lyra2Z (zcoin) +12%
+  - Lyra2REv2 +11%
+  - Lyra2RE +6%
+Fixed x11evo algo performance on Windows.
+Timetravel algo 3% to 5% faster
+Whirlpool algo 15% faster.
+Removed aclocal.m4 from .gitignore.
+
+v3.5.5
+
+x11evo fixed on Windows but at reduced performance.
+Changed benchmark stats collection default to false and
+  added proper user and password checks to enable it.
+
+v3.5.4
+
+x11evo fixed (broken in v3.5.2) and optimized 23% faster
+Small improvements of 1% to 3% on many algos including timetravel,
+   xevan and cryptonight.
+More code cleanup and compiler warning reduction.
+Improved checking for missing command line arguments.
+
+v3.5.3
+
+More optimizations
+  Timetravel +16%
+  Xevan       +3%
+  Qubit      +12%
+
+V3.5.2
+
+Timetravel (machinecoin) added and optimized.
+
+v3.5.1
+
+Bastion 9% faster with AES, benchkmark still not working.
+Worked around git automatically removing m4 directory.
+Fixed occasional compile error in algo-gate.h.
+
+v3.5.0
+
+Fixed blakecoin and vanilla increasing rejects with number of threads.
+Removed support for SSE2 Groestl functions. SSE2 groestl remains available
+  in v3.4.12 and the legacy branch.
+It is no longer necessary to specify stratum+tcp:// in the url, it is assumed
+  and is the only supported protocol.
+
+v3.4.12
+
+lyra2z (zcoin) modified for blocks after 8192
+fixed scryptjane to support various N factors
+
+v3.4.11
+
+groestl algo AES optimized +200%
+myr-gr algo AES optimized +100%
+
+v3.4.10
+
+xevan AES optimized +35%
+
+v3.4.9
+
+fixed zr5, broken in v3.4.8
+added xevan algo (Bitsend, BSD) with 10% improvement
+added lyra2zoin (Zoin, ZOI) fully optimized but YMMV
+
+v3.4.8
+
+added zcoin support, optimized for AVX2 but no increase in performance
+fixed API display of diff for cryptonight
+--show-diff is now the default, use "--hide-diff" to disable
+cleaned up some cpuminer-multi artifacts
+
+v3.4.7
+
+fixed benchmark, except for x11evo
+added CPU temperature to share submission report (Linux only)
+
+v3.4.6
+
+For users:
+- cryptolight algo is now supported with AES optimizations
+- display format changed for share submissions
+    - colour keyed "Accepted" or "Rejected" status.
+    - reject count and rate displayed when share is rejected.
+
+For developers:
+
+- code restructuring for detecting new work
+    - cleaned up detection and handling of new work
+    - removed call to stratum_gen_work from niner_thread.
+    - eliminated gen_work_now gate function.
+    - renamed gate function init_nonce to get_new_work.
+    - renamed gate function alloc_scratchbuf to miner_thread_init,
+      removed all scracthbuf references from miner_thread and moved
+      implementation to the local algo files of those algos that need it.
+    - moved most gate targets from algo-gate.c to cpu-miner.c removing
+      most mining related code from algo-gate-api.c.
+
+v3.4.5
+
+fixed stale share rejects mining cryptonight at Nicehash
+fixed compile error on Westmere CPUs
+
+v3.4.4
+
+fixed compile errors on Westmere CPUs, this is an interim fix that
+  will compile without AES on Westmere
+added support for cryptonight at Nicehash, some rejects may be produced
+  at Nicehash only.
+
+v3.4.3
+
+imported optimized m7m, +42%
+
+v3.4.2
+
+added veltor algo
+tweaked lyra2 AVX/AVX2 code for small improvement.
+
+v3.4.1
+
+big AVX2 optmizations for lyra2 +35%, lyra2v2 +11%, AVX also faster
+fixed hmq1725
+
+v3.4.0
+
+fixed Windows compile error introduced in v3.3.9
+fixed x11gost, broken in v3.3.7
+AVX2 optimizations improving many algos:
+   - Lyra2RE  +3%
+   - Lyra2REv2  +19%
+   - x11gost (sib) +6%
+   - x11evo +2.4%
+   - c11 +6.9%
+   - x11 +5%
+   - x13 +5%
+   - x14 +3.6%
+   - x15 +2.4%
+   - x17 +2.8%
+   - qubit +8.4%
+
