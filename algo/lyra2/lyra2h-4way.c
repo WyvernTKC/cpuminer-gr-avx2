@@ -20,7 +20,7 @@ static __thread blake256_4way_context l2h_4way_blake_mid;
 void lyra2h_4way_midstate( const void* input )
 {
        blake256_4way_init( &l2h_4way_blake_mid );
-       blake256_4way( &l2h_4way_blake_mid, input, 64 );
+       blake256_4way_update( &l2h_4way_blake_mid, input, 64 );
 }
 
 void lyra2h_4way_hash( void *state, const void *input )
@@ -33,7 +33,7 @@ void lyra2h_4way_hash( void *state, const void *input )
      blake256_4way_context ctx_blake __attribute__ ((aligned (64)));
 
      memcpy( &ctx_blake, &l2h_4way_blake_mid, sizeof l2h_4way_blake_mid );
-     blake256_4way( &ctx_blake, input + (64*4), 16 );
+     blake256_4way_update( &ctx_blake, input + (64*4), 16 );
      blake256_4way_close( &ctx_blake, vhash );
 
      dintrlv_4x32( hash0, hash1, hash2, hash3, vhash, 256 );
@@ -76,7 +76,7 @@ int scanhash_lyra2h_4way( struct work *work, uint32_t max_nonce,
            && !opt_benchmark )
       {
           pdata[19] = n+i;         
-          submit_lane_solution( work, hash+(i<<3), mythr, i );
+          submit_solution( work, hash+(i<<3), mythr );
       }
       n += 4;
    } while (  (n < max_nonce-4) && !work_restart[thr_id].restart);

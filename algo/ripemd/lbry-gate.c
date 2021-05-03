@@ -41,6 +41,7 @@ void lbry_le_build_stratum_request( char *req, struct work *work,
    free(xnonce2str);
 }
 
+/*
 void lbry_build_block_header( struct work* g_work, uint32_t version,
                              uint32_t *prevhash, uint32_t *merkle_root,
                              uint32_t ntime, uint32_t nbits )
@@ -63,17 +64,14 @@ void lbry_build_block_header( struct work* g_work, uint32_t version,
    g_work->data[ LBRY_NBITS_INDEX ] = nbits;
    g_work->data[28] = 0x80000000;
 }
+*/
 
 void lbry_build_extraheader( struct work* g_work, struct stratum_ctx* sctx )
 {
    unsigned char merkle_root[64] = { 0 };
-   size_t t;
    int i;
 
    algo_gate.gen_merkle_root( merkle_root, sctx );
-   // Increment extranonce2 
-   for ( t = 0; t < sctx->xnonce2_size && !( ++sctx->job.xnonce2[t] ); t++ );
-   // Assemble block header 
 
    memset( g_work->data, 0, sizeof(g_work->data) );
    g_work->data[0] = le32dec( sctx->job.version );
@@ -92,38 +90,37 @@ void lbry_build_extraheader( struct work* g_work, struct stratum_ctx* sctx )
    g_work->data[28] = 0x80000000;
 }
 
-void lbry_set_target( struct work* work, double job_diff )
-{
- work_set_target( work, job_diff / (256.0 * opt_diff_factor) );
-}
-
-int64_t lbry_get_max64() { return 0x1ffffLL; }
-
 int lbry_get_work_data_size() { return LBRY_WORK_DATA_SIZE; }
 
 bool register_lbry_algo( algo_gate_t* gate )
 {
-  gate->optimizations = AVX2_OPT | SHA_OPT;
-#if defined (LBRY_8WAY)
+//  gate->optimizations = AVX2_OPT | AVX512_OPT | SHA_OPT;
+#if defined (LBRY_16WAY)
+  gate->scanhash              = (void*)&scanhash_lbry_16way;
+  gate->hash                  = (void*)&lbry_16way_hash;
+  gate->optimizations = AVX2_OPT | AVX512_OPT;
+#elif defined (LBRY_8WAY)
   gate->scanhash              = (void*)&scanhash_lbry_8way;
   gate->hash                  = (void*)&lbry_8way_hash;
+  gate->optimizations = AVX2_OPT | AVX512_OPT;
 #elif defined (LBRY_4WAY)
   gate->scanhash              = (void*)&scanhash_lbry_4way;
   gate->hash                  = (void*)&lbry_4way_hash;
+  gate->optimizations = AVX2_OPT | AVX512_OPT;
 #else 
   gate->scanhash              = (void*)&scanhash_lbry;
   gate->hash                  = (void*)&lbry_hash;
+  gate->optimizations = AVX2_OPT | AVX512_OPT | SHA_OPT;
 #endif
   gate->calc_network_diff     = (void*)&lbry_calc_network_diff;
-  gate->get_max64             = (void*)&lbry_get_max64;
   gate->build_stratum_request = (void*)&lbry_le_build_stratum_request;
 //  gate->build_block_header    = (void*)&build_block_header;
   gate->build_extraheader     = (void*)&lbry_build_extraheader;
-  gate->set_target            = (void*)&lbry_set_target;
   gate->ntime_index           = LBRY_NTIME_INDEX;
   gate->nbits_index           = LBRY_NBITS_INDEX;
   gate->nonce_index           = LBRY_NONCE_INDEX;
   gate->get_work_data_size    = (void*)&lbry_get_work_data_size;
+  opt_target_factor = 256.0;
   return true;
 }
 

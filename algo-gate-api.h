@@ -35,7 +35,7 @@
 //    6. Determine if other non existant functions are required.
 //    That is determined by the need to add code in cpu-miner.c
 //    that applies only to the new algo. That is forbidden. All
-//    algo specific code must be in theh algo's file.
+//    algo specific code must be in the algo's file.
 //
 //    7. If new functions need to be added to the gate add the type
 //    to the structure, declare a null instance in this file and define
@@ -48,10 +48,10 @@
 //    instances as they are defined by default, or unsafe functions that
 //    are not needed by the algo.
 //
-//    9. Add an case entry to the switch/case in function register_gate
+//    9. Add a case entry to the switch/case in function register_gate
 //    in file algo-gate-api.c for the new algo.
 //
-//    10 If a new function type was defined add an entry to ini talgo_gate
+//    10 If a new function type was defined add an entry to init algo_gate
 //    to initialize the new function to its null instance described in step 7.
 //
 //    11. If the new algo has aliases add them to the alias array in
@@ -75,7 +75,7 @@
 
 // my hack at creating a set data type using bit masks. Set inclusion,
 // exclusion union and intersection operations are provided for convenience. In // some cases it may be desireable to use boolean algebra directly on the
-// data to perfomr set operations. Sets can be represented as single
+// data to perform set operations. Sets can be represented as single
 // elements, a bitwise OR of multiple elements, a bitwise OR of multiple
 // set variables or constants, or combinations of the above.
 // Examples:
@@ -85,14 +85,17 @@
 
 typedef  uint32_t set_t;
 
-#define EMPTY_SET       0
-#define SSE2_OPT        1
-#define AES_OPT         2  
-#define SSE42_OPT       4
-#define AVX_OPT         8
-#define AVX2_OPT     0x10
-#define SHA_OPT      0x20
-#define AVX512_OPT   0x40
+#define EMPTY_SET        0
+#define SSE2_OPT         1
+#define AES_OPT          2  
+#define SSE42_OPT        4
+#define AVX_OPT          8   // Sandybridge
+#define AVX2_OPT      0x10   // Haswell, Zen1
+#define SHA_OPT       0x20   // Zen1, Icelake (sha256)
+#define AVX512_OPT    0x40   // Skylake-X (AVX512[F,VL,DQ,BW])
+#define VAES_OPT      0x80   // Icelake (VAES & AVX512)
+#define VAES256_OPT   0x100  // Zen3 (VAES without AVX512)
+
 
 // return set containing all elements from sets a & b
 inline set_t set_union ( set_t a, set_t b ) { return a | b; }
@@ -108,45 +111,62 @@ inline bool set_excl ( set_t a, set_t b ) { return (a & b) == 0; }
 
 typedef struct
 {
-// special case, only one target, provides a callback for scanhash to
-// submit work with less overhead.
-// bool (*submit_work )             ( struct thr_info*, const struct work* );
-
-// mandatory functions, must be overwritten
-// Added a 5th arg for the thread_info structure to replace the int thr id
-// in the first arg. Both will co-exist during the trasition.
-//int ( *scanhash ) ( int, struct work*, uint32_t, uint64_t* );
+// Mandatory functions, one of these is mandatory. If a generic scanhash
+// is used a custom target hash function must be registered, with a custom
+// scanhash the target hash function can be called directly and doesn't need
+// to be registered with the gate. 
 int ( *scanhash ) ( struct work*, uint32_t, uint64_t*, struct thr_info* );
 
-// optional unsafe, must be overwritten if algo uses function
-void ( *hash )     ( void*, const void*, uint32_t ) ;
-void ( *hash_suw ) ( void*, const void* );
+int ( *hash )     ( void*, const void*, int );
 
 //optional, safe to use default in most cases
-bool ( *miner_thread_init )      ( int );
-void ( *stratum_gen_work )       ( struct stratum_ctx*, struct work* );
-void ( *get_new_work )           ( struct work*, struct work*, int, uint32_t*,
-                                   bool );
-uint32_t *( *get_nonceptr )      ( uint32_t* );
-void ( *decode_extra_data )      ( struct work*, uint64_t* );
-void ( *wait_for_diff )          ( struct stratum_ctx* );
-int64_t ( *get_max64 )           ();
-bool ( *work_decode )            ( const json_t*, struct work* );
-void ( *set_target)              ( struct work*, double );
-bool ( *submit_getwork_result )  ( CURL*, struct work* );
-void ( *gen_merkle_root )        ( char*, struct stratum_ctx* );
-void ( *build_extraheader )      ( struct work*, struct stratum_ctx* );
-void ( *build_block_header )     ( struct work*, uint32_t, uint32_t*,
-	                           uint32_t*, uint32_t, uint32_t );
-void ( *build_stratum_request )  ( char*, struct work*, struct stratum_ctx* );
-char* ( *malloc_txs_request )    ( struct work* );
-void ( *set_work_data_endian )   ( struct work* );
-double ( *calc_network_diff )    ( struct work* );
-bool ( *ready_to_mine )          ( struct work*, struct stratum_ctx*, int );
-void ( *resync_threads )         ( struct work* );
-bool ( *do_this_thread )         ( int );
-json_t* (*longpoll_rpc_call)     ( CURL*, int*, char* );
-bool ( *stratum_handle_response )( json_t* );
+
+// Called once by each miner thread to allocate thread local buffers and
+// other initialization specific to miner threads.
+bool ( *miner_thread_init )     ( int );
+
+// Get thread local copy of blockheader with unique nonce.
+void ( *get_new_work )          ( struct work*, struct work*, int, uint32_t* );
+
+// Decode getwork blockheader
+bool ( *work_decode )           ( struct work* );
+
+// Extra getwork data
+void ( *decode_extra_data )     ( struct work*, uint64_t* );
+
+bool ( *submit_getwork_result ) ( CURL*, struct work* );
+
+void ( *gen_merkle_root )       ( char*, struct stratum_ctx* );
+
+// Increment extranonce
+void ( *build_extraheader )     ( struct work*, struct stratum_ctx* );
+
+void ( *build_block_header )    ( struct work*, uint32_t, uint32_t*,
+	                                uint32_t*, uint32_t, uint32_t,
+                                   unsigned char* );
+
+// Build mining.submit message
+void ( *build_stratum_request ) ( char*, struct work*, struct stratum_ctx* );
+
+char* ( *malloc_txs_request )   ( struct work* );
+
+// Big endian or little endian
+void ( *set_work_data_endian )  ( struct work* );
+
+double ( *calc_network_diff )   ( struct work* );
+
+// Wait for first work
+bool ( *ready_to_mine )         ( struct work*, struct stratum_ctx*, int );
+
+// Diverge mining threads
+bool ( *do_this_thread )        ( int );
+
+// After do_this_thread
+void ( *resync_threads )        ( int, struct work* );
+
+// No longer needed
+json_t* (*longpoll_rpc_call)      ( CURL*, int*, char* );
+
 set_t optimizations;
 int  ( *get_work_data_size )     ();
 int  ntime_index;
@@ -184,88 +204,96 @@ void four_way_not_tested();
 #define STD_WORK_DATA_SIZE 128
 #define STD_WORK_CMP_SIZE 76
 
-#define JR2_NONCE_INDEX 39  // 8 bit offset
+//#define JR2_NONCE_INDEX 39  // 8 bit offset
 
 // These indexes are only used with JSON RPC2 and are not gated.
-#define JR2_WORK_CMP_INDEX_2 43
-#define JR2_WORK_CMP_SIZE_2 33
+//#define JR2_WORK_CMP_INDEX_2 43
+//#define JR2_WORK_CMP_SIZE_2 33
 
-// allways returns failure
+// deprecated, use generic instead
 int null_scanhash();
 
-// Allow algos to submit from scanhash loop.
-bool submit_solution( struct work *work, void *hash,
-                      struct thr_info *thr );
-bool submit_lane_solution( struct work *work, void *hash,
-                          struct thr_info *thr, int lane );
+// Default generic, may be used in many cases.
+// N-way is more complicated, requires many different implementations
+// depending on architecture, input format, and output format.
+// Naming convention is scanhash_[N]way_[input format]in_[output format]out
+// N = number of lanes
+// input/output format:
+//    32: 32 bit interleaved parallel lanes
+//    64: 64 bit interleaved parallel lanes
+//    640: input only, not interleaved, contiguous serial 640 bit lanes.
+//    256: output only, not interleaved, contiguous serial 256 bit lanes.
 
- 
-bool submit_work( struct thr_info *thr, const struct work *work_in );
+int scanhash_generic( struct work *work, uint32_t max_nonce,
+                      uint64_t *hashes_done, struct thr_info *mythr );
+
+#if defined(__AVX2__)
+
+//int scanhash_4way_64in_64out( struct work *work, uint32_t max_nonce,
+//                      uint64_t *hashes_done, struct thr_info *mythr );
+
+//int scanhash_4way_64in_256out( struct work *work, uint32_t max_nonce,
+//                      uint64_t *hashes_done, struct thr_info *mythr );
+
+int scanhash_4way_64in_32out( struct work *work, uint32_t max_nonce,
+                      uint64_t *hashes_done, struct thr_info *mythr );
+
+//int scanhash_8way_32in_32out( struct work *work, uint32_t max_nonce,
+//                      uint64_t *hashes_done, struct thr_info *mythr );
+
+#endif
+
+#if defined(__AVX512F__) && defined(__AVX512VL__) && defined(__AVX512DQ__) && defined(__AVX512BW__)
+
+//int scanhash_8way_64in_64out( struct work *work, uint32_t max_nonce,
+//                      uint64_t *hashes_done, struct thr_info *mythr );
+
+//int scanhash_8way_64in_256out( struct work *work, uint32_t max_nonce,
+//                      uint64_t *hashes_done, struct thr_info *mythr );
+
+int scanhash_8way_64in_32out( struct work *work, uint32_t max_nonce,
+                      uint64_t *hashes_done, struct thr_info *mythr );
+
+//int scanhash_16way_32in_32out( struct work *work, uint32_t max_nonce,
+//                      uint64_t *hashes_done, struct thr_info *mythr );
+
+#endif
 
 // displays warning
-void null_hash    ();
-void null_hash_suw();
+int null_hash();
 
 // optional safe targets, default listed first unless noted.
 
-void std_wait_for_diff();
-
-uint32_t *std_get_nonceptr( uint32_t *work_data );
-uint32_t *jr2_get_nonceptr( uint32_t *work_data );
-
 void std_get_new_work( struct work *work, struct work *g_work, int thr_id,
-                       uint32_t* end_nonce_ptr, bool clean_job );
-void jr2_get_new_work( struct work *work, struct work *g_work, int thr_id,
                        uint32_t* end_nonce_ptr );
-
-void std_stratum_gen_work( struct stratum_ctx *sctx, struct work *work );
-void jr2_stratum_gen_work( struct stratum_ctx *sctx, struct work *work );
 
 void sha256d_gen_merkle_root( char *merkle_root, struct stratum_ctx *sctx );
 void SHA256_gen_merkle_root ( char *merkle_root, struct stratum_ctx *sctx );
 
-// pick your favorite or define your own
-int64_t get_max64_0x1fffffLL(); // default
-int64_t get_max64_0x40LL();
-int64_t get_max64_0x3ffff();
-int64_t get_max64_0x3fffffLL();
-int64_t get_max64_0x1ffff();
-int64_t get_max64_0xffffLL();
-
-void std_set_target(    struct work *work, double job_diff );
-void alt_set_target(    struct work* work, double job_diff );
-void scrypt_set_target( struct work *work, double job_diff );
-
-bool std_le_work_decode( const json_t *val, struct work *work );
-bool std_be_work_decode( const json_t *val, struct work *work );
-bool jr2_work_decode( const json_t *val, struct work *work );
+bool std_le_work_decode( struct work *work );
+bool std_be_work_decode( struct work *work );
 
 bool std_le_submit_getwork_result( CURL *curl, struct work *work );
 bool std_be_submit_getwork_result( CURL *curl, struct work *work );
-bool jr2_submit_getwork_result( CURL *curl, struct work *work );
 
 void std_le_build_stratum_request( char *req, struct work *work );
 void std_be_build_stratum_request( char *req, struct work *work );
-void jr2_build_stratum_request   ( char *req, struct work *work );
 
 char* std_malloc_txs_request( struct work *work );
 
-// Default is do_nothing (assumed LE)
+// Default is do_nothing, little endian is assumed
 void set_work_data_big_endian( struct work *work );
 
 double std_calc_network_diff( struct work *work );
 
 void std_build_block_header( struct work* g_work, uint32_t version,
-	                     uint32_t *prevhash,  uint32_t *merkle_root,
-   	                     uint32_t ntime, uint32_t nbits );
+	                          uint32_t *prevhash,  uint32_t *merkle_root,
+   	                       uint32_t ntime,      uint32_t nbits,
+                             unsigned char *final_sapling_hash );
 
 void std_build_extraheader( struct work *work, struct stratum_ctx *sctx );
 
 json_t* std_longpoll_rpc_call( CURL *curl, int *err, char *lp_url );
-json_t* jr2_longpoll_rpc_call( CURL *curl, int *err );
-
-bool std_stratum_handle_response( json_t *val );
-bool jr2_stratum_handle_response( json_t *val );
 
 bool std_ready_to_mine( struct work* work, struct stratum_ctx* stratum,
                         int thr_id );
@@ -278,19 +306,16 @@ int std_get_work_data_size();
 // by calling the algo's register function.
 bool register_algo_gate( int algo, algo_gate_t *gate );
 
-// Override any default gate functions that are applicable and do any other
-// algo-specific initialization.
+// Called by algos to verride any default gate functions that are applicable
+// and do any other algo-specific initialization.
 // The register functions for all the algos can be declared here to reduce
 // compiler warnings but that's just more work for devs adding new algos.
 bool register_algo( algo_gate_t *gate );
 
-// Overrides a common set of functions used by RPC2 and other RPC2-specific
-// init. Called by algo's register function before initializing algo-specific
-// functions and data.
-bool register_json_rpc2( algo_gate_t *gate );
-
 // use this to call the hash function of an algo directly, ie util.c test.
 void exec_hash_function( int algo, void *output, const void *pdata );
 
-void get_algo_alias( char** algo_or_alias );
+// Validate a string as a known algo and alias, updates arg to proper
+// algo name if valid alias, NULL if invalid alias or algo.
+void get_algo_alias( char **algo_or_alias );
 

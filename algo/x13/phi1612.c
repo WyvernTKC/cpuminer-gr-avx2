@@ -1,31 +1,35 @@
 #include "phi1612-gate.h"
 
+#if !defined(PHI1612_8WAY) && !defined(PHI1612_4WAY)
+
 #include <stdlib.h>
 #include <stdint.h>
 #include <string.h>
 #include <stdio.h>
-
 #include "algo/gost/sph_gost.h"
 #include "algo/echo/sph_echo.h"
-#include "algo/fugue//sph_fugue.h"
 #include "algo/cubehash/cubehash_sse2.h"
-#include "algo/skein/sse2/skein.c"
+#include "algo/skein/sph_skein.h"
 #include "algo/jh/sph_jh.h"
-
-#ifndef NO_AES_NI
+#ifdef __AES__
   #include "algo/echo/aes_ni/hash_api.h"
+  #include "algo/fugue/fugue-aesni.h"
+#else
+  #include "algo/echo/sph_echo.h"
+  #include "algo/fugue/sph_fugue.h"
 #endif
 
 typedef struct {
      sph_skein512_context    skein;
      sph_jh512_context       jh;
      cubehashParam           cube;
-     sph_fugue512_context    fugue;
      sph_gost512_context     gost;
-#ifdef NO_AES_NI
-     sph_echo512_context     echo;
-#else
+#ifdef __AES__
      hashState_echo          echo;
+     hashState_fugue         fugue;
+#else
+     sph_echo512_context     echo;
+     sph_fugue512_context    fugue;
 #endif
 } phi_ctx_holder;
 
@@ -38,12 +42,13 @@ void init_phi1612_ctx()
      sph_skein512_init( &phi_ctx.skein );
      sph_jh512_init( &phi_ctx.jh );
      cubehashInit( &phi_ctx.cube, 512, 16, 32 );
-     sph_fugue512_init( &phi_ctx.fugue );
      sph_gost512_init( &phi_ctx.gost );
-#ifdef NO_AES_NI
-     sph_echo512_init( &phi_ctx.echo );
-#else
+#ifdef __AES__
      init_echo( &phi_ctx.echo, 512 );
+     fugue512_Init( &phi_ctx.fugue, 512 );
+#else
+     sph_echo512_init( &phi_ctx.echo );
+     sph_fugue512_init( &phi_ctx.fugue );
 #endif
 }
 
@@ -64,26 +69,28 @@ void phi1612_hash(void *output, const void *input)
      sph_skein512( &ctx.skein, input + 64, 16 );
      sph_skein512_close( &ctx.skein, hash );
 
-//     sph_skein512( &ctx.skein, input, 80 );
-//     sph_skein512_close( &ctx.skein, (void*)hash );
-
      sph_jh512( &ctx.jh, (const void*)hash, 64 );
      sph_jh512_close( &ctx.jh, (void*)hash );
 
      cubehashUpdateDigest( &ctx.cube, (byte*) hash, (const byte*)hash, 64 );
 
+#if defined(__AES__)
+     fugue512_Update( &ctx.fugue, hash, 512 ); 
+     fugue512_Final( &ctx.fugue, hash ); 
+#else
      sph_fugue512( &ctx.fugue, (const void*)hash, 64 );
      sph_fugue512_close( &ctx.fugue, (void*)hash );
+#endif
 
      sph_gost512( &ctx.gost, hash, 64 );
      sph_gost512_close( &ctx.gost, hash );
 
-#ifdef NO_AES_NI
-     sph_echo512( &ctx.echo, hash, 64 );
-     sph_echo512_close( &ctx.echo, hash );
-#else
+#ifdef __AES__
      update_final_echo ( &ctx.echo, (BitSequence *)hash,
                          (const BitSequence *)hash, 512 );
+#else
+     sph_echo512( &ctx.echo, hash, 64 );
+     sph_echo512_close( &ctx.echo, hash );
 #endif
 
      memcpy(output, hash, 32);
@@ -115,11 +122,10 @@ int scanhash_phi1612( struct work *work, uint32_t max_nonce,
 		be32enc(&endiandata[19], nonce);
 		phi1612_hash(hash, endiandata);
 
-		if (hash[7] <= Htarg && fulltest(hash, ptarget)) {
+		if (hash[7] <= Htarg && fulltest(hash, ptarget))
+      {
 			pdata[19] = nonce;
-                        work_set_target_ratio( work, hash );
-			*hashes_done = pdata[19] - first_nonce;
-			return 1;
+         submit_solution( work, hash, mythr );
 		}
 		nonce++;
 
@@ -130,3 +136,4 @@ int scanhash_phi1612( struct work *work, uint32_t max_nonce,
 	return 0;
 }
 
+#endif

@@ -1051,16 +1051,16 @@ int scanhash_neoscrypt( struct work *work,
     uint32_t _ALIGN(64) hash[8];
     const uint32_t Htarg = ptarget[7];
     const uint32_t first_nonce = pdata[19];
-    int thr_id = mythr->id;  // thr_id arg is deprecated
+    int thr_id = mythr->id; 
 
     while (pdata[19] < max_nonce && !work_restart[thr_id].restart)
     {
         neoscrypt((uint8_t *) hash, (uint8_t *) pdata );
 
         /* Quick hash check */
-        if (hash[7] <= Htarg && fulltest_le(hash, ptarget)) {
-            *hashes_done = pdata[19] - first_nonce + 1;
-            return 1;
+        if (hash[7] <= Htarg && fulltest_le(hash, ptarget))
+        {
+          submit_solution( work, hash, mythr );
         }
 
         pdata[19]++;
@@ -1070,17 +1070,6 @@ int scanhash_neoscrypt( struct work *work,
     return 0;
 }
 
-int64_t get_neoscrypt_max64() { return 0x3ffff; }
-
-void neoscrypt_wait_for_diff( struct stratum_ctx *stratum )
-{
-   while ( !stratum->job.diff )
-   {
-//      applog(LOG_DEBUG, "Waiting for Stratum to set the job difficulty");
-      sleep(1);
-   }
-}
-
 int neoscrypt_get_work_data_size () { return 80; }
 
 bool register_neoscrypt_algo( algo_gate_t* gate )
@@ -1088,14 +1077,12 @@ bool register_neoscrypt_algo( algo_gate_t* gate )
   gate->optimizations         = SSE2_OPT;
   gate->scanhash              = (void*)&scanhash_neoscrypt;
   gate->hash                  = (void*)&neoscrypt;
-  gate->get_max64             = (void*)&get_neoscrypt_max64;
-  gate->set_target            = (void*)&scrypt_set_target;
-  gate->wait_for_diff         = (void*)&neoscrypt_wait_for_diff;
   gate->build_stratum_request = (void*)&std_be_build_stratum_request;
   gate->work_decode           = (void*)&std_be_work_decode;
   gate->submit_getwork_result = (void*)&std_be_submit_getwork_result;
   gate->set_work_data_endian  = (void*)&set_work_data_big_endian;
   gate->get_work_data_size    = (void*)&neoscrypt_get_work_data_size;
+  opt_target_factor = 65536.0;
   return true;
 };
 

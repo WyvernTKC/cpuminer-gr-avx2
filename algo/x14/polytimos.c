@@ -1,29 +1,30 @@
 #include "polytimos-gate.h"
 
+#if !defined(POLYTIMOS_8WAY) && !defined(POLYTIMOS_4WAY)
+
 #include <stdlib.h>
 #include <stdint.h>
 #include <string.h>
 #include <stdio.h>
-
 #include "algo/skein/sph_skein.h"
 #include "algo/echo/sph_echo.h"
 #include "algo/fugue//sph_fugue.h"
 #include "algo/luffa/luffa_for_sse2.h"
 #include "algo/shabal/sph_shabal.h"
 #include "algo/gost/sph_gost.h"
-#ifndef NO_AES_NI
+#ifdef __AES__
   #include "algo/echo/aes_ni/hash_api.h"
 #endif
 
 typedef struct {
 	sph_skein512_context    skein;
-        sph_shabal512_context   shabal;
-#ifdef NO_AES_NI
-	sph_echo512_context		echo;
+   sph_shabal512_context   shabal;
+#ifdef __AES__
+   hashState_echo          echo;
 #else
-        hashState_echo          echo;
+	sph_echo512_context		echo;
 #endif
-        hashState_luffa         luffa;
+   hashState_luffa         luffa;
 	sph_fugue512_context    fugue;
 	sph_gost512_context     gost;
 } poly_ctx_holder;
@@ -33,15 +34,15 @@ poly_ctx_holder poly_ctx;
 void init_polytimos_ctx()
 {
 	sph_skein512_init(&poly_ctx.skein);
-        sph_shabal512_init(&poly_ctx.shabal);
-#ifdef NO_AES_NI
-        sph_echo512_init(&poly_ctx.echo);
+   sph_shabal512_init(&poly_ctx.shabal);
+#ifdef __AES__
+   init_echo( &poly_ctx.echo, 512 );
 #else
-        init_echo( &poly_ctx.echo, 512 );
+   sph_echo512_init(&poly_ctx.echo);
 #endif
-        init_luffa( &poly_ctx.luffa, 512 );
-        sph_fugue512_init(&poly_ctx.fugue);
-        sph_gost512_init(&poly_ctx.gost);
+   init_luffa( &poly_ctx.luffa, 512 );
+   sph_fugue512_init(&poly_ctx.fugue);
+   sph_gost512_init(&poly_ctx.gost);
 }
 
 void polytimos_hash(void *output, const void *input)
@@ -56,12 +57,12 @@ void polytimos_hash(void *output, const void *input)
 	sph_shabal512(&ctx.shabal, hashA, 64);
 	sph_shabal512_close(&ctx.shabal, hashA);
 
-#ifdef NO_AES_NI
+#ifdef __AES__
+    update_final_echo ( &ctx.echo, (BitSequence *)hashA,
+                             (const BitSequence *)hashA, 512 );
+#else
 	sph_echo512(&ctx.echo, hashA, 64);
 	sph_echo512_close(&ctx.echo, hashA);
-#else
-        update_final_echo ( &ctx.echo, (BitSequence *)hashA,
-                            (const BitSequence *)hashA, 512 );
 #endif
 
         update_and_final_luffa( &ctx.luffa, (BitSequence*)hashA,
@@ -100,11 +101,10 @@ int scanhash_polytimos( struct work *work, uint32_t max_nonce,
 		be32enc(&endiandata[19], nonce);
 		polytimos_hash(hash, endiandata);
 
-		if (hash[7] <= Htarg && fulltest(hash, ptarget)) {
-			work_set_target_ratio(work, hash);
+		if (hash[7] <= Htarg && fulltest(hash, ptarget))
+      {
 			pdata[19] = nonce;
-			*hashes_done = pdata[19] - first_nonce;
-			return 1;
+         submit_solution( work, hash, mythr );
 		}
 		nonce++;
 
@@ -114,3 +114,4 @@ int scanhash_polytimos( struct work *work, uint32_t max_nonce,
 	*hashes_done = pdata[19] - first_nonce + 1;
 	return 0;
 }
+#endif

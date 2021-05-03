@@ -63,11 +63,10 @@ int scanhash_axiom( struct work *work,
 	do {
 		be32enc(&endiandata[19], n);
 		axiomhash(hash64, endiandata);
-		if (hash64[7] < Htarg && fulltest(hash64, ptarget)) {
-			*hashes_done = n - first_nonce + 1;
+		if (hash64[7] < Htarg && fulltest(hash64, ptarget))
+      {
 			pdata[19] = n;
-                        work_set_target_ratio( work, hash64 );
-			return true;
+         submit_solution( work, hash64, mythr );
 		}
 		n++;
 
@@ -83,6 +82,5 @@ bool register_axiom_algo( algo_gate_t* gate )
 {
     gate->scanhash  = (void*)&scanhash_axiom;
     gate->hash      = (void*)&axiomhash;
-    gate->get_max64 = (void*)&get_max64_0x40LL;
     return true;
 }

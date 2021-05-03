@@ -1,86 +1,73 @@
 #!/bin/bash
 #
 # This script is not intended for users, it is only used for compile testing
-# during develpment. Howver the information contained my provide cimpilation
+# during develpment. However the information contained may provide compilation
 # tips to users.
+
+#!/bin/bash
+#
+# This script is not intended for users, it is only used for compile testing
+# during develpment. However the information contained may provide compilation
+# tips to users.
+
+rm -r bin/unix 2>/dev/null
+rm cpuminer 2>/dev/null
+mkdir -p bin/{win,unix} 2>/dev/null
+
+DFLAGS="-Wall -fno-common -Wno-comment -Wno-maybe-uninitialized"
+
+# 1 - Architecture
+# 2 - Output suffix
+# 3 - Additional options
+compile() {
 
 make distclean || echo clean
 rm -f config.status
 ./autogen.sh || echo done
-CFLAGS="-O3 -march=skylake-avx512 -Wall" ./configure --with-curl
-make -j 16
-strip -s cpuminer.exe
-mv cpuminer.exe cpuminer-avx512.exe
+CFLAGS="-O3 -march=${1} ${3} ${DFLAGS}" ./configure --with-curl
+make -j 12
 strip -s cpuminer
-mv cpuminer cpuminer-avx512
+mv cpuminer bin/unix/cpuminer-${2}
 
-make clean || echo clean
-rm -f config.status
-CFLAGS="-O3 -march=core-avx2 -Wall" ./configure --with-curl
-make -j 16
-strip -s cpuminer.exe
-mv cpuminer.exe cpuminer-avx2.exe
-strip -s cpuminer
-mv cpuminer cpuminer-avx2
+}
 
-make clean || echo clean
-rm -f config.status
-CFLAGS="-O3 -march=corei7-avx -Wall" ./configure --with-curl
-make -j 16
-strip -s cpuminer.exe
-mv cpuminer.exe cpuminer-aes-avx.exe
-strip -s cpuminer
-mv cpuminer cpuminer-aes-avx
+# Haswell AVX2 AES
+# GCC 9 doesn't include AES with core-avx2
+compile "core-avx2" "avx2" "-maes"
 
-make clean || echo clean
-rm -f config.status
-CFLAGS="-O3 -maes -msse4.2 -Wall" ./configure --with-curl
-make -j 16
-strip -s cpuminer.exe
-mv cpuminer.exe cpuminer-aes-sse42.exe
-strip -s cpuminer
-mv cpuminer cpuminer-aes-sse42
+# Sandybridge AVX AES
+compile "corei7-avx" "avx" "-maes"
+# Westmere SSE4.2 AES
+compile "westmere" "aes-sse42" "-maes"
 
-make clean || echo clean
-rm -f config.status
-CFLAGS="-O3 -march=corei7 -Wall" ./configure --with-curl
-make -j 16
-strip -s cpuminer.exe
-mv cpuminer.exe cpuminer-sse42.exe
-strip -s cpuminer
-mv cpuminer cpuminer-sse42
+# AMD Zen1 AVX2 SHA
+compile "znver1" "zen"
 
-make clean || echo clean
-rm -f config.status
-CFLAGS="-O3 -march=core2 -Wall" ./configure --with-curl
-make -j 16
-strip -s cpuminer.exe
-mv cpuminer.exe cpuminer-ssse3.exe
-strip -s cpuminer
-mv cpuminer cpuminer-ssse3
+# AMD Zen3 AVX2 SHA VAES
+compile "znver2" "zen3" "-mvaes"
 
-make clean || echo clean
-rm -f config.status
-CFLAGS="-O3 -msse2 -Wall" ./configure --with-curl
-make -j 16
-strip -s cpuminer.exe
-mv cpuminer.exe cpuminer-sse2.exe
-strip -s cpuminer
-mv cpuminer cpuminer-sse2
+# Core2 SSSE3
+compile "core2" "ssse3"
 
-make clean || echo done
-rm -f config.status
-CFLAGS="-O3 -march=znver1 -Wall" ./configure --with-curl
-make -j 16
-strip -s cpuminer.exe
-mv cpuminer.exe cpuminer-zen.exe
-strip -s cpuminer
-mv cpuminer cpuminer-zen
+# Generic SSE2
+compile "x86-64" "sse2" "-msse"
 
-make clean || echo done
-rm -f config.status
-CFLAGS="-O3 -march=native -Wall" ./configure --with-curl
-make -j 16
-strip -s cpuminer.exe
-strip -s cpuminer
+# Nehalem SSE4.2
+compile "corei7" "sse42"
 
+# Icelake AVX512 SHA VAES
+compile "icelake-client" "avx512-sha-vaes"
+
+# Rocketlake AVX512 SHA AES
+compile "cascadelake" "avx512-sha" "-msha"
+
+# Slylake-X AVX512 AES
+compile "skylake-avx512" "avx512"
+
+# Native
+compile "native" "native" "-mtune=native"
+
+ls -l bin/unix
+if (( $(ls bin/unix/ | wc -l) != "11" )); then
+    echo "Some binaries did not compile?"
+fi

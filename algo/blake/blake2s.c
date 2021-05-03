@@ -1,5 +1,7 @@
 #include "blake2s-gate.h"
 
+#if  !defined(BLAKE2S_16WAY) && !defined(BLAKE2S_8WAY) && !defined(BLAKE2S)
+
 #include <string.h>
 #include <stdint.h>
 
@@ -56,7 +58,7 @@ int scanhash_blake2s( struct work *work,
 	do {
 		be32enc(&endiandata[19], n);
 		blake2s_hash( hash64, endiandata );
-		if (hash64[7] < Htarg && fulltest(hash64, ptarget)) {
+		if (hash64[7] <= Htarg && fulltest(hash64, ptarget)) {
 			*hashes_done = n - first_nonce + 1;
 			pdata[19] = n;
 			return true;
@@ -70,18 +72,4 @@ int scanhash_blake2s( struct work *work,
 
 	return 0;
 }
-/*
-// changed to get_max64_0x3fffffLL in cpuminer-multi-decred
-int64_t blake2s_get_max64 ()
-{
-   return 0x7ffffLL;
-}
-
-bool register_blake2s_algo( algo_gate_t* gate )
-{
-  gate->scanhash  = (void*)&scanhash_blake2s;
-  gate->hash      = (void*)&blake2s_hash;
-  gate->get_max64 = (void*)&blake2s_get_max64;
-  return true;
-};
-*/
+#endif

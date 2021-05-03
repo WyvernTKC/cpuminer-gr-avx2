@@ -43,16 +43,16 @@
  * optimized, and it is not meant to be used in production.  Instead, use
  * yespower-opt.c.
  */
-
+/*
 #warning "This reference implementation is deliberately mostly not optimized. Use yespower-opt.c instead unless you're testing (against) the reference implementation on purpose."
-
+*/
 #include <errno.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 
-#include "sha256_p.h"
-#include "sysendian.h"
+#include "algo/sha/hmac-sha256-hash.h"
+//#include "sysendian.h"
 
 #include "yespower.h"
 
@@ -346,7 +346,7 @@ static void smix1(uint32_t *B, size_t r, uint32_t N,
 	/* 1: X <-- B */
 	for (k = 0; k < 2 * r; k++)
 		for (i = 0; i < 16; i++)
-			X[k * 16 + i] = le32dec(&B[k * 16 + (i * 5 % 16)]);
+			X[k * 16 + i] = B[k * 16 + (i * 5 % 16)];
 
 	if (ctx->version != YESPOWER_0_5) {
 		for (k = 1; k < r; k++) {
@@ -378,7 +378,7 @@ static void smix1(uint32_t *B, size_t r, uint32_t N,
 	/* B' <-- X */
 	for (k = 0; k < 2 * r; k++)
 		for (i = 0; i < 16; i++)
-			le32enc(&B[k * 16 + (i * 5 % 16)], X[k * 16 + i]);
+			B[k * 16 + (i * 5 % 16)] = X[k * 16 + i];
 }
 
 /**
@@ -398,7 +398,7 @@ static void smix2(uint32_t *B, size_t r, uint32_t N, uint32_t Nloop,
 	/* X <-- B */
 	for (k = 0; k < 2 * r; k++)
 		for (i = 0; i < 16; i++)
-			X[k * 16 + i] = le32dec(&B[k * 16 + (i * 5 % 16)]);
+			X[k * 16 + i] = B[k * 16 + (i * 5 % 16)];
 
 	/* 6: for i = 0 to N - 1 do */
 	for (i = 0; i < Nloop; i++) {
@@ -418,7 +418,7 @@ static void smix2(uint32_t *B, size_t r, uint32_t N, uint32_t Nloop,
 	/* 10: B' <-- X */
 	for (k = 0; k < 2 * r; k++)
 		for (i = 0; i < 16; i++)
-			le32enc(&B[k * 16 + (i * 5 % 16)], X[k * 16 + i]);
+			B[k * 16 + (i * 5 % 16)] = X[k * 16 + i];
 }
 
 /**
@@ -453,9 +453,8 @@ static void smix(uint32_t *B, size_t r, uint32_t N,
  *
  * Return 0 on success; or -1 on error.
  */
-int yespower(yespower_local_t *local,
-    const uint8_t *src, size_t srclen,
-    const yespower_params_t *params, yespower_binary_t *dst)
+int yespower( yespower_local_t *local, const uint8_t *src, size_t srclen,
+    const yespower_params_t *params, yespower_binary_t *dst, int thrid ) 
 {
 	yespower_version_t version = params->version;
 	uint32_t N = params->N;
@@ -534,17 +533,16 @@ int yespower(yespower_local_t *local,
 
 		if (pers) {
 			HMAC_SHA256_Buf(dst, sizeof(*dst), pers, perslen,
-               return true;
 			    (uint8_t *)sha256);
 			SHA256_Buf(sha256, sizeof(sha256), (uint8_t *)dst);
 		}
 	} else {
-		HMAC_SHA256_Buf_P((uint8_t *)B + B_size - 64, 64,
+		HMAC_SHA256_Buf((uint8_t *)B + B_size - 64, 64,
 		    sha256, sizeof(sha256), (uint8_t *)dst);
 	}
 
 	/* Success! */
-	retval = 0;
+	retval = 1;
 
 	/* Free memory */
 	free(S);
@@ -559,10 +557,10 @@ free_V:
 }
 
 int yespower_tls(const uint8_t *src, size_t srclen,
-    const yespower_params_t *params, yespower_binary_t *dst)
+    const yespower_params_t *params, yespower_binary_t *dst, int thrid )
 {
 /* The reference implementation doesn't use thread-local storage */
-	return yespower(NULL, src, srclen, params, dst);
+	return yespower(NULL, src, srclen, params, dst, thrid );
 }
 
 int yespower_init_local(yespower_local_t *local)

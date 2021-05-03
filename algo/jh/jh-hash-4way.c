@@ -41,60 +41,45 @@
 extern "C"{
 #endif
 
-
-#if SPH_SMALL_FOOTPRINT && !defined SPH_SMALL_FOOTPRINT_JH
-#define SPH_SMALL_FOOTPRINT_JH   1
-#endif
-
-#if !defined SPH_JH_64 && SPH_64_TRUE
-#define SPH_JH_64   1
-#endif
-
-#if !SPH_64
-#undef SPH_JH_64
-#endif
-
 #ifdef _MSC_VER
 #pragma warning (disable: 4146)
 #endif
 
-/*
- * The internal bitslice representation may use either big-endian or
- * little-endian (true bitslice operations do not care about the bit
- * ordering, and the bit-swapping linear operations in JH happen to
- * be invariant through endianness-swapping). The constants must be
- * defined according to the chosen endianness; we use some
- * byte-swapping macros for that.
- */
+#if defined(__AVX512F__) && defined(__AVX512VL__) && defined(__AVX512DQ__) && defined(__AVX512BW__)
 
-#if SPH_LITTLE_ENDIAN
+#define Sb_8W(x0, x1, x2, x3, c) \
+do { \
+   __m512i cc = _mm512_set1_epi64( c ); \
+    x3 = mm512_not( x3 ); \
+    x0 = _mm512_xor_si512( x0, _mm512_andnot_si512( x2, cc ) ); \
+    tmp = _mm512_xor_si512( cc, _mm512_and_si512( x0, x1 ) ); \
+    x0 = _mm512_xor_si512( x0, _mm512_and_si512( x2, x3 ) ); \
+    x3 = _mm512_xor_si512( x3, _mm512_andnot_si512( x1, x2 ) ); \
+    x1 = _mm512_xor_si512( x1, _mm512_and_si512( x0, x2 ) ); \
+    x2 = _mm512_xor_si512( x2, _mm512_andnot_si512( x3, x0 ) ); \
+    x0 = _mm512_xor_si512( x0, _mm512_or_si512( x1, x3 ) ); \
+    x3 = _mm512_xor_si512( x3, _mm512_and_si512( x1, x2 ) ); \
+    x1 = _mm512_xor_si512( x1, _mm512_and_si512( tmp, x0 ) ); \
+    x2 = _mm512_xor_si512( x2, tmp ); \
+} while (0)
 
-#if SPH_64
-#define C64e(x)     ((SPH_C64(x) >> 56) \
-                    | ((SPH_C64(x) >> 40) & SPH_C64(0x000000000000FF00)) \
-                    | ((SPH_C64(x) >> 24) & SPH_C64(0x0000000000FF0000)) \
-                    | ((SPH_C64(x) >>  8) & SPH_C64(0x00000000FF000000)) \
-                    | ((SPH_C64(x) <<  8) & SPH_C64(0x000000FF00000000)) \
-                    | ((SPH_C64(x) << 24) & SPH_C64(0x0000FF0000000000)) \
-                    | ((SPH_C64(x) << 40) & SPH_C64(0x00FF000000000000)) \
-                    | ((SPH_C64(x) << 56) & SPH_C64(0xFF00000000000000)))
-#define dec64e_aligned   sph_dec64le_aligned
-#define enc64e           sph_enc64le
-#endif
-
-#else
-
-#if SPH_64
-#define C64e(x)     SPH_C64(x)
-#define dec64e_aligned   sph_dec64be_aligned
-#define enc64e           sph_enc64be
-#endif
+#define Lb_8W(x0, x1, x2, x3, x4, x5, x6, x7) \
+do { \
+    x4 = _mm512_xor_si512( x4, x1 ); \
+    x5 = _mm512_xor_si512( x5, x2 ); \
+    x6 = _mm512_xor_si512( x6, _mm512_xor_si512( x3, x0 ) ); \
+    x7 = _mm512_xor_si512( x7, x0 ); \
+    x0 = _mm512_xor_si512( x0, x5 ); \
+    x1 = _mm512_xor_si512( x1, x6 ); \
+    x2 = _mm512_xor_si512( x2, _mm512_xor_si512( x7, x4 ) ); \
+    x3 = _mm512_xor_si512( x3, x4 ); \
+} while (0)
 
 #endif
 
 #define Sb(x0, x1, x2, x3, c) \
 do { \
-   __m256i cc = _mm256_set_epi64x( c, c, c, c ); \
+   __m256i cc = _mm256_set1_epi64x( c ); \
     x3 = mm256_not( x3 ); \
     x0 = _mm256_xor_si256( x0, _mm256_andnot_si256( x2, cc ) ); \
     tmp = _mm256_xor_si256( cc, _mm256_and_si256( x0, x1 ) ); \
@@ -120,8 +105,97 @@ do { \
     x3 = _mm256_xor_si256( x3, x4 ); \
 } while (0)
 
-#if SPH_JH_64
+static const uint64_t C[] =
+{
+   0x67f815dfa2ded572, 0x571523b70a15847b,
+   0xf6875a4d90d6ab81, 0x402bd1c3c54f9f4e,
+   0x9cfa455ce03a98ea, 0x9a99b26699d2c503,
+   0x8a53bbf2b4960266, 0x31a2db881a1456b5,
+   0xdb0e199a5c5aa303, 0x1044c1870ab23f40,
+   0x1d959e848019051c, 0xdccde75eadeb336f,
+   0x416bbf029213ba10, 0xd027bbf7156578dc,
+   0x5078aa3739812c0a, 0xd3910041d2bf1a3f,
+   0x907eccf60d5a2d42, 0xce97c0929c9f62dd,
+   0xac442bc70ba75c18, 0x23fcc663d665dfd1,
+   0x1ab8e09e036c6e97, 0xa8ec6c447e450521,
+   0xfa618e5dbb03f1ee, 0x97818394b29796fd,
+   0x2f3003db37858e4a, 0x956a9ffb2d8d672a,
+   0x6c69b8f88173fe8a, 0x14427fc04672c78a,
+   0xc45ec7bd8f15f4c5, 0x80bb118fa76f4475,
+   0xbc88e4aeb775de52, 0xf4a3a6981e00b882,
+   0x1563a3a9338ff48e, 0x89f9b7d524565faa,
+   0xfde05a7c20edf1b6, 0x362c42065ae9ca36,
+   0x3d98fe4e433529ce, 0xa74b9a7374f93a53,
+   0x86814e6f591ff5d0, 0x9f5ad8af81ad9d0e,
+   0x6a6234ee670605a7, 0x2717b96ebe280b8b,
+   0x3f1080c626077447, 0x7b487ec66f7ea0e0,
+   0xc0a4f84aa50a550d, 0x9ef18e979fe7e391,
+   0xd48d605081727686, 0x62b0e5f3415a9e7e,
+   0x7a205440ec1f9ffc, 0x84c9f4ce001ae4e3,
+   0xd895fa9df594d74f, 0xa554c324117e2e55,
+   0x286efebd2872df5b, 0xb2c4a50fe27ff578,
+   0x2ed349eeef7c8905, 0x7f5928eb85937e44,
+   0x4a3124b337695f70, 0x65e4d61df128865e,
+   0xe720b95104771bc7, 0x8a87d423e843fe74,
+   0xf2947692a3e8297d, 0xc1d9309b097acbdd,
+   0xe01bdc5bfb301b1d, 0xbf829cf24f4924da,
+   0xffbf70b431bae7a4, 0x48bcf8de0544320d,
+   0x39d3bb5332fcae3b, 0xa08b29e0c1c39f45,
+   0x0f09aef7fd05c9e5, 0x34f1904212347094,
+   0x95ed44e301b771a2, 0x4a982f4f368e3be9,
+   0x15f66ca0631d4088, 0xffaf52874b44c147,
+   0x30c60ae2f14abb7e, 0xe68c6eccc5b67046,
+   0x00ca4fbd56a4d5a4, 0xae183ec84b849dda,
+   0xadd1643045ce5773, 0x67255c1468cea6e8,
+   0x16e10ecbf28cdaa3, 0x9a99949a5806e933,
+   0x7b846fc220b2601f, 0x1885d1a07facced1,
+   0xd319dd8da15b5932, 0x46b4a5aac01c9a50,
+   0xba6b04e467633d9f, 0x7eee560bab19caf6,
+   0x742128a9ea79b11f, 0xee51363b35f7bde9,
+   0x76d350755aac571d, 0x01707da3fec2463a,
+   0x42d8a498afc135f7, 0x79676b9e20eced78,
+   0xa8db3aea15638341, 0x832c83324d3bc3fa,
+   0xf347271c1f3b40a7, 0x9a762db734f04059,
+   0xfd4f21d26c4e3ee7, 0xef5957dc398dfdb8,
+   0xdaeb492b490c9b8d, 0x0d70f36849d7a25b,
+   0x84558d7ad0ae3b7d, 0x658ef8e4f0e9a5f5,
+   0x533b1036f4a2b8a0, 0x5aec3e759e07a80c,
+   0x4f88e85692946891, 0x4cbcbaf8555cb05b,
+   0x7b9487f3993bbbe3, 0x5d1c6b72d6f4da75,
+   0x6db334dc28acae64, 0x71db28b850a5346c,
+   0x2a518d10f2e261f8, 0xfc75dd593364dbe3,
+   0xa23fce43f1bcac1c, 0xb043e8023cd1bb67,
+   0x75a12988ca5b0a33, 0x5c5316b44d19347f,
+   0x1e4d790ec3943b92, 0x3fafeeb6d7757479,
+   0x21391abef7d4a8ea, 0x5127234c097ef45c,
+   0xd23c32ba5324a326, 0xadd5a66d4a17a344,
+   0x08c9f2afa63e1db5, 0x563c6b91983d5983,
+   0x4d608672a17cf84c, 0xf6c76e08cc3ee246,
+   0x5e76bcb1b333982f, 0x2ae6c4efa566d62b,
+   0x36d4c1bee8b6f406, 0x6321efbc1582ee74,
+   0x69c953f40d4ec1fd, 0x26585806c45a7da7,
+   0x16fae0061614c17e, 0x3f9d63283daf907e,
+   0x0cd29b00e3f2c9d2, 0x300cd4b730ceaa5f,
+   0x9832e0f216512a74, 0x9af8cee3d830eb0d,
+   0x9279f1b57b9ec54b, 0xd36886046ee651ff,
+   0x316796e6574d239b, 0x05750a17f3a6e6cc,
+   0xce6c3213d98176b1, 0x62a205f88452173c,
+   0x47154778b3cb2bf4, 0x486a9323825446ff,
+   0x65655e4e0758df38, 0x8e5086fc897cfcf2,
+   0x86ca0bd0442e7031, 0x4e477830a20940f0,
+   0x8338f7d139eea065, 0xbd3a2ce437e95ef7,
+   0x6ff8130126b29721, 0xe7de9fefd1ed44a3,
+   0xd992257615dfa08b, 0xbe42dc12f6f7853c,
+   0x7eb027ab7ceca7d8, 0xdea83eaada7d8d53,
+   0xd86902bd93ce25aa, 0xf908731afd43f65a,
+   0xa5194a17daef5fc0, 0x6a21fd4c33664d97,
+   0x701541db3198b435, 0x9b54cdedbb0f1eea,
+   0x72409751a163d09a, 0xe26f4791bf9d75f6
+};
 
+// Big endian version
+
+/*
 static const sph_u64 C[] = {
 	C64e(0x72d5dea2df15f867), C64e(0x7b84150ab7231557),
 	C64e(0x81abd6904d5a87f6), C64e(0x4e9f4fc5c3d12b40),
@@ -208,6 +282,7 @@ static const sph_u64 C[] = {
 	C64e(0x35b49831db411570), C64e(0xea1e0fbbedcd549b),
 	C64e(0x9ad063a151974072), C64e(0xf6759dbf91476fe2)
 };
+*/
 
 #define Ceven_hi(r)   (C[((r) << 2) + 0])
 #define Ceven_lo(r)   (C[((r) << 2) + 1])
@@ -226,6 +301,48 @@ static const sph_u64 C[] = {
 			x4 ## l, x5 ## l, x6 ## l, x7 ## l); \
 	} while (0)
 
+#if defined(__AVX512F__) && defined(__AVX512VL__) && defined(__AVX512DQ__) && defined(__AVX512BW__)
+
+#define S_8W(x0, x1, x2, x3, cb, r)   do { \
+      Sb_8W(x0 ## h, x1 ## h, x2 ## h, x3 ## h, cb ## hi(r)); \
+      Sb_8W(x0 ## l, x1 ## l, x2 ## l, x3 ## l, cb ## lo(r)); \
+   } while (0)
+
+#define L_8W(x0, x1, x2, x3, x4, x5, x6, x7)   do { \
+      Lb_8W(x0 ## h, x1 ## h, x2 ## h, x3 ## h, \
+         x4 ## h, x5 ## h, x6 ## h, x7 ## h); \
+      Lb_8W(x0 ## l, x1 ## l, x2 ## l, x3 ## l, \
+         x4 ## l, x5 ## l, x6 ## l, x7 ## l); \
+   } while (0)
+
+#define Wz_8W(x, c, n) \
+do { \
+   __m512i t = _mm512_slli_epi64( _mm512_and_si512(x ## h, (c)), (n) ); \
+   x ## h = _mm512_or_si512( _mm512_and_si512( \
+                                _mm512_srli_epi64(x ## h, (n)), (c)), t ); \
+   t = _mm512_slli_epi64( _mm512_and_si512(x ## l, (c)), (n) ); \
+   x ## l = _mm512_or_si512( _mm512_and_si512((x ## l >> (n)), (c)), t ); \
+} while (0)
+
+#define W80(x)   Wz_8W(x, m512_const1_64( 0x5555555555555555 ),  1 )
+#define W81(x)   Wz_8W(x, m512_const1_64( 0x3333333333333333 ),  2 )
+#define W82(x)   Wz_8W(x, m512_const1_64( 0x0F0F0F0F0F0F0F0F ),  4 )
+#define W83(x)   Wz_8W(x, m512_const1_64( 0x00FF00FF00FF00FF ),  8 ) 
+#define W84(x)   Wz_8W(x, m512_const1_64( 0x0000FFFF0000FFFF ), 16 )
+#define W85(x)   Wz_8W(x, m512_const1_64( 0x00000000FFFFFFFF ), 32 )
+#define W86(x) \
+do { \
+   __m512i t = x ## h; \
+   x ## h = x ## l; \
+   x ## l = t; \
+} while (0)
+
+#define DECL_STATE_8W \
+   __m512i h0h, h1h, h2h, h3h, h4h, h5h, h6h, h7h; \
+   __m512i h0l, h1l, h2l, h3l, h4l, h5l, h6l, h7l; \
+   __m512i tmp;
+
+#endif
 
 #define Wz(x, c, n) \
 do { \
@@ -236,28 +353,12 @@ do { \
    x ## l = _mm256_or_si256( _mm256_and_si256((x ## l >> (n)), (c)), t ); \
 } while (0)
 
-
-/*
-#define Wz(x, c, n)   do { \
-		sph_u64 t = (x ## h & (c)) << (n); \
-		x ## h = ((x ## h >> (n)) & (c)) | t; \
-		t = (x ## l & (c)) << (n); \
-		x ## l = ((x ## l >> (n)) & (c)) | t; \
-	} while (0)
-*/
-
-#define W0(x)   Wz(x, _mm256_set_epi64x( 0x5555555555555555, \
-       0x5555555555555555, 0x5555555555555555, 0x5555555555555555 ), 1 )
-#define W1(x)   Wz(x, _mm256_set_epi64x( 0x3333333333333333, \
-       0x3333333333333333, 0x3333333333333333, 0x3333333333333333 ), 2 )
-#define W2(x)   Wz(x, _mm256_set_epi64x( 0x0F0F0F0F0F0F0F0F, \
-       0x0F0F0F0F0F0F0F0F, 0x0F0F0F0F0F0F0F0F, 0x0F0F0F0F0F0F0F0F ), 4 )
-#define W3(x)   Wz(x, _mm256_set_epi64x( 0x00FF00FF00FF00FF, \
-       0x00FF00FF00FF00FF, 0x00FF00FF00FF00FF, 0x00FF00FF00FF00FF ), 8 ) 
-#define W4(x)   Wz(x, _mm256_set_epi64x( 0x0000FFFF0000FFFF, \
-       0x0000FFFF0000FFFF, 0x0000FFFF0000FFFF, 0x0000FFFF0000FFFF ), 16 )
-#define W5(x)   Wz(x, _mm256_set_epi64x( 0x00000000FFFFFFFF, \
-       0x00000000FFFFFFFF, 0x00000000FFFFFFFF, 0x00000000FFFFFFFF ), 32 )
+#define W0(x)   Wz(x, m256_const1_64( 0x5555555555555555 ),  1 )
+#define W1(x)   Wz(x, m256_const1_64( 0x3333333333333333 ),  2 )
+#define W2(x)   Wz(x, m256_const1_64( 0x0F0F0F0F0F0F0F0F ),  4 )
+#define W3(x)   Wz(x, m256_const1_64( 0x00FF00FF00FF00FF ),  8 ) 
+#define W4(x)   Wz(x, m256_const1_64( 0x0000FFFF0000FFFF ), 16 )
+#define W5(x)   Wz(x, m256_const1_64( 0x00000000FFFFFFFF ), 32 )
 #define W6(x) \
 do { \
    __m256i t = x ## h; \
@@ -265,24 +366,11 @@ do { \
    x ## l = t; \
 } while (0)
 
-/*
-#define W0(x)   Wz(x, SPH_C64(0x5555555555555555),  1)
-#define W1(x)   Wz(x, SPH_C64(0x3333333333333333),  2)
-#define W2(x)   Wz(x, SPH_C64(0x0F0F0F0F0F0F0F0F),  4)
-#define W3(x)   Wz(x, SPH_C64(0x00FF00FF00FF00FF),  8)
-#define W4(x)   Wz(x, SPH_C64(0x0000FFFF0000FFFF), 16)
-#define W5(x)   Wz(x, SPH_C64(0x00000000FFFFFFFF), 32)
-#define W6(x)   do { \
-		sph_u64 t = x ## h; \
-		x ## h = x ## l; \
-		x ## l = t; \
-	} while (0)
-*/
-
 #define DECL_STATE \
 	__m256i h0h, h1h, h2h, h3h, h4h, h5h, h6h, h7h; \
 	__m256i h0l, h1l, h2l, h3l, h4l, h5l, h6l, h7l; \
 	__m256i tmp;
+
 
 #define READ_STATE(state)   do { \
 		h0h = (state)->H[ 0]; \
@@ -322,6 +410,38 @@ do { \
 		(state)->H[15] = h7l; \
 	} while (0)
 
+#if defined(__AVX512F__) && defined(__AVX512VL__) && defined(__AVX512DQ__) && defined(__AVX512BW__)
+
+#define INPUT_BUF1_8W \
+   __m512i m0h = buf[0]; \
+   __m512i m0l = buf[1]; \
+   __m512i m1h = buf[2]; \
+   __m512i m1l = buf[3]; \
+   __m512i m2h = buf[4]; \
+   __m512i m2l = buf[5]; \
+   __m512i m3h = buf[6]; \
+   __m512i m3l = buf[7]; \
+   h0h = _mm512_xor_si512( h0h, m0h ); \
+   h0l = _mm512_xor_si512( h0l, m0l ); \
+   h1h = _mm512_xor_si512( h1h, m1h ); \
+   h1l = _mm512_xor_si512( h1l, m1l ); \
+   h2h = _mm512_xor_si512( h2h, m2h ); \
+   h2l = _mm512_xor_si512( h2l, m2l ); \
+   h3h = _mm512_xor_si512( h3h, m3h ); \
+   h3l = _mm512_xor_si512( h3l, m3l ); \
+
+#define INPUT_BUF2_8W \
+   h4h = _mm512_xor_si512( h4h, m0h ); \
+   h4l = _mm512_xor_si512( h4l, m0l ); \
+   h5h = _mm512_xor_si512( h5h, m1h ); \
+   h5l = _mm512_xor_si512( h5l, m1l ); \
+   h6h = _mm512_xor_si512( h6h, m2h ); \
+   h6l = _mm512_xor_si512( h6l, m2l ); \
+   h7h = _mm512_xor_si512( h7h, m3h ); \
+   h7l = _mm512_xor_si512( h7l, m3l ); \
+
+#endif
+
 #define INPUT_BUF1 \
 	__m256i m0h = buf[0]; \
 	__m256i m0l = buf[1]; \
@@ -331,14 +451,14 @@ do { \
 	__m256i m2l = buf[5]; \
 	__m256i m3h = buf[6]; \
 	__m256i m3l = buf[7]; \
-        h0h = _mm256_xor_si256( h0h, m0h ); \
-        h0l = _mm256_xor_si256( h0l, m0l ); \
-        h1h = _mm256_xor_si256( h1h, m1h ); \
-        h1l = _mm256_xor_si256( h1l, m1l ); \
-        h2h = _mm256_xor_si256( h2h, m2h ); \
-        h2l = _mm256_xor_si256( h2l, m2l ); \
-        h3h = _mm256_xor_si256( h3h, m3h ); \
-        h3l = _mm256_xor_si256( h3l, m3l ); \
+   h0h = _mm256_xor_si256( h0h, m0h ); \
+   h0l = _mm256_xor_si256( h0l, m0l ); \
+   h1h = _mm256_xor_si256( h1h, m1h ); \
+   h1l = _mm256_xor_si256( h1l, m1l ); \
+   h2h = _mm256_xor_si256( h2h, m2h ); \
+   h2l = _mm256_xor_si256( h2l, m2l ); \
+   h3h = _mm256_xor_si256( h3h, m3h ); \
+   h3l = _mm256_xor_si256( h3l, m3l ); \
 
 #define INPUT_BUF2 \
    h4h = _mm256_xor_si256( h4h, m0h ); \
@@ -350,6 +470,7 @@ do { \
    h7h = _mm256_xor_si256( h7h, m3h ); \
    h7l = _mm256_xor_si256( h7l, m3l ); \
 
+/*
 static const sph_u64 IV256[] = {
 	C64e(0xeb98a3412c20d3eb), C64e(0x92cdbe7b9cb245c1),
 	C64e(0x1c93519160d4c7fa), C64e(0x260082d67e508a03),
@@ -372,9 +493,22 @@ static const sph_u64 IV512[] = {
 	C64e(0xcf57f6ec9db1f856), C64e(0xa706887c5716b156),
 	C64e(0xe3c2fcdfe68517fb), C64e(0x545a4678cc8cdd4b)
 };
+*/
 
-#else
 
+#if defined(__AVX512F__) && defined(__AVX512VL__) && defined(__AVX512DQ__) && defined(__AVX512BW__)
+
+#define SL_8W(ro)   SLu_8W(r + ro, ro)
+
+#define SLu_8W(r, ro)   do { \
+      S_8W(h0, h2, h4, h6, Ceven_, r); \
+      S_8W(h1, h3, h5, h7, Codd_, r); \
+      L_8W(h0, h2, h4, h6, h1, h3, h5, h7); \
+      W8 ## ro(h1); \
+      W8 ## ro(h3); \
+      W8 ## ro(h5); \
+      W8 ## ro(h7); \
+   } while (0)
 
 #endif
 
@@ -390,100 +524,294 @@ static const sph_u64 IV512[] = {
 		W ## ro(h7); \
 	} while (0)
 
-#if SPH_SMALL_FOOTPRINT_JH
 
-#if SPH_JH_64
+#if defined(__AVX512F__) && defined(__AVX512VL__) && defined(__AVX512DQ__) && defined(__AVX512BW__)
 
-/*
- * The "small footprint" 64-bit version just uses a partially unrolled
- * loop.
- */
-
-#define E8   do { \
-		unsigned r; \
-		for (r = 0; r < 42; r += 7) { \
-			SL(0); \
-			SL(1); \
-			SL(2); \
-			SL(3); \
-			SL(4); \
-			SL(5); \
-			SL(6); \
-		} \
+#define E8_8W   do { \
+		SLu_8W( 0, 0); \
+		SLu_8W( 1, 1); \
+		SLu_8W( 2, 2); \
+		SLu_8W( 3, 3); \
+		SLu_8W( 4, 4); \
+		SLu_8W( 5, 5); \
+		SLu_8W( 6, 6); \
+		SLu_8W( 7, 0); \
+		SLu_8W( 8, 1); \
+		SLu_8W( 9, 2); \
+		SLu_8W(10, 3); \
+		SLu_8W(11, 4); \
+		SLu_8W(12, 5); \
+		SLu_8W(13, 6); \
+		SLu_8W(14, 0); \
+		SLu_8W(15, 1); \
+		SLu_8W(16, 2); \
+		SLu_8W(17, 3); \
+		SLu_8W(18, 4); \
+		SLu_8W(19, 5); \
+		SLu_8W(20, 6); \
+		SLu_8W(21, 0); \
+		SLu_8W(22, 1); \
+		SLu_8W(23, 2); \
+		SLu_8W(24, 3); \
+		SLu_8W(25, 4); \
+		SLu_8W(26, 5); \
+		SLu_8W(27, 6); \
+		SLu_8W(28, 0); \
+		SLu_8W(29, 1); \
+		SLu_8W(30, 2); \
+		SLu_8W(31, 3); \
+		SLu_8W(32, 4); \
+		SLu_8W(33, 5); \
+		SLu_8W(34, 6); \
+		SLu_8W(35, 0); \
+		SLu_8W(36, 1); \
+		SLu_8W(37, 2); \
+		SLu_8W(38, 3); \
+		SLu_8W(39, 4); \
+		SLu_8W(40, 5); \
+		SLu_8W(41, 6); \
 	} while (0)
 
-#else
+#endif  // AVX512
 
-
-#endif
-
-#else
-
-#if SPH_JH_64
-
-/*
- * On a "true 64-bit" architecture, we can unroll at will.
- */
 
 #define E8   do { \
-		SLu( 0, 0); \
-		SLu( 1, 1); \
-		SLu( 2, 2); \
-		SLu( 3, 3); \
-		SLu( 4, 4); \
-		SLu( 5, 5); \
-		SLu( 6, 6); \
-		SLu( 7, 0); \
-		SLu( 8, 1); \
-		SLu( 9, 2); \
-		SLu(10, 3); \
-		SLu(11, 4); \
-		SLu(12, 5); \
-		SLu(13, 6); \
-		SLu(14, 0); \
-		SLu(15, 1); \
-		SLu(16, 2); \
-		SLu(17, 3); \
-		SLu(18, 4); \
-		SLu(19, 5); \
-		SLu(20, 6); \
-		SLu(21, 0); \
-		SLu(22, 1); \
-		SLu(23, 2); \
-		SLu(24, 3); \
-		SLu(25, 4); \
-		SLu(26, 5); \
-		SLu(27, 6); \
-		SLu(28, 0); \
-		SLu(29, 1); \
-		SLu(30, 2); \
-		SLu(31, 3); \
-		SLu(32, 4); \
-		SLu(33, 5); \
-		SLu(34, 6); \
-		SLu(35, 0); \
-		SLu(36, 1); \
-		SLu(37, 2); \
-		SLu(38, 3); \
-		SLu(39, 4); \
-		SLu(40, 5); \
-		SLu(41, 6); \
-	} while (0)
+      SLu( 0, 0); \
+      SLu( 1, 1); \
+      SLu( 2, 2); \
+      SLu( 3, 3); \
+      SLu( 4, 4); \
+      SLu( 5, 5); \
+      SLu( 6, 6); \
+      SLu( 7, 0); \
+      SLu( 8, 1); \
+      SLu( 9, 2); \
+      SLu(10, 3); \
+      SLu(11, 4); \
+      SLu(12, 5); \
+      SLu(13, 6); \
+      SLu(14, 0); \
+      SLu(15, 1); \
+      SLu(16, 2); \
+      SLu(17, 3); \
+      SLu(18, 4); \
+      SLu(19, 5); \
+      SLu(20, 6); \
+      SLu(21, 0); \
+      SLu(22, 1); \
+      SLu(23, 2); \
+      SLu(24, 3); \
+      SLu(25, 4); \
+      SLu(26, 5); \
+      SLu(27, 6); \
+      SLu(28, 0); \
+      SLu(29, 1); \
+      SLu(30, 2); \
+      SLu(31, 3); \
+      SLu(32, 4); \
+      SLu(33, 5); \
+      SLu(34, 6); \
+      SLu(35, 0); \
+      SLu(36, 1); \
+      SLu(37, 2); \
+      SLu(38, 3); \
+      SLu(39, 4); \
+      SLu(40, 5); \
+      SLu(41, 6); \
+   } while (0)
 
-#else
+#if defined(__AVX512F__) && defined(__AVX512VL__) && defined(__AVX512DQ__) && defined(__AVX512BW__)
 
+void jh256_8way_init( jh_8way_context *sc )
+{
+    // bswapped IV256
+    sc->H[ 0] = m512_const1_64( 0xebd3202c41a398eb );
+    sc->H[ 1] = m512_const1_64( 0xc145b29c7bbecd92 );
+    sc->H[ 2] = m512_const1_64( 0xfac7d4609151931c );
+    sc->H[ 3] = m512_const1_64( 0x038a507ed6820026 );
+    sc->H[ 4] = m512_const1_64( 0x45b92677269e23a4 );
+    sc->H[ 5] = m512_const1_64( 0x77941ad4481afbe0 );
+    sc->H[ 6] = m512_const1_64( 0x7a176b0226abb5cd );
+    sc->H[ 7] = m512_const1_64( 0xa82fff0f4224f056 );
+    sc->H[ 8] = m512_const1_64( 0x754d2e7f8996a371 );
+    sc->H[ 9] = m512_const1_64( 0x62e27df70849141d );
+    sc->H[10] = m512_const1_64( 0x948f2476f7957627 );
+    sc->H[11] = m512_const1_64( 0x6c29804757b6d587 );
+    sc->H[12] = m512_const1_64( 0x6c0d8eac2d275e5c );
+    sc->H[13] = m512_const1_64( 0x0f7a0557c6508451 );
+    sc->H[14] = m512_const1_64( 0xea12247067d3e47b );
+    sc->H[15] = m512_const1_64( 0x69d71cd313abe389 );
+    sc->ptr = 0;
+    sc->block_count = 0;
+}
 
-#endif
-
-#endif
+void jh512_8way_init( jh_8way_context *sc )
+{
+    // bswapped IV512
+    sc->H[ 0] = m512_const1_64( 0x17aa003e964bd16f );
+    sc->H[ 1] = m512_const1_64( 0x43d5157a052e6a63 );
+    sc->H[ 2] = m512_const1_64( 0x0bef970c8d5e228a );
+    sc->H[ 3] = m512_const1_64( 0x61c3b3f2591234e9 );
+    sc->H[ 4] = m512_const1_64( 0x1e806f53c1a01d89 );
+    sc->H[ 5] = m512_const1_64( 0x806d2bea6b05a92a );
+    sc->H[ 6] = m512_const1_64( 0xa6ba7520dbcc8e58 );
+    sc->H[ 7] = m512_const1_64( 0xf73bf8ba763a0fa9 );
+    sc->H[ 8] = m512_const1_64( 0x694ae34105e66901 );
+    sc->H[ 9] = m512_const1_64( 0x5ae66f2e8e8ab546 );
+    sc->H[10] = m512_const1_64( 0x243c84c1d0a74710 );
+    sc->H[11] = m512_const1_64( 0x99c15a2db1716e3b );
+    sc->H[12] = m512_const1_64( 0x56f8b19decf657cf );
+    sc->H[13] = m512_const1_64( 0x56b116577c8806a7 );
+    sc->H[14] = m512_const1_64( 0xfb1785e6dffcc2e3 );
+    sc->H[15] = m512_const1_64( 0x4bdd8ccc78465a54 );
+    sc->ptr = 0;
+    sc->block_count = 0;
+}
 
 static void
-jh_4way_init( jh_4way_context *sc, const void *iv )
+jh_8way_core( jh_8way_context *sc, const void *data, size_t len )
 {
-    uint64_t *v = (uint64_t*)iv;
-    
-    for ( int i = 0; i < 16; i++ )
-        sc->H[i] = _mm256_set_epi64x( v[i], v[i], v[i], v[i] );
+    __m512i *buf;
+    __m512i *vdata = (__m512i*)data;
+   const int buf_size = 64;   // 64 * _m512i
+   size_t ptr;
+   DECL_STATE_8W
+
+   buf = sc->buf;
+   ptr = sc->ptr;
+
+   if ( len < (buf_size - ptr) )
+   {
+       memcpy_512( buf + (ptr>>3), vdata, len>>3 );
+       ptr += len;
+       sc->ptr = ptr;
+       return;
+   }
+
+   READ_STATE(sc);
+   while ( len > 0 )
+   {
+       size_t clen;
+       clen = buf_size - ptr;
+       if ( clen > len )
+          clen = len;
+
+       memcpy_512( buf + (ptr>>3), vdata, clen>>3 );
+       ptr += clen;
+       vdata += (clen>>3);
+       len -= clen;
+       if ( ptr == buf_size )
+       {
+          INPUT_BUF1_8W;
+          E8_8W;
+          INPUT_BUF2_8W;
+          sc->block_count ++;
+          ptr = 0;
+       }
+   }
+   WRITE_STATE(sc);
+   sc->ptr = ptr;
+}
+
+static void
+jh_8way_close( jh_8way_context *sc, unsigned ub, unsigned n, void *dst,
+               size_t out_size_w32 )
+{
+   __m512i buf[16*4];
+   __m512i *dst512 = (__m512i*)dst;
+   size_t numz, u;
+   uint64_t l0, l1;
+
+   buf[0] = m512_const1_64( 0x80ULL );
+
+   if ( sc->ptr == 0 )
+       numz = 48;
+   else
+       numz = 112 - sc->ptr;
+
+   memset_zero_512( buf+1, (numz>>3) - 1 );
+
+   l0 = ( sc->block_count << 9 ) + ( sc->ptr << 3 );
+   l1 = ( sc->block_count >> 55 );
+   *(buf + (numz>>3)    ) = _mm512_set1_epi64( bswap_64( l1 ) );
+   *(buf + (numz>>3) + 1) = _mm512_set1_epi64( bswap_64( l0 ) );
+
+   jh_8way_core( sc, buf, numz + 16 );
+
+   for ( u=0; u < 8; u++ )
+       buf[u] = sc->H[u+8];
+
+    memcpy_512( dst512, buf, 8 );
+}
+
+void
+jh256_8way_update(void *cc, const void *data, size_t len)
+{
+   jh_8way_core(cc, data, len);
+}
+
+void
+jh256_8way_close(void *cc, void *dst)
+{
+   jh_8way_close(cc, 0, 0, dst, 8);
+}
+
+void
+jh512_8way_update(void *cc, const void *data, size_t len)
+{
+   jh_8way_core(cc, data, len);
+}
+
+void
+jh512_8way_close(void *cc, void *dst)
+{
+   jh_8way_close(cc, 0, 0, dst, 16);
+}
+
+#endif
+
+void jh256_4way_init( jh_4way_context *sc )
+{
+    // bswapped IV256
+    sc->H[ 0] = m256_const1_64( 0xebd3202c41a398eb );
+    sc->H[ 1] = m256_const1_64( 0xc145b29c7bbecd92 );
+    sc->H[ 2] = m256_const1_64( 0xfac7d4609151931c );
+    sc->H[ 3] = m256_const1_64( 0x038a507ed6820026 );
+    sc->H[ 4] = m256_const1_64( 0x45b92677269e23a4 );
+    sc->H[ 5] = m256_const1_64( 0x77941ad4481afbe0 );
+    sc->H[ 6] = m256_const1_64( 0x7a176b0226abb5cd );
+    sc->H[ 7] = m256_const1_64( 0xa82fff0f4224f056 );
+    sc->H[ 8] = m256_const1_64( 0x754d2e7f8996a371 );
+    sc->H[ 9] = m256_const1_64( 0x62e27df70849141d );
+    sc->H[10] = m256_const1_64( 0x948f2476f7957627 );
+    sc->H[11] = m256_const1_64( 0x6c29804757b6d587 );
+    sc->H[12] = m256_const1_64( 0x6c0d8eac2d275e5c );
+    sc->H[13] = m256_const1_64( 0x0f7a0557c6508451 );
+    sc->H[14] = m256_const1_64( 0xea12247067d3e47b );
+    sc->H[15] = m256_const1_64( 0x69d71cd313abe389 );
+    sc->ptr = 0;
+    sc->block_count = 0;
+}
+
+void jh512_4way_init( jh_4way_context *sc )
+{
+    // bswapped IV512
+    sc->H[ 0] = m256_const1_64( 0x17aa003e964bd16f );
+    sc->H[ 1] = m256_const1_64( 0x43d5157a052e6a63 );
+    sc->H[ 2] = m256_const1_64( 0x0bef970c8d5e228a );
+    sc->H[ 3] = m256_const1_64( 0x61c3b3f2591234e9 );
+    sc->H[ 4] = m256_const1_64( 0x1e806f53c1a01d89 );
+    sc->H[ 5] = m256_const1_64( 0x806d2bea6b05a92a );
+    sc->H[ 6] = m256_const1_64( 0xa6ba7520dbcc8e58 );
+    sc->H[ 7] = m256_const1_64( 0xf73bf8ba763a0fa9 );
+    sc->H[ 8] = m256_const1_64( 0x694ae34105e66901 );
+    sc->H[ 9] = m256_const1_64( 0x5ae66f2e8e8ab546 );
+    sc->H[10] = m256_const1_64( 0x243c84c1d0a74710 );
+    sc->H[11] = m256_const1_64( 0x99c15a2db1716e3b );
+    sc->H[12] = m256_const1_64( 0x56f8b19decf657cf );
+    sc->H[13] = m256_const1_64( 0x56b116577c8806a7 );
+    sc->H[14] = m256_const1_64( 0xfb1785e6dffcc2e3 );
+    sc->H[15] = m256_const1_64( 0x4bdd8ccc78465a54 );
     sc->ptr = 0;
     sc->block_count = 0;
 }
@@ -535,14 +863,14 @@ jh_4way_core( jh_4way_context *sc, const void *data, size_t len )
 
 static void
 jh_4way_close( jh_4way_context *sc, unsigned ub, unsigned n, void *dst,
-               size_t out_size_w32, const void *iv )
+               size_t out_size_w32 )
 {
    __m256i buf[16*4];
    __m256i *dst256 = (__m256i*)dst;
    size_t numz, u;
-   sph_u64 l0, l1, l0e, l1e;
+   uint64_t l0, l1;
 
-   buf[0] = _mm256_set_epi64x( 0x80, 0x80, 0x80, 0x80 );
+   buf[0] = m256_const1_64( 0x80ULL );
 
    if ( sc->ptr == 0 )
        numz = 48;
@@ -551,12 +879,10 @@ jh_4way_close( jh_4way_context *sc, unsigned ub, unsigned n, void *dst,
 
    memset_zero_256( buf+1, (numz>>3) - 1 );   
 
-   l0 = SPH_T64(sc->block_count << 9) + (sc->ptr << 3);
-   l1 = SPH_T64(sc->block_count >> 55);
-   sph_enc64be( &l0e, l0 );
-   sph_enc64be( &l1e, l1 );
-   *(buf + (numz>>3)    ) = _mm256_set_epi64x( l1e, l1e, l1e, l1e );
-   *(buf + (numz>>3) + 1) = _mm256_set_epi64x( l0e, l0e, l0e, l0e ); 
+   l0 = ( sc->block_count << 9 ) + ( sc->ptr << 3 );
+   l1 = ( sc->block_count >> 55 );
+   *(buf + (numz>>3)    ) = _mm256_set1_epi64x( bswap_64( l1 ) );
+   *(buf + (numz>>3) + 1) = _mm256_set1_epi64x( bswap_64( l0 ) );
 
    jh_4way_core( sc, buf, numz + 16 );
 
@@ -567,13 +893,7 @@ jh_4way_close( jh_4way_context *sc, unsigned ub, unsigned n, void *dst,
 }
 
 void
-jh256_4way_init(void *cc)
-{
-	jh_4way_init(cc, IV256);
-}
-
-void
-jh256_4way(void *cc, const void *data, size_t len)
+jh256_4way_update(void *cc, const void *data, size_t len)
 {
 	jh_4way_core(cc, data, len);
 }
@@ -581,17 +901,11 @@ jh256_4way(void *cc, const void *data, size_t len)
 void
 jh256_4way_close(void *cc, void *dst)
 {
-	jh_4way_close(cc, 0, 0, dst, 8, IV256);
+	jh_4way_close(cc, 0, 0, dst, 8 );
 }
 
 void
-jh512_4way_init(void *cc)
-{
-	jh_4way_init(cc, IV512);
-}
-
-void
-jh512_4way(void *cc, const void *data, size_t len)
+jh512_4way_update(void *cc, const void *data, size_t len)
 {
 	jh_4way_core(cc, data, len);
 }
@@ -599,8 +913,9 @@ jh512_4way(void *cc, const void *data, size_t len)
 void
 jh512_4way_close(void *cc, void *dst)
 {
-	jh_4way_close(cc, 0, 0, dst, 16, IV512);
+	jh_4way_close(cc, 0, 0, dst, 16 );
 }
+
 
 #ifdef __cplusplus
 }

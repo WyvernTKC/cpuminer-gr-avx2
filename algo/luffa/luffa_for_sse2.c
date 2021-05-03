@@ -23,7 +23,7 @@
 #include "simd-utils.h"
 #include "luffa_for_sse2.h"
 
-#define MULT2(a0,a1) do \
+#define MULT2( a0, a1 ) do \
 { \
   __m128i b =  _mm_xor_si128( a0, _mm_shuffle_epi32( _mm_and_si128(a1,MASK), 16 ) ); \
   a0 = _mm_or_si128( _mm_srli_si128(b,4), _mm_slli_si128(a1,12) ); \
@@ -344,17 +344,12 @@ HashReturn update_and_final_luffa( hashState_luffa *state, BitSequence* output,
 
     // 16 byte partial block exists for 80 byte len
     if ( state->rembytes  )
-    {
-      // padding of partial block
-      rnd512( state, _mm_set_epi8( 0,0,0,0, 0,0,0,0, 0,0,0,0, 0x80,0,0,0 ),
+       // padding of partial block
+       rnd512( state, m128_const_i128(  0x80000000 ),
                       mm128_bswap_32( cast_m128i( data ) ) );
-    }
     else
-    {
-      // empty pad block
-     rnd512( state, _mm_setzero_si128(), 
-                       _mm_set_epi8( 0,0,0,0, 0,0,0,0, 0,0,0,0, 0x80,0,0,0 ) );
-    }
+       // empty pad block
+       rnd512( state, m128_zero, m128_const_i128( 0x80000000 ) );
 
     finalization512( state, (uint32*) output );
     if ( state->hashbitlen > 512 )
@@ -362,6 +357,56 @@ HashReturn update_and_final_luffa( hashState_luffa *state, BitSequence* output,
 
     return SUCCESS;
 }
+
+
+int luffa_full( hashState_luffa *state, BitSequence* output, int hashbitlen,
+              const BitSequence* data, size_t inlen )
+{
+// Optimized for integrals of 16 bytes, good for 64 and 80 byte len
+    int i;
+    state->hashbitlen = hashbitlen;
+    /* set the lower 32 bits to '1' */
+    MASK= _mm_set_epi32(0x00000000, 0x00000000, 0x00000000, 0xffffffff);
+    /* set all bits to '1' */
+    ALLONE = _mm_set_epi32(0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff);
+    /* set the 32-bit round constant values to the 128-bit data field */
+    for ( i=0; i<32; i++ )
+        CNS128[i] = _mm_load_si128( (__m128i*)&CNS_INIT[i*4] );
+    for ( i=0; i<10; i++ )
+    state->chainv[i] = _mm_load_si128( (__m128i*)&IV[i*4] );
+    memset(state->buffer, 0, sizeof state->buffer );
+
+    // update
+
+    int blocks = (int)( inlen / 32 );
+    state->rembytes = inlen % 32;
+
+    // full blocks
+    for ( i = 0; i < blocks; i++ )
+    {
+       rnd512( state, mm128_bswap_32( casti_m128i( data, 1 ) ),
+                      mm128_bswap_32( casti_m128i( data, 0 ) ) );
+       data += MSG_BLOCK_BYTE_LEN;
+    }
+
+    // final
+
+    // 16 byte partial block exists for 80 byte len
+    if ( state->rembytes  )
+       // padding of partial block
+       rnd512( state, m128_const_i128( 0x80000000 ),
+                      mm128_bswap_32( cast_m128i( data ) ) );
+    else
+       // empty pad block
+       rnd512( state, m128_zero, m128_const_i128( 0x80000000 ) );
+
+    finalization512( state, (uint32*) output );
+    if ( state->hashbitlen > 512 )
+        finalization512( state, (uint32*)( output+128 ) );
+
+    return SUCCESS;
+}
+
 
 /***************************************************/
 /* Round function         */
@@ -541,7 +586,11 @@ static void finalization512( hashState_luffa *state, uint32 *b )
     uint32   hash[8] __attribute((aligned(64)));
     __m256i* chainv = (__m256i*)state->chainv;
     __m256i  t;
-    const __m128i zero = _mm_setzero_si128();
+    const __m128i zero = m128_zero;
+    const __m256i shuff_bswap32 = m256_const_64( 0x1c1d1e1f18191a1b,
+                                                 0x1415161710111213,
+                                                 0x0c0d0e0f08090a0b,
+                                                 0x0405060700010203 );
 
     rnd512( state, zero, zero );
 
@@ -555,7 +604,8 @@ static void finalization512( hashState_luffa *state, uint32 *b )
 
     _mm256_store_si256( (__m256i*)hash, t );
 
-    casti_m256i( b, 0 ) = mm256_bswap_32( casti_m256i( hash, 0 ) );
+    casti_m256i( b, 0 ) = _mm256_shuffle_epi8(
+                                 casti_m256i( hash, 0 ), shuff_bswap32 );
 
     rnd512( state, zero, zero );
 
@@ -568,7 +618,8 @@ static void finalization512( hashState_luffa *state, uint32 *b )
 
     _mm256_store_si256( (__m256i*)hash, t );
 
-    casti_m256i( b, 1 ) = mm256_bswap_32( casti_m256i( hash, 0 ) );
+    casti_m256i( b, 1 ) = _mm256_shuffle_epi8( 
+                                 casti_m256i( hash, 0 ), shuff_bswap32 );
 }
 
 #else

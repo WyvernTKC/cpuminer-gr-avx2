@@ -52,8 +52,46 @@ static inline uint64_t rotr64( const uint64_t w, const unsigned c ){
 // However, 2 way parallel looks trivial to code for AVX512 except for
 // a data dependency with rowa.
 
+#if defined(__AVX512F__) && defined(__AVX512VL__) && defined(__AVX512DQ__) && defined(__AVX512BW__)
+
+#define G2W_4X64(a,b,c,d) \
+   a = _mm512_add_epi64( a, b ); \
+   d = mm512_ror_64( _mm512_xor_si512( d, a ), 32 ); \
+   c = _mm512_add_epi64( c, d ); \
+   b = mm512_ror_64( _mm512_xor_si512( b, c ), 24 ); \
+   a = _mm512_add_epi64( a, b ); \
+   d = mm512_ror_64( _mm512_xor_si512( d, a ), 16 ); \
+   c = _mm512_add_epi64( c, d ); \
+   b = mm512_ror_64( _mm512_xor_si512( b, c ), 63 );
+
+#define LYRA_ROUND_2WAY_AVX512( s0, s1, s2, s3 ) \
+   G2W_4X64( s0, s1, s2, s3 ); \
+   s1 = mm512_ror256_64( s1); \
+   s2 = mm512_swap256_128( s2 ); \
+   s3 = mm512_rol256_64( s3 ); \
+   G2W_4X64( s0, s1, s2, s3 ); \
+   s1 = mm512_rol256_64( s1 ); \
+   s2 = mm512_swap256_128( s2 ); \
+   s3 = mm512_ror256_64( s3 );
+
+#define LYRA_12_ROUNDS_2WAY_AVX512( s0, s1, s2, s3 ) \
+   LYRA_ROUND_2WAY_AVX512( s0, s1, s2, s3 ) \
+   LYRA_ROUND_2WAY_AVX512( s0, s1, s2, s3 ) \
+   LYRA_ROUND_2WAY_AVX512( s0, s1, s2, s3 ) \
+   LYRA_ROUND_2WAY_AVX512( s0, s1, s2, s3 ) \
+   LYRA_ROUND_2WAY_AVX512( s0, s1, s2, s3 ) \
+   LYRA_ROUND_2WAY_AVX512( s0, s1, s2, s3 ) \
+   LYRA_ROUND_2WAY_AVX512( s0, s1, s2, s3 ) \
+   LYRA_ROUND_2WAY_AVX512( s0, s1, s2, s3 ) \
+   LYRA_ROUND_2WAY_AVX512( s0, s1, s2, s3 ) \
+   LYRA_ROUND_2WAY_AVX512( s0, s1, s2, s3 ) \
+   LYRA_ROUND_2WAY_AVX512( s0, s1, s2, s3 ) \
+   LYRA_ROUND_2WAY_AVX512( s0, s1, s2, s3 )
+
+
+#endif  // AVX512
+
 #if defined __AVX2__
-// only available with avx2
 
 // process 4 columns in parallel
 // returns void, updates all args
@@ -89,9 +127,11 @@ static inline uint64_t rotr64( const uint64_t w, const unsigned c ){
    LYRA_ROUND_AVX2( s0, s1, s2, s3 ) \
    LYRA_ROUND_AVX2( s0, s1, s2, s3 ) \
    LYRA_ROUND_AVX2( s0, s1, s2, s3 ) \
-   LYRA_ROUND_AVX2( s0, s1, s2, s3 ) \
+   LYRA_ROUND_AVX2( s0, s1, s2, s3 )
 
-#elif defined(__SSE2__)
+#endif
+
+#if defined(__SSE2__)
 
 // process 2 columns in parallel
 // returns void, all args updated
@@ -108,14 +148,14 @@ static inline uint64_t rotr64( const uint64_t w, const unsigned c ){
 #define LYRA_ROUND_AVX(s0,s1,s2,s3,s4,s5,s6,s7) \
    G_2X64( s0, s2, s4, s6 ); \
    G_2X64( s1, s3, s5, s7 ); \
-   mm128_ror1x64_256( s2, s3 ); \
-   mm128_swap128_256( s4, s5 ); \
-   mm128_rol1x64_256( s6, s7 ); \
+   mm128_ror256_64( s2, s3 ); \
+   mm128_swap256_128( s4, s5 ); \
+   mm128_rol256_64( s6, s7 ); \
    G_2X64( s0, s2, s4, s6 ); \
    G_2X64( s1, s3, s5, s7 ); \
-   mm128_rol1x64_256( s2, s3 ); \
-   mm128_swap128_256( s4, s5 ); \
-   mm128_ror1x64_256( s6, s7 );
+   mm128_rol256_64( s2, s3 ); \
+   mm128_swap256_128( s4, s5 ); \
+   mm128_ror256_64( s6, s7 );
 
 #define LYRA_12_ROUNDS_AVX(s0,s1,s2,s3,s4,s5,s6,s7) \
    LYRA_ROUND_AVX(s0,s1,s2,s3,s4,s5,s6,s7) \
@@ -129,8 +169,7 @@ static inline uint64_t rotr64( const uint64_t w, const unsigned c ){
    LYRA_ROUND_AVX(s0,s1,s2,s3,s4,s5,s6,s7) \
    LYRA_ROUND_AVX(s0,s1,s2,s3,s4,s5,s6,s7) \
    LYRA_ROUND_AVX(s0,s1,s2,s3,s4,s5,s6,s7) \
-   LYRA_ROUND_AVX(s0,s1,s2,s3,s4,s5,s6,s7) \
-
+   LYRA_ROUND_AVX(s0,s1,s2,s3,s4,s5,s6,s7)
 
 #endif // AVX2 else SSE2
 
@@ -160,6 +199,56 @@ static inline uint64_t rotr64( const uint64_t w, const unsigned c ){
     G(r,6,v[ 2],v[ 7],v[ 8],v[13]); \
     G(r,7,v[ 3],v[ 4],v[ 9],v[14]);
 
+#if defined(__AVX512F__) && defined(__AVX512VL__) && defined(__AVX512DQ__) && defined(__AVX512BW__)
+
+union _ovly_512
+{
+  __m512i v512;
+  struct
+  {
+     __m256i v256lo;
+     __m256i v256hi;
+  };
+};
+typedef union _ovly_512 ovly_512;
+
+
+union _inout_ovly
+{
+   __m512i v512[3];
+   __m256i v256[6];
+};
+typedef union _inout_ovly inout_ovly;
+
+//---- Housekeeping
+void initState_2way( uint64_t State[/*16*/] );
+
+//---- Squeezes
+void squeeze_2way( uint64_t *State, unsigned char *out, unsigned int len );
+void reducedSqueezeRow0_2way( uint64_t* state, uint64_t* row, uint64_t nCols );
+
+//---- Absorbs
+void absorbBlock_2way( uint64_t *State, const uint64_t *In0,
+                       const uint64_t *In1 );
+void absorbBlockBlake2Safe_2way( uint64_t *State, const uint64_t *In,
+                            const uint64_t nBlocks, const uint64_t block_len );
+
+//---- Duplexes
+void reducedDuplexRow1_2way( uint64_t *State, uint64_t *rowIn,
+                             uint64_t *rowOut, uint64_t nCols);
+void reducedDuplexRowSetup_2way( uint64_t *State, uint64_t *rowIn,
+                    uint64_t *rowInOut, uint64_t *rowOut, uint64_t nCols );
+
+void reducedDuplexRow_2way( uint64_t *State, uint64_t *rowIn,
+                            uint64_t *rowInOut0, uint64_t *rowInOut1,
+                            uint64_t *rowOut, uint64_t nCols);
+
+void reducedDuplexRow_2way_X( uint64_t *State, uint64_t *rowIn,
+                              uint64_t *rowInOut0, uint64_t *rowInOut1,
+                              uint64_t *rowOut, uint64_t nCols);
+
+#endif
+
 
 //---- Housekeeping
 void initState(uint64_t state[/*16*/]);
@@ -170,27 +259,12 @@ void reducedSqueezeRow0(uint64_t* state, uint64_t* row, uint64_t nCols);
 
 //---- Absorbs
 void absorbBlock(uint64_t *state, const uint64_t *in);
-void absorbBlockBlake2Safe(uint64_t *state, const uint64_t *in);
+void absorbBlockBlake2Safe( uint64_t *state, const uint64_t *in,
+                            const uint64_t nBlocks, const uint64_t block_len );
 
 //---- Duplexes
 void reducedDuplexRow1(uint64_t *state, uint64_t *rowIn, uint64_t *rowOut, uint64_t nCols);
 void reducedDuplexRowSetup(uint64_t *state, uint64_t *rowIn, uint64_t *rowInOut, uint64_t *rowOut, uint64_t nCols);
 void reducedDuplexRow(uint64_t *state, uint64_t *rowIn, uint64_t *rowInOut, uint64_t *rowOut, uint64_t nCols);
-
-//---- Misc
-void printArray(unsigned char *array, unsigned int size, char *name);
-
-////////////////////////////////////////////////////////////////////////////////////////////////
-
-
-////TESTS////
-//void reducedDuplexRowc(uint64_t *state, uint64_t *rowIn, uint64_t *rowInOut, uint64_t *rowOut);
-//void reducedDuplexRowd(uint64_t *state, uint64_t *rowIn, uint64_t *rowInOut, uint64_t *rowOut);
-//void reducedDuplexRowSetupv4(uint64_t *state, uint64_t *rowIn1, uint64_t *rowIn2, uint64_t *rowOut1, uint64_t *rowOut2);
-//void reducedDuplexRowSetupv5(uint64_t *state, uint64_t *rowIn, uint64_t *rowInOut, uint64_t *rowOut);
-//void reducedDuplexRowSetupv5c(uint64_t *state, uint64_t *rowIn, uint64_t *rowInOut, uint64_t *rowOut);
-//void reducedDuplexRowSetupv5d(uint64_t *state, uint64_t *rowIn, uint64_t *rowInOut, uint64_t *rowOut);
-/////////////
-
 
 #endif /* SPONGE_H_ */

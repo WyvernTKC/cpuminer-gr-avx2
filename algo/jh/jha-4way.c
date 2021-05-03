@@ -33,7 +33,7 @@ void jha_hash_4way( void *out, const void *input )
     keccak512_4way_context ctx_keccak;
 
     keccak512_4way_init( &ctx_keccak );
-    keccak512_4way( &ctx_keccak, input, 80 );
+    keccak512_4way_update( &ctx_keccak, input, 80 );
     keccak512_4way_close( &ctx_keccak, vhash );
 
     // Heavy & Light Pair Loop
@@ -58,18 +58,18 @@ void jha_hash_4way( void *out, const void *input )
        intrlv_4x64( vhashA, hash0, hash1, hash2, hash3, 512 );
 
        skein512_4way_init( &ctx_skein );
-       skein512_4way( &ctx_skein, vhash, 64 );
+       skein512_4way_update( &ctx_skein, vhash, 64 );
        skein512_4way_close( &ctx_skein, vhashB );
 
        for ( int i = 0; i < 8; i++ )
           vh[i] = _mm256_blendv_epi8( vhA[i], vhB[i], vh_mask );
 
        blake512_4way_init( &ctx_blake );
-       blake512_4way( &ctx_blake, vhash, 64 );
+       blake512_4way_update( &ctx_blake, vhash, 64 );
        blake512_4way_close( &ctx_blake, vhashA );
 
        jh512_4way_init( &ctx_jh );
-       jh512_4way( &ctx_jh, vhash, 64 );
+       jh512_4way_update( &ctx_jh, vhash, 64 );
        jh512_4way_close( &ctx_jh, vhashB );
 
        for ( int i = 0; i < 8; i++ )
@@ -129,7 +129,7 @@ int scanhash_jha_4way( struct work *work, uint32_t max_nonce,
                  if ( fulltest( hash+(i<<3), ptarget ) && !opt_benchmark )
                  {
                     pdata[19] = n+i;
-                    submit_lane_solution( work, lane_hash, mythr, i );
+                    submit_solution( work, lane_hash, mythr );
                  }
               }
               n += 4;

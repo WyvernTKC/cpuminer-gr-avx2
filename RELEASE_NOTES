@@ -1,21 +1,18 @@
 cpuminer-opt is a console program run from the command line using the
 keyboard, not the mouse.
 
-cpuminer-opt now supports HW SHA acceleration available on AMD Ryzen CPUs.
-This feature requires recent SW including GCC version 5 or higher and
-openssl version 1.1 or higher. It may also require using "-march=znver1"
-compile flag.
-
-cpuminer-opt is a console program, if you're using a mouse you're doing it
-wrong.
+See also README.md for list of supported algorithms,
 
 Security warning
 ----------------
 
 Miner programs are often flagged as malware by antivirus programs. This is
-a false positive, they are flagged simply because they are cryptocurrency 
-miners. The source code is open for anyone to inspect. If you don't trust 
-the software, don't use it.
+usually a false positive, they are flagged simply because they are
+cryptocurrency miners. However, some malware masquerading as a miner has
+been spread using the cover that miners are known to be subject to false
+positives ans users will dismiss the AV alert. Always be on alert.
+The source code of cpuminer-opt is open for anyone to inspect.
+If you don't trust the software don't download it.
 
 The cryptographic hashing code has been taken from trusted sources but has been
 modified for speed at the expense of accepted security practices. This
@@ -25,7 +22,7 @@ required.
 Compile Instructions
 --------------------
 
-See INSTALL_LINUX or INSTALL_WINDOWS fror compile instruuctions
+See INSTALL_LINUX or INSTALL_WINDOWS for compile instruuctions
 
 Requirements
 ------------
@@ -33,10 +30,621 @@ Requirements
 Intel Core2 or newer, or AMD Steamroller or newer CPU. ARM CPUs are not
 supported.
 
-64 bit Linux or Windows operating system. Apple and Android are not supported.
+64 bit Linux or Windows operating system. Apple, Android and Raspberry Pi
+are not supported. FreeBSD YMMV.
+
+Reporting bugs
+--------------
+
+Bugs can be reported by sending am email to JayDDee246@gmail.com or opening
+an issue in git: https://github.com/JayDDee/cpuminer-opt/issues
+
+Please include the following information:
+
+1. CPU model, operating system, cpuminer-opt version (must be latest),
+   binary file for Windows, changes to default build procedure for Linux.
+
+2. Exact command line (except user and pw) and intial output showing
+   the above requested info.
+
+3. Additional program output showing any error messages or other
+   pertinent data.
+
+4. A clear description of the problem including history, scope,
+   persistence or intermittance, and reproduceability. 
+
+In simpler terms:
+
+What is it doing?
+What should it be doing instead?
+Did it work in a previous release?
+Does it happen for all algos? All pools? All options? Solo?
+Does it happen all the time?
+If not what makes it happen or not happen? 
 
 Change Log
 ----------
+
+v3.16.2
+
+Verthash: midstate prehash optimization for all architectures.
+Verthash: AVX2 optimization.
+GBT: added support for Bech32 addresses, untested.
+Linux: added CPU frequency to benchmark log.
+Fixed integer overflow in time calculations.
+
+v3.16.1
+
+New options for verthash:
+  --data-file to specify the name, and optionally the path, of the verthash
+              data file, default is "verthash.dat" in the current directory.
+  --verify to perform the data file integrity check at startup, default is
+           not to verify data file integrity.
+Support for creation of default verthash data file if:
+   1) --data-file option is not used,
+   2) no default data file is found in the current directory, and,
+   3) --verify option is used.
+More detailed logs related to verthash data file.
+Small verthash performance improvement.
+Fixed detection of corrupt stats caused by networking issues.
+
+v3.16.0
+
+Added verthash algo.
+
+v3.15.7
+
+Added accepted/stale/rejected percentage to summary log report.
+Added warning if share counters mismatch which could corrupt stats.
+Linux: CPU temperature reporting is more responsive to rising temperature.
+A few AVX2 & AVX512 tweaks.
+Removed some dead code and other cleanup.
+
+v3.15.6
+
+Implement keccak pre-hash optimization for x16* algos.
+Move conditional mining test to before get_new_work in miner thread.
+Add test for share reject reason when solo mining.
+Add support for floating point, as well as integer, "networkhasps" in
+RPC getmininginfo method.
+
+v3.15.5
+
+Fix stratum jobs lost if 2 jobs received in less than one second.
+ 
+
+v3.15.4
+
+Fixed yescryptr16 broken in v3.15.3.
+
+v3.15.3
+
+Yescrypt algos now use yespower v0.5, a little faster.
+New implementation of sha256 using SHA CPU extension.
+Replace Openssl with SPH for sha256 & sha512.
+AVX512 optimization for sha256t & sha256q.
+Faster sha256t, sha256q, x21s, x22i & x25x on CPUs with SHA without AVX512.
+AVX512+SHA build for Intel Rocketlake added to Windows binary package. 
+
+v3.15.2
+
+Zen3 AVX2+VAES optimization for x16*, x17, sonoa, xevan, x21s, x22i, x25x,
+allium.
+Zen3 (AVX2+SHA+VAES) build added to Windows binary package.
+
+v3.15.1
+
+Fix compile on AMD Zen3 CPUs with VAES.
+Force new work immediately after solving a block solo.
+
+
+v3.15.0
+
+Fugue optimized with AES, improves many sha3 algos.
+Minotaur algo optimized for all architectures.
+Fixed neoscrypt BUG log.
+ 
+v3.14.3
+
+#265: more mutex changes to reduce blocking with high thread count.
+
+#267: fixed hodl algo potential memory alignment issue,
+      add warning when thread count is not valid for mining hodl algo.
+
+v3.14.2
+
+The second line of the Share Accepted log is no longer displayed,
+new Xnonce log is added and other small log tweaks.
+
+#265: Cleanup use of mutex.
+
+v3.14.1
+
+GBT and getwork log changes:
+ fixed missing TTF in New Block log,
+ ntime no longer byte-swapped for display in New Work log,
+ fixed zero effective hash rate in Periodic Report log,
+ deleted "Current block is..." log.
+
+Renamed stratum "New Job" log to "New Work" to be consistent with the solo
+version of the log. Added more data to both versions.
+
+v3.14.0
+
+Changes to solo mining:
+  - segwit is supported by getblocktemplate,
+  - longpolling is not working and is disabled,
+  - Periodic Report log is output,
+  - New Block log includes TTF estimates,
+  - Stratum thread no longer created when using getwork or GBT.
+
+Fixed BUG log mining sha256d.
+
+v3.13.1.1
+
+Fixed Windows crash mining minotaur algo.
+
+Fixed GCC 10 compile again.
+Added -fno-common to testing to be consistent with GCC 10 default.
+
+v3.13.1
+
+Added minotaur algo for Ringcoin.
+
+v3.13.0.1
+
+Issue #262: Fixed xevan AVX2 invalid shares.
+
+v3.13.0
+
+Updated Windows binaries compiled with GCC 9. Included DLLs also updated.
+Icelake build (cpuminer-avx512-sha-vaes.exe) now included in Windows
+binaries package.
+
+No source code changes.
+
+v3.12.8.2
+
+Fixed x12 AVX2 rejects.
+Fixed phi AVX2 crash.
+
+v3.12.8.1
+
+Issue #261: Fixed yescryptr8g invalid shares.
+
+v3.12.8
+
+Yespower sha256 prehash made thread safe.
+
+Rewrote diff conversion functions from scratch to be simpler and use 
+long double (float80) and int128 arithmetic for improved accuracy and
+precision.
+
+Some code cleanup and assorted small changes.
+
+v3.12.7
+
+Issue #257: fixed a file descriptor leak which caused the CPU temperature
+and frequency query to report zeros after mining for a couple of hours.
+
+Issue #253: stale share reduction for yescrypt, sonoa.
+
+v3.12.6.1
+
+Issue #252: Fixed SSL mining (stratum+tcps://)
+
+Issue #254 Fixed benchmark.
+
+Issue #253: Implemented stale share reduction for yespower, x25x, x22i, x21s,
+x16*, scryptn2, more to come.
+
+v3.12.6
+
+Issue #246: improved stale share detection for getwork.
+
+Improved precision of target_to_diff conversion from 4 digits to 20+.
+
+Display hash and target debug data for all rejected shares.
+
+A graphical representation of CPU affinity is displayed when using --threads.
+
+Added highest and lowest accepted share to summary log.
+
+Other small changes to logs to improve consistency and clarity.
+
+v3.12.5
+
+Issues #246 & #251: fixed incorrect share diff for stratum and getwork,
+fixed incorrect target diff for getwork. Stats should now be correct for
+getwork as well as stratum.
+
+Issue #252: Fixed stratum+tcps not using curl ssl.
+
+Getwork: reduce stale blocks, faster response to new work.
+
+Added ntime to new job/work logs.
+
+README.md now lists the parameters for yespower variations that don't have
+a specific algo name.
+
+v3.12.4.6
+
+Issue #246: fixed getwork repeated new block logs with same height. New work
+for the same block is now reported as "New work" instead of "New block".
+Also added a check that work is new before generating "New work" log.
+
+Added target diff to getwork new block log.
+
+Changed share ratio in share result log to simple fraction, no longer %.
+
+Added debug log to display mininginfo, use -D.
+
+v3.12.4.5
+
+Issue #246: better stale share detection for getwork, and enhanced logging
+of stale shares for stratum & getwork.
+
+Issue #251: fixed incorrect share difficulty and share ratio in share
+result log.
+
+Changed submit log to include share diff and block height.
+
+Small cosmetic changes to logs. 
+
+v3.12.4.4
+
+Issue #246: Fixed net hashrate in getwork block log,
+            removed duplicate getwork block log, 
+            other small tweaks to stats logs for getwork.
+
+Issue #248: Fixed chronic stale shares with scrypt:1048576 (scryptn2). 
+
+v3.12.4.3
+
+Fixed segfault in new block log for getwork.
+
+Disabled silent discarding of stale work after the submit is logged.
+
+v3.12.4.2
+
+Issue #245: fixed getwork stale shares, solo mining with getwork now works.
+
+Issue #246: implemented block and summary logs for getwork.
+
+v3.12.4.1
+
+Issue #245: fix scantime when mining solo with getwork.
+
+Added debug logs for creation of stratum and longpoll threads, use -D to
+enable.
+
+v3.12.4
+
+Issue #244: Change longpoll to ignore job id.
+
+Lyra2rev2 AVX2 +3%, AVX512 +6%.
+
+v3.12.3.1
+
+Issue #241: Fixed regression that broke coinbase address in v3.11.7.
+
+v3.12.3
+
+Issue #238: Fixed skunk AVX2.
+
+Issue #239: Faster AVX2 & AVX512 for skein +44%, skein2 +30%, plus marginal
+increases for skunk, x16r, x16rv2, x16rt, x16rt-veil, x16s, x21s.
+
+Faster anime VAES +57%, AVX512 +21%, AVX2 +3%.
+
+Redesigned code reponsible for #236.
+
+v3.12.2
+
+Fixed xevan, skein, skein2 AVX2, #238.
+
+Reversed polarity of AVX2 vector bit test utilities, and all users, to be
+logically and semantically correct. Follow up to issue #236. 
+
+v3.12.1
+
+Fixed anime AVX2 low difficulty shares, git issue #236.
+
+Periodic summary now reports lost hash rate due to rejected and stale shares,
+displayed only when non-zero.
+
+v3.12.0.1
+
+Fixed hodl rejects, git issue #237.
+
+Fixed debug code added in v3.12.0 to work with AVX2 to be enabled only
+after low difficulty share have been seen to avoid unnecessarily excessive
+log outout.
+
+Added more digits of precision to diff in log output to help diagnose
+low difficulty shares.
+
+v3.12.0
+
+Faster phi2 AVX2 +62%, AVX512 +150% on Intel CPUs. AMD Ryzen AVX2 is
+YMMV due to its inferiour AVX2 implementation.
+
+Fixed Hodl stats, rejects are still an issue since v3.9.5, git issue #237.
+
+API can now be enabled with "-b port" or "--api-bind port".
+It will use the default address 127.0.0.1.
+
+Editorial: Short form options should only be used on the command line to save
+typing. Configuration files and scripts should always use the long form
+"--api-bind addr:port" without relying on any defaults. This is a general
+recommendation that applies to all options for any application.
+
+Removed obsolete cryptonight, all variants, and supporting code for more
+size reduction and faster compiling.
+
+Tweaked the timing of the CPU temperature and frequency log (Linux only).
+
+Added some debug code to collect more info aboout low difficulty rejects,
+git issue #236.
+
+v3.11.9
+
+Fixed x16r invalid shares when Luffa was first in hash order.
+
+API is disabled by default.
+
+New startup message for status of stratum connection, API & extranonce.
+
+New log report for CPU temperature, frequency of fastest and slowest cores.
+
+Compile time is a little shorter and binary file size a little smaller
+using conditional compilation..
+
+Removed code for Bastion, Drop, Heavy, Luffa an Pluck algos and other unused
+code.
+
+v3.11.8
+
+Fixed network hashrate showing incorrect data, should be close now.
+
+Fixed compile errors when using GCC 10 with default flag -fno-common.
+
+Faster x16r, x16rv2, x16rt, x16s, x21s, veil, hex with midstate prehash.
+
+Decoupled sapling usage from block version 5 in yescryptr8g.
+
+More detailed data reporting for low difficulty rejected shares.
+
+v3.11.7
+
+Added yescryptr8g algo for KOTO, including support for block version 5.
+
+Added sha3d algo for BSHA3.
+
+Removed memcmp and clean_job checks from get_new_work, now only check job_id.
+
+Small improvement to sha512 and sha256 parallel implementations that don't
+use SHA.
+
+v3.11.6
+
+Fixed CPU temperature regression from v3.11.5.
+
+More improvements to share log. More compact, highlight incremented counter,
+block height when solved, job id when stale.
+
+v3.11.5
+
+Fixed AVX512 detection that could cause compilation errors on CPUs
+without AVX512.
+
+Fixed "BLOCK SOLVED" log incorrectly displaying "Accepted" when a block
+is solved.
+Added share counter to share submitited & accepted logs
+Added job id to share submitted log.
+Share submitted log is no longer highlighted blue, there was too much blue.
+
+Another CPU temperature fix for Linux.
+
+Added bug reporting tips to RELEASE NOTES.
+
+v3.11.4
+
+Fixed scrypt segfault since v3.9.9.1.
+
+Stale shares counted and reported seperately from other rejected shares.
+
+Display of counters for solved blocks, rejects, stale shares suppressed in
+periodic summary when zero.
+
+v3.11.3
+
+Fixed x12 AVX2 again.
+
+More speed for allium: AVX2 +4%, AVX512 +6%, VAES +14%.
+
+Restored lost speed for x22i & x25x.
+
+v3.11.2
+
+Fixed x11gost (sib) AVX2 invalid shares.
+
+Fixed x16r, x16rv2, x16s, x16rt, x16rt-veil (veil), x21s.
+No shares were submitted when cube, shavite or echo were the first function
+in the hash order.
+
+Fixed all algos reporting stats problems when mining with SSE2.
+
+Faster Lyra2 AVX512: lyra2z +47%, lyra2rev3 +11%, allium +13%, x21s +6% 
+
+Other minor performance improvements.
+
+Known issue:
+
+Lyra2 AVX512 improvements paradoxically reduced performance on x22i and x25x.
+https://github.com/JayDDee/cpuminer-opt/issues/225
+
+v3.11.1
+
+Faster panama for x25x AVX2 & AVX512.
+
+Fixed echo VAES for Xevan.
+
+Removed support for scryptjane algo.
+
+Reverted macro implemtations of hash functions to SPH reference code
+for SSE2 versions of algos.
+
+v3.11.0
+
+Fixed x25x AVX512 lane 4 invalid shares.
+
+AVX512 for hex, phi2.
+
+VAES optimzation for Intel Icelake CPUs for most algos recently optimized
+with AVX512, source code only.
+
+v3.10.7
+
+AVX512 for x25x, lbry, x13bcd (bcd).
+
+v3.10.6
+
+Added support for SSL stratum: stratum+tcps://
+
+Added job id reporting again, but leaner, suppressed with --quiet.
+
+AVX512 for x21s, x22i, lyra2z, allium.
+
+Fixed share overflow warnings mining lbry with Ryzen (SHA).
+
+v3.10.5
+
+AVX512 for x17, sonoa, xevan, hmq1725, lyra2rev3, lyra2rev2. 
+Faster hmq1725 AVX2.
+
+v3.10.4
+
+AVX512 for x16r, x16rv2, x16rt, x16s, x16rt-veil (veil).
+
+v3.10.3
+
+AVX512 for x12, x13, x14, x15.
+Fixed x12 AVX2 invalid shares.
+
+v.10.2
+
+AVX512 added for bmw512, c11, phi1612 (phi), qubit, skunk, x11, x11gost (sib).
+Fixed c11 AVX2 invalid shares.
+
+v3.10.1
+
+AVX512 for blake2b, nist5, quark, tribus.
+
+More broken lane fixes, fixed buffer overflow in skein AVX512, fixed
+quark invalid shares AVX2.
+
+Only the highest ranking feature in a class is listed at startup, lower ranking
+features are available but no longer listed.
+
+v3.10.0
+
+AVX512 is now supported on selected algos, Windows binary is now available.
+AVX512 optimizations are available for argon2d, blake2s, keccak, keccakc,
+skein & skein2.
+
+Fixed CPU temperature for some CPU models (Linux only).
+
+Fixed a bug that caused some lanes not to submit shares.
+
+Fixed some previously undetected buffer overflows.
+
+Lyra2rev2 3% faster SSE2 and AVX2.
+
+Added "-fno-asynchronous-unwind-tables" to AVX512 build script for Windows
+to fix known mingw issue.
+
+Changed AVX2 build script to explicitly add AES to address change in
+behaviour in GCC 9. 
+
+v3.9.11
+
+Added x22i & x25x algos.
+Blake2s 2% faster AVX2 with Intel CPU, slower with Ryzen v1, v2 ?
+
+v3.9.10
+
+Faster X* algos with AVX2.
+Small improvements to summary stats report.
+
+v3.9.9.1
+
+Fixed a day1 bug that could cause the miner to idle for up to 2 minutes
+under certain circumstances.
+
+Redesigned summary stats report now includes session statistics.
+
+More robust handling of statistics to reduce corruption.
+
+Removed --hide-diff option.
+
+Better handling of cpu-affinity with more than 64 CPUs.
+
+v3.9.9
+
+Added power2b algo for MicroBitcoin.
+Added generic yespower-b2b (yespower + blake2b) algo to be used with
+the parameters introduced in v3.9.7 for yespower & yescrypt.
+Display additional info when a share is rejected.
+Some low level enhancements and minor tweaking of log output.
+RELEASE_NOTES (this file) and README.md  added to Windows release package.
+
+v3.9.8.1
+
+Summary log report will be generated on stratum diff change or after 5 minutes,
+whichever comes first, to prevent incorrect data in the report.
+
+Removed phi2-lux alias (introduced in v3.9.8) due to Luxcoin's planned fork
+to a new algo. The new Luxcoin algo is not supported by cpuminer-opt.
+Until the fork Luxcoin can be mined using phi2 algo.
+
+--hide-diff option is deprecated and has no effect. It will be removed in a
+future release.
+
+v3.9.8
+
+Changes to log output to provide data more relevant to actual mining
+performance.
+phi2 can now handle pools with a mix of coins that use and don't use roots.
+phi2-lux added as an alias for phi2 as they are identical except for roots.
+Add x16rv2 algo for Ravencoin fork.
+
+v3.9.7
+
+Command line option changes:
+
+"-R" is no longer used as a shortcut for "--retry-pause", users must
+use the long option.
+
+New options:
+
+-N, --param-n: set the N parameter for yescrypt, yespower or scrypt algos
+-R, --param-r: set the R parameter for yescrypt or yespower algos, scrypt is
+     hardcoded with R=1
+-K, --param-key: set the client key/pers parameter for yescrypt/yespower algos.
+
+These options can be used to mine yescrypt or yespower variations using
+the generic yescrypt or yespower algo name and specifying the parameters
+manually. They can even be used to mine variations that aren't formally
+supported by a unique algo name. Existing algos can continue to to be mined
+using their original name without parameters.
+
+v3.9.6.2
+
+New algo blake2b.
+Faster myr-gr on Ryzen using SHA.
+Faster blake2s SSE2.
+Small speedup of around 1% for several other algos.
 
 v3.9.6.1
 

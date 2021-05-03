@@ -32,8 +32,6 @@
 
 #include <stddef.h>
 #include <string.h>
-
-//#include "miner.h"
 #include "hamsi-hash-4way.h"
 
 #if defined(__AVX2__)
@@ -100,7 +98,7 @@ extern "C"{
 #endif
 
 //#include "hamsi-helper-4way.c"
-
+/*
 static const sph_u32 IV512[] = {
 	SPH_C32(0x73746565), SPH_C32(0x6c706172), SPH_C32(0x6b204172),
 	SPH_C32(0x656e6265), SPH_C32(0x72672031), SPH_C32(0x302c2062),
@@ -109,7 +107,7 @@ static const sph_u32 IV512[] = {
 	SPH_C32(0x65766572), SPH_C32(0x6c65652c), SPH_C32(0x2042656c),
 	SPH_C32(0x6769756d)
 };
-
+*/
 static const sph_u32 alpha_n[] = {
 	SPH_C32(0xff00f0f0), SPH_C32(0xccccaaaa), SPH_C32(0xf0f0cccc),
 	SPH_C32(0xff00aaaa), SPH_C32(0xccccaaaa), SPH_C32(0xf0f0ff00),
@@ -137,6 +135,7 @@ static const sph_u32 alpha_f[] = {
 	SPH_C32(0x0ff0caf9), SPH_C32(0xcaf90ff0), SPH_C32(0xf9c0639c),
 	SPH_C32(0xcaf9f9c0), SPH_C32(0x0ff0639c)
 };
+
 
 // imported from hamsi helper
 
@@ -529,49 +528,370 @@ static const sph_u32 T512[64][16] = {
 	  SPH_C32(0xe7e00a94) }
 };
 
+#define s0   m0
+#define s1   c0
+#define s2   m1
+#define s3   c1
+#define s4   c2
+#define s5   m2
+#define s6   c3
+#define s7   m3
+#define s8   m4
+#define s9   c4
+#define sA   m5
+#define sB   c5
+#define sC   c6
+#define sD   m6
+#define sE   c7
+#define sF   m7
+
+
+#if defined(__AVX512F__) && defined(__AVX512VL__) && defined(__AVX512DQ__) && defined(__AVX512BW__)
+
+// Hamsi 8 way AVX512 
+
+#define INPUT_BIG8 \
+do { \
+  __m512i db = *buf; \
+  const uint64_t *tp = (uint64_t*)&T512[0][0];  \
+  m0 = m1 = m2 = m3 = m4 = m5 = m6 = m7 = m512_zero; \
+  for ( int u = 0; u < 64; u++ ) \
+  { \
+     __m512i dm = _mm512_and_si512( db, m512_one_64 ) ; \
+     dm = mm512_negate_32( _mm512_or_si512( dm, \
+                                          _mm512_slli_epi64( dm, 32 ) ) ); \
+     m0 = _mm512_xor_si512( m0, _mm512_and_si512( dm, \
+                                          m512_const1_64( tp[0] ) ) ); \
+     m1 = _mm512_xor_si512( m1, _mm512_and_si512( dm, \
+                                          m512_const1_64( tp[1] ) ) ); \
+     m2 = _mm512_xor_si512( m2, _mm512_and_si512( dm, \
+                                          m512_const1_64( tp[2] ) ) ); \
+     m3 = _mm512_xor_si512( m3, _mm512_and_si512( dm, \
+                                          m512_const1_64( tp[3] ) ) ); \
+     m4 = _mm512_xor_si512( m4, _mm512_and_si512( dm, \
+                                          m512_const1_64( tp[4] ) ) ); \
+     m5 = _mm512_xor_si512( m5, _mm512_and_si512( dm, \
+                                          m512_const1_64( tp[5] ) ) ); \
+     m6 = _mm512_xor_si512( m6, _mm512_and_si512( dm, \
+                                          m512_const1_64( tp[6] ) ) ); \
+     m7 = _mm512_xor_si512( m7, _mm512_and_si512( dm, \
+                                          m512_const1_64( tp[7] ) ) ); \
+     tp += 8; \
+     db = _mm512_srli_epi64( db, 1 ); \
+  } \
+} while (0)
+
+#define SBOX8( a, b, c, d ) \
+do { \
+  __m512i t; \
+  t = a; \
+  a = _mm512_and_si512( a, c ); \
+  a = _mm512_xor_si512( a, d ); \
+  c = _mm512_xor_si512( c, b ); \
+  c = _mm512_xor_si512( c, a ); \
+  d = _mm512_or_si512( d, t ); \
+  d = _mm512_xor_si512( d, b ); \
+  t = _mm512_xor_si512( t, c ); \
+  b = d; \
+  d = _mm512_or_si512( d, t ); \
+  d = _mm512_xor_si512( d, a ); \
+  a = _mm512_and_si512( a, b ); \
+  t = _mm512_xor_si512( t, a ); \
+  b = _mm512_xor_si512( b, d ); \
+  b = _mm512_xor_si512( b, t ); \
+  a = c; \
+  c = b; \
+  b = d; \
+  d = mm512_not( t ); \
+} while (0)
+
+#define L8( a, b, c, d ) \
+do { \
+   a = mm512_rol_32( a, 13 ); \
+   c = mm512_rol_32( c,  3 ); \
+   b = _mm512_xor_si512( b, _mm512_xor_si512( a, c ) ); \
+   d = _mm512_xor_si512( d, _mm512_xor_si512( c, \
+                                              _mm512_slli_epi32( a, 3 ) ) ); \
+   b = mm512_rol_32( b, 1 ); \
+   d = mm512_rol_32( d, 7 ); \
+   a = _mm512_xor_si512( a, _mm512_xor_si512( b, d ) ); \
+   c = _mm512_xor_si512( c, _mm512_xor_si512( d, \
+                                              _mm512_slli_epi32( b, 7 ) ) ); \
+   a = mm512_rol_32( a,  5 ); \
+   c = mm512_rol_32( c, 22 ); \
+} while (0)
+
+#define DECL_STATE_BIG8 \
+   __m512i c0, c1, c2, c3, c4, c5, c6, c7; \
+
+#define READ_STATE_BIG8(sc) \
+do { \
+   c0 = sc->h[0x0]; \
+   c1 = sc->h[0x1]; \
+   c2 = sc->h[0x2]; \
+   c3 = sc->h[0x3]; \
+   c4 = sc->h[0x4]; \
+   c5 = sc->h[0x5]; \
+   c6 = sc->h[0x6]; \
+   c7 = sc->h[0x7]; \
+} while (0)
+
+#define WRITE_STATE_BIG8(sc) \
+do { \
+   sc->h[0x0] = c0; \
+   sc->h[0x1] = c1; \
+   sc->h[0x2] = c2; \
+   sc->h[0x3] = c3; \
+   sc->h[0x4] = c4; \
+   sc->h[0x5] = c5; \
+   sc->h[0x6] = c6; \
+   sc->h[0x7] = c7; \
+} while (0)
+
+
+#define ROUND_BIG8(rc, alpha) \
+do { \
+   __m512i t0, t1, t2, t3; \
+   s0 = _mm512_xor_si512( s0, m512_const1_64( \
+                   ( (uint64_t)(rc) << 32 ) ^ ( (uint64_t*)(alpha) )[ 0] ) ); \
+   s1 = _mm512_xor_si512( s1, m512_const1_64( ( (uint64_t*)(alpha) )[ 1] ) ); \
+   s2 = _mm512_xor_si512( s2, m512_const1_64( ( (uint64_t*)(alpha) )[ 2] ) ); \
+   s3 = _mm512_xor_si512( s3, m512_const1_64( ( (uint64_t*)(alpha) )[ 3] ) ); \
+   s4 = _mm512_xor_si512( s4, m512_const1_64( ( (uint64_t*)(alpha) )[ 4] ) ); \
+   s5 = _mm512_xor_si512( s5, m512_const1_64( ( (uint64_t*)(alpha) )[ 5] ) ); \
+   s6 = _mm512_xor_si512( s6, m512_const1_64( ( (uint64_t*)(alpha) )[ 6] ) ); \
+   s7 = _mm512_xor_si512( s7, m512_const1_64( ( (uint64_t*)(alpha) )[ 7] ) ); \
+   s8 = _mm512_xor_si512( s8, m512_const1_64( ( (uint64_t*)(alpha) )[ 8] ) ); \
+   s9 = _mm512_xor_si512( s9, m512_const1_64( ( (uint64_t*)(alpha) )[ 9] ) ); \
+   sA = _mm512_xor_si512( sA, m512_const1_64( ( (uint64_t*)(alpha) )[10] ) ); \
+   sB = _mm512_xor_si512( sB, m512_const1_64( ( (uint64_t*)(alpha) )[11] ) ); \
+   sC = _mm512_xor_si512( sC, m512_const1_64( ( (uint64_t*)(alpha) )[12] ) ); \
+   sD = _mm512_xor_si512( sD, m512_const1_64( ( (uint64_t*)(alpha) )[13] ) ); \
+   sE = _mm512_xor_si512( sE, m512_const1_64( ( (uint64_t*)(alpha) )[14] ) ); \
+   sF = _mm512_xor_si512( sF, m512_const1_64( ( (uint64_t*)(alpha) )[15] ) ); \
+\
+  SBOX8( s0, s4, s8, sC ); \
+  SBOX8( s1, s5, s9, sD ); \
+  SBOX8( s2, s6, sA, sE ); \
+  SBOX8( s3, s7, sB, sF ); \
+\
+  t1 = _mm512_mask_blend_epi32( 0xaaaa, _mm512_bsrli_epi128( s4, 4 ), \
+                                        _mm512_bslli_epi128( s5, 4 ) ); \
+  t3 = _mm512_mask_blend_epi32( 0xaaaa, _mm512_bsrli_epi128( sD, 4 ), \
+                                        _mm512_bslli_epi128( sE, 4 ) ); \
+  L8( s0, t1, s9, t3 ); \
+  s4 = _mm512_mask_blend_epi32( 0xaaaa, s4, _mm512_bslli_epi128( t1, 4 ) ); \
+  s5 = _mm512_mask_blend_epi32( 0x5555, s5, _mm512_bsrli_epi128( t1, 4 ) ); \
+  sD = _mm512_mask_blend_epi32( 0xaaaa, sD, _mm512_bslli_epi128( t3, 4 ) ); \
+  sE = _mm512_mask_blend_epi32( 0x5555, sE, _mm512_bsrli_epi128( t3, 4 ) ); \
+\
+  t1 = _mm512_mask_blend_epi32( 0xaaaa, _mm512_bsrli_epi128( s5, 4 ), \
+                                        _mm512_bslli_epi128( s6, 4 ) ); \
+  t3 = _mm512_mask_blend_epi32( 0xaaaa, _mm512_bsrli_epi128( sE, 4 ), \
+                                        _mm512_bslli_epi128( sF, 4 ) ); \
+  L8( s1, t1, sA, t3 ); \
+  s5 = _mm512_mask_blend_epi32( 0xaaaa, s5, _mm512_bslli_epi128( t1, 4 ) ); \
+  s6 = _mm512_mask_blend_epi32( 0x5555, s6, _mm512_bsrli_epi128( t1, 4 ) ); \
+  sE = _mm512_mask_blend_epi32( 0xaaaa, sE, _mm512_bslli_epi128( t3, 4 ) ); \
+  sF = _mm512_mask_blend_epi32( 0x5555, sF, _mm512_bsrli_epi128( t3, 4 ) ); \
+\
+  t1 = _mm512_mask_blend_epi32( 0xaaaa, _mm512_bsrli_epi128( s6, 4 ), \
+                                        _mm512_bslli_epi128( s7, 4 ) ); \
+  t3 = _mm512_mask_blend_epi32( 0xaaaa, _mm512_bsrli_epi128( sF, 4 ), \
+                                        _mm512_bslli_epi128( sC, 4 ) ); \
+  L8( s2, t1, sB, t3 ); \
+  s6 = _mm512_mask_blend_epi32( 0xaaaa, s6, _mm512_bslli_epi128( t1, 4 ) ); \
+  s7 = _mm512_mask_blend_epi32( 0x5555, s7, _mm512_bsrli_epi128( t1, 4 ) ); \
+  sF = _mm512_mask_blend_epi32( 0xaaaa, sF, _mm512_bslli_epi128( t3, 4 ) ); \
+  sC = _mm512_mask_blend_epi32( 0x5555, sC, _mm512_bsrli_epi128( t3, 4 ) ); \
+\
+  t1 = _mm512_mask_blend_epi32( 0xaaaa, _mm512_bsrli_epi128( s7, 4 ), \
+                                        _mm512_bslli_epi128( s4, 4 ) ); \
+  t3 = _mm512_mask_blend_epi32( 0xaaaa, _mm512_bsrli_epi128( sC, 4 ), \
+                                        _mm512_bslli_epi128( sD, 4 ) ); \
+  L8( s3, t1, s8, t3 ); \
+  s7 = _mm512_mask_blend_epi32( 0xaaaa, s7, _mm512_bslli_epi128( t1, 4 ) ); \
+  s4 = _mm512_mask_blend_epi32( 0x5555, s4, _mm512_bsrli_epi128( t1, 4 ) ); \
+  sC = _mm512_mask_blend_epi32( 0xaaaa, sC, _mm512_bslli_epi128( t3, 4 ) ); \
+  sD = _mm512_mask_blend_epi32( 0x5555, sD, _mm512_bsrli_epi128( t3, 4 ) ); \
+\
+  t0 = _mm512_mask_blend_epi32( 0xaaaa, s0, _mm512_bslli_epi128( s8, 4 ) ); \
+  t1 = _mm512_mask_blend_epi32( 0xaaaa, s1, s9 ); \
+  t2 = _mm512_mask_blend_epi32( 0xaaaa, _mm512_bsrli_epi128( s2, 4 ), sA ); \
+  t3 = _mm512_mask_blend_epi32( 0xaaaa, _mm512_bsrli_epi128( s3, 4 ), \
+                                        _mm512_bslli_epi128( sB, 4 ) ); \
+  L8( t0, t1, t2, t3 ); \
+  s0 = _mm512_mask_blend_epi32( 0x5555, s0, t0 ); \
+  s8 = _mm512_mask_blend_epi32( 0x5555, s8, _mm512_bsrli_epi128( t0, 4 ) ); \
+  s1 = _mm512_mask_blend_epi32( 0x5555, s1, t1 ); \
+  s9 = _mm512_mask_blend_epi32( 0xaaaa, s9, t1 ); \
+  s2 = _mm512_mask_blend_epi32( 0xaaaa, s2, _mm512_bslli_epi128( t2, 4 ) ); \
+  sA = _mm512_mask_blend_epi32( 0xaaaa, sA, t2 ); \
+  s3 = _mm512_mask_blend_epi32( 0xaaaa, s3, _mm512_bslli_epi128( t3, 4 ) ); \
+  sB = _mm512_mask_blend_epi32( 0x5555, sB, _mm512_bsrli_epi128( t3, 4 ) ); \
+\
+  t0 = _mm512_mask_blend_epi32( 0xaaaa, _mm512_bsrli_epi128( s4, 4 ), sC ); \
+  t1 = _mm512_mask_blend_epi32( 0xaaaa, _mm512_bsrli_epi128( s5, 4 ), \
+                                        _mm512_bslli_epi128( sD, 4 ) ); \
+  t2 = _mm512_mask_blend_epi32( 0xaaaa, s6, _mm512_bslli_epi128( sE, 4 ) ); \
+  t3 = _mm512_mask_blend_epi32( 0xaaaa, s7, sF ); \
+  L8( t0, t1, t2, t3 ); \
+  s4 = _mm512_mask_blend_epi32( 0xaaaa, s4, _mm512_bslli_epi128( t0, 4 ) ); \
+  sC = _mm512_mask_blend_epi32( 0xaaaa, sC, t0 ); \
+  s5 = _mm512_mask_blend_epi32( 0xaaaa, s5, _mm512_bslli_epi128( t1, 4 ) ); \
+  sD = _mm512_mask_blend_epi32( 0x5555, sD, _mm512_bsrli_epi128( t1, 4 ) ); \
+  s6 = _mm512_mask_blend_epi32( 0x5555, s6, t2 ); \
+  sE = _mm512_mask_blend_epi32( 0x5555, sE, _mm512_bsrli_epi128( t2, 4 ) ); \
+  s7 = _mm512_mask_blend_epi32( 0x5555, s7, t3 ); \
+  sF = _mm512_mask_blend_epi32( 0xaaaa, sF, t3 ); \
+} while (0)
+
+#define P_BIG8 \
+do { \
+   ROUND_BIG8(0, alpha_n); \
+   ROUND_BIG8(1, alpha_n); \
+   ROUND_BIG8(2, alpha_n); \
+   ROUND_BIG8(3, alpha_n); \
+   ROUND_BIG8(4, alpha_n); \
+   ROUND_BIG8(5, alpha_n); \
+} while (0)
+
+#define PF_BIG8 \
+do { \
+   ROUND_BIG8( 0, alpha_f); \
+   ROUND_BIG8( 1, alpha_f); \
+   ROUND_BIG8( 2, alpha_f); \
+   ROUND_BIG8( 3, alpha_f); \
+   ROUND_BIG8( 4, alpha_f); \
+   ROUND_BIG8( 5, alpha_f); \
+   ROUND_BIG8( 6, alpha_f); \
+   ROUND_BIG8( 7, alpha_f); \
+   ROUND_BIG8( 8, alpha_f); \
+   ROUND_BIG8( 9, alpha_f); \
+   ROUND_BIG8(10, alpha_f); \
+   ROUND_BIG8(11, alpha_f); \
+} while (0)
+
+#define T_BIG8 \
+do { /* order is important */ \
+   c7 = sc->h[ 0x7 ] = _mm512_xor_si512( sc->h[ 0x7 ], sB ); \
+   c6 = sc->h[ 0x6 ] = _mm512_xor_si512( sc->h[ 0x6 ], sA ); \
+   c5 = sc->h[ 0x5 ] = _mm512_xor_si512( sc->h[ 0x5 ], s9 ); \
+   c4 = sc->h[ 0x4 ] = _mm512_xor_si512( sc->h[ 0x4 ], s8 ); \
+   c3 = sc->h[ 0x3 ] = _mm512_xor_si512( sc->h[ 0x3 ], s3 ); \
+   c2 = sc->h[ 0x2 ] = _mm512_xor_si512( sc->h[ 0x2 ], s2 ); \
+   c1 = sc->h[ 0x1 ] = _mm512_xor_si512( sc->h[ 0x1 ], s1 ); \
+   c0 = sc->h[ 0x0 ] = _mm512_xor_si512( sc->h[ 0x0 ], s0 ); \
+} while (0)
+
+void hamsi_8way_big( hamsi_8way_big_context *sc, __m512i *buf, size_t num )
+{
+   DECL_STATE_BIG8
+   uint32_t tmp = num << 6;
+
+   sc->count_low = SPH_T32( sc->count_low + tmp );
+   sc->count_high += (sph_u32)( (num >> 13) >> 13 );
+   if ( sc->count_low < tmp )
+      sc->count_high++;
+
+   READ_STATE_BIG8( sc );
+   while ( num-- > 0 )
+   {
+      __m512i m0, m1, m2, m3, m4, m5, m6, m7;
+
+      INPUT_BIG8;
+      P_BIG8;
+      T_BIG8;
+      buf++;
+   }
+   WRITE_STATE_BIG8( sc );
+}
+
+void hamsi_8way_big_final( hamsi_8way_big_context *sc, __m512i *buf )
+{
+   __m512i m0, m1, m2, m3, m4, m5, m6, m7;
+   DECL_STATE_BIG8
+   READ_STATE_BIG8( sc );
+   INPUT_BIG8;
+   PF_BIG8;
+   T_BIG8;
+   WRITE_STATE_BIG8( sc );
+}
+
+
+void hamsi512_8way_init( hamsi_8way_big_context *sc )
+{
+   sc->partial_len = 0;
+   sc->count_high = sc->count_low = 0;
+
+   sc->h[0] = m512_const1_64( 0x6c70617273746565 );
+   sc->h[1] = m512_const1_64( 0x656e62656b204172 );
+   sc->h[2] = m512_const1_64( 0x302c206272672031 );
+   sc->h[3] = m512_const1_64( 0x3434362c75732032 );
+   sc->h[4] = m512_const1_64( 0x3030312020422d33 );
+   sc->h[5] = m512_const1_64( 0x656e2d484c657576 );
+   sc->h[6] = m512_const1_64( 0x6c65652c65766572 );
+   sc->h[7] = m512_const1_64( 0x6769756d2042656c );
+}
+
+void hamsi512_8way_update( hamsi_8way_big_context *sc, const void *data,
+                           size_t len )
+{
+   __m512i *vdata = (__m512i*)data;
+
+   hamsi_8way_big( sc, vdata, len>>3 );
+   vdata += ( (len& ~(size_t)7) >> 3 );
+   len &= (size_t)7;
+   memcpy_512( sc->buf, vdata, len>>3 );
+   sc->partial_len = len;
+}
+
+void hamsi512_8way_close( hamsi_8way_big_context *sc, void *dst )
+{
+   __m512i pad[1];
+   uint32_t ch, cl;
+
+   sph_enc32be( &ch, sc->count_high );
+   sph_enc32be( &cl, sc->count_low + ( sc->partial_len << 3 ) );
+   pad[0] = _mm512_set1_epi64( ((uint64_t)cl << 32 ) | (uint64_t)ch );
+   sc->buf[0] = m512_const1_64( 0x80 );
+   hamsi_8way_big( sc, sc->buf, 1 );
+   hamsi_8way_big_final( sc, pad );
+
+   mm512_block_bswap_32( (__m512i*)dst, sc->h );
+}
+
+#endif // AVX512
+
+// Hamsi 4 way AVX2
+
 #define INPUT_BIG \
 do { \
-  const __m256i zero = _mm256_setzero_si256(); \
   __m256i db = *buf; \
-  const sph_u32 *tp = &T512[0][0]; \
-  m0 = zero; \
-  m1 = zero; \
-  m2 = zero; \
-  m3 = zero; \
-  m4 = zero; \
-  m5 = zero; \
-  m6 = zero; \
-  m7 = zero; \
+  const uint64_t *tp = (uint64_t*)&T512[0][0];  \
+  m0 = m1 = m2 = m3 = m4 = m5 = m6 = m7 = m256_zero; \
   for ( int u = 0; u < 64; u++ ) \
   { \
      __m256i dm = _mm256_and_si256( db, m256_one_64 ) ; \
      dm = mm256_negate_32( _mm256_or_si256( dm, \
                          _mm256_slli_epi64( dm, 32 ) ) ); \
      m0 = _mm256_xor_si256( m0, _mm256_and_si256( dm, \
-                  _mm256_set_epi32( tp[0x1], tp[0x0], tp[0x1], tp[0x0], \
-                                    tp[0x1], tp[0x0], tp[0x1], tp[0x0] ) ) ); \
+                                          m256_const1_64( tp[0] ) ) ); \
      m1 = _mm256_xor_si256( m1, _mm256_and_si256( dm, \
-                  _mm256_set_epi32( tp[0x3], tp[0x2], tp[0x3], tp[0x2], \
-                                    tp[0x3], tp[0x2], tp[0x3], tp[0x2] ) ) ); \
+                                          m256_const1_64( tp[1] ) ) ); \
      m2 = _mm256_xor_si256( m2, _mm256_and_si256( dm, \
-                  _mm256_set_epi32( tp[0x5], tp[0x4], tp[0x5], tp[0x4], \
-                                    tp[0x5], tp[0x4], tp[0x5], tp[0x4] ) ) ); \
+                                          m256_const1_64( tp[2] ) ) ); \
      m3 = _mm256_xor_si256( m3, _mm256_and_si256( dm, \
-                  _mm256_set_epi32( tp[0x7], tp[0x6], tp[0x7], tp[0x6], \
-                                    tp[0x7], tp[0x6], tp[0x7], tp[0x6] ) ) ); \
+                                          m256_const1_64( tp[3] ) ) ); \
      m4 = _mm256_xor_si256( m4, _mm256_and_si256( dm, \
-                  _mm256_set_epi32( tp[0x9], tp[0x8], tp[0x9], tp[0x8], \
-                                    tp[0x9], tp[0x8], tp[0x9], tp[0x8] ) ) ); \
+                                          m256_const1_64( tp[4] ) ) ); \
      m5 = _mm256_xor_si256( m5, _mm256_and_si256( dm, \
-                  _mm256_set_epi32( tp[0xB], tp[0xA], tp[0xB], tp[0xA], \
-                                    tp[0xB], tp[0xA], tp[0xB], tp[0xA] ) ) ); \
+                                          m256_const1_64( tp[5] ) ) ); \
      m6 = _mm256_xor_si256( m6, _mm256_and_si256( dm, \
-                  _mm256_set_epi32( tp[0xD], tp[0xC], tp[0xD], tp[0xC], \
-                                    tp[0xD], tp[0xC], tp[0xD], tp[0xC] ) ) ); \
+                                          m256_const1_64( tp[6] ) ) ); \
      m7 = _mm256_xor_si256( m7, _mm256_and_si256( dm, \
-                  _mm256_set_epi32( tp[0xF], tp[0xE], tp[0xF], tp[0xE], \
-                                    tp[0xF], tp[0xE], tp[0xF], tp[0xE] ) ) ); \
-     tp += 0x10; \
+                                          m256_const1_64( tp[7] ) ) ); \
+     tp += 8; \
      db = _mm256_srli_epi64( db, 1 ); \
   } \
 } while (0)
@@ -643,6 +963,7 @@ do { \
    sc->h[0x7] = c7; \
 } while (0)
 
+/*
 #define s0   m0
 #define s1   c0
 #define s2   m1
@@ -659,58 +980,28 @@ do { \
 #define sD   m6
 #define sE   c7
 #define sF   m7
+*/
 
 #define ROUND_BIG(rc, alpha) \
 do { \
-  __m256i t0, t1, t2, t3; \
-  s0 = _mm256_xor_si256( s0, _mm256_set_epi32( \
-        alpha[0x01] ^ (rc), alpha[0x00], alpha[0x01] ^ (rc), alpha[0x00], \
-        alpha[0x01] ^ (rc), alpha[0x00], alpha[0x01] ^ (rc), alpha[0x00] ) ); \
-  s1 = _mm256_xor_si256( s1, _mm256_set_epi32( \
-                     alpha[0x03], alpha[0x02], alpha[0x03], alpha[0x02], \
-                     alpha[0x03], alpha[0x02], alpha[0x03], alpha[0x02] ) ); \
-  s2 = _mm256_xor_si256( s2, _mm256_set_epi32( \
-                     alpha[0x05], alpha[0x04], alpha[0x05], alpha[0x04], \
-                     alpha[0x05], alpha[0x04], alpha[0x05], alpha[0x04] ) ); \
-  s3 = _mm256_xor_si256( s3, _mm256_set_epi32( \
-                     alpha[0x07], alpha[0x06], alpha[0x07], alpha[0x06], \
-                     alpha[0x07], alpha[0x06], alpha[0x07], alpha[0x06] ) ); \
-  s4 = _mm256_xor_si256( s4, _mm256_set_epi32( \
-                     alpha[0x09], alpha[0x08], alpha[0x09], alpha[0x08], \
-                     alpha[0x09], alpha[0x08], alpha[0x09], alpha[0x08] ) ); \
-  s5 = _mm256_xor_si256( s5, _mm256_set_epi32( \
-                     alpha[0x0B], alpha[0x0A], alpha[0x0B], alpha[0x0A], \
-                     alpha[0x0B], alpha[0x0A], alpha[0x0B], alpha[0x0A] ) ); \
-  s6 = _mm256_xor_si256( s6, _mm256_set_epi32( \
-                     alpha[0x0D], alpha[0x0C], alpha[0x0D], alpha[0x0C], \
-                     alpha[0x0D], alpha[0x0C], alpha[0x0D], alpha[0x0C] ) ); \
-  s7 = _mm256_xor_si256( s7, _mm256_set_epi32( \
-                     alpha[0x0F], alpha[0x0E], alpha[0x0F], alpha[0x0E], \
-                     alpha[0x0F], alpha[0x0E], alpha[0x0F], alpha[0x0E] ) ); \
-  s8 = _mm256_xor_si256( s8, _mm256_set_epi32( \
-                     alpha[0x11], alpha[0x10], alpha[0x11], alpha[0x10], \
-                     alpha[0x11], alpha[0x10], alpha[0x11], alpha[0x10] ) ); \
-  s9 = _mm256_xor_si256( s9, _mm256_set_epi32( \
-                     alpha[0x13], alpha[0x12], alpha[0x13], alpha[0x12], \
-                     alpha[0x13], alpha[0x12], alpha[0x13], alpha[0x12] ) ); \
-  sA = _mm256_xor_si256( sA, _mm256_set_epi32( \
-                     alpha[0x15], alpha[0x14], alpha[0x15], alpha[0x14], \
-                     alpha[0x15], alpha[0x14], alpha[0x15], alpha[0x14] ) ); \
-  sB = _mm256_xor_si256( sB, _mm256_set_epi32( \
-                     alpha[0x17], alpha[0x16], alpha[0x17], alpha[0x16], \
-                     alpha[0x17], alpha[0x16], alpha[0x17], alpha[0x16] ) ); \
-  sC = _mm256_xor_si256( sC, _mm256_set_epi32( \
-                     alpha[0x19], alpha[0x18], alpha[0x19], alpha[0x18], \
-                     alpha[0x19], alpha[0x18], alpha[0x19], alpha[0x18] ) ); \
-  sD = _mm256_xor_si256( sD, _mm256_set_epi32( \
-                     alpha[0x1B], alpha[0x1A], alpha[0x1B], alpha[0x1A], \
-                     alpha[0x1B], alpha[0x1A], alpha[0x1B], alpha[0x1A] ) ); \
-  sE = _mm256_xor_si256( sE, _mm256_set_epi32( \
-                     alpha[0x1D], alpha[0x1C], alpha[0x1D], alpha[0x1C], \
-                     alpha[0x1D], alpha[0x1C], alpha[0x1D], alpha[0x1C] ) ); \
-  sF = _mm256_xor_si256( sF, _mm256_set_epi32( \
-                     alpha[0x1F], alpha[0x1E], alpha[0x1F], alpha[0x1E], \
-                     alpha[0x1F], alpha[0x1E], alpha[0x1F], alpha[0x1E] ) ); \
+   __m256i t0, t1, t2, t3; \
+   s0 = _mm256_xor_si256( s0, m256_const1_64( \
+                   ( (uint64_t)(rc) << 32 ) ^ ( (uint64_t*)(alpha) )[ 0] ) ); \
+   s1 = _mm256_xor_si256( s1, m256_const1_64( ( (uint64_t*)(alpha) )[ 1] ) ); \
+   s2 = _mm256_xor_si256( s2, m256_const1_64( ( (uint64_t*)(alpha) )[ 2] ) ); \
+   s3 = _mm256_xor_si256( s3, m256_const1_64( ( (uint64_t*)(alpha) )[ 3] ) ); \
+   s4 = _mm256_xor_si256( s4, m256_const1_64( ( (uint64_t*)(alpha) )[ 4] ) ); \
+   s5 = _mm256_xor_si256( s5, m256_const1_64( ( (uint64_t*)(alpha) )[ 5] ) ); \
+   s6 = _mm256_xor_si256( s6, m256_const1_64( ( (uint64_t*)(alpha) )[ 6] ) ); \
+   s7 = _mm256_xor_si256( s7, m256_const1_64( ( (uint64_t*)(alpha) )[ 7] ) ); \
+   s8 = _mm256_xor_si256( s8, m256_const1_64( ( (uint64_t*)(alpha) )[ 8] ) ); \
+   s9 = _mm256_xor_si256( s9, m256_const1_64( ( (uint64_t*)(alpha) )[ 9] ) ); \
+   sA = _mm256_xor_si256( sA, m256_const1_64( ( (uint64_t*)(alpha) )[10] ) ); \
+   sB = _mm256_xor_si256( sB, m256_const1_64( ( (uint64_t*)(alpha) )[11] ) ); \
+   sC = _mm256_xor_si256( sC, m256_const1_64( ( (uint64_t*)(alpha) )[12] ) ); \
+   sD = _mm256_xor_si256( sD, m256_const1_64( ( (uint64_t*)(alpha) )[13] ) ); \
+   sE = _mm256_xor_si256( sE, m256_const1_64( ( (uint64_t*)(alpha) )[14] ) ); \
+   sF = _mm256_xor_si256( sF, m256_const1_64( ( (uint64_t*)(alpha) )[15] ) ); \
 \
   SBOX( s0, s4, s8, sC ); \
   SBOX( s1, s5, s9, sD ); \
@@ -864,46 +1155,22 @@ void hamsi_big_final( hamsi_4way_big_context *sc, __m256i *buf )
 void hamsi512_4way_init( hamsi_4way_big_context *sc )
 {
    sc->partial_len = 0;
-   sph_u32 lo, hi;
    sc->count_high = sc->count_low = 0;
-   for ( int i = 0; i < 8; i++ )
-   {
-      lo = 2*i;
-      hi = 2*i + 1;
-      sc->h[i] = _mm256_set_epi32( IV512[hi], IV512[lo], IV512[hi], IV512[lo],
-                                   IV512[hi], IV512[lo], IV512[hi], IV512[lo] );
-   }
+
+   sc->h[0] = m256_const1_64( 0x6c70617273746565 );
+   sc->h[1] = m256_const1_64( 0x656e62656b204172 );
+   sc->h[2] = m256_const1_64( 0x302c206272672031 );
+   sc->h[3] = m256_const1_64( 0x3434362c75732032 );
+   sc->h[4] = m256_const1_64( 0x3030312020422d33 );
+   sc->h[5] = m256_const1_64( 0x656e2d484c657576 );
+   sc->h[6] = m256_const1_64( 0x6c65652c65766572 );
+   sc->h[7] = m256_const1_64( 0x6769756d2042656c );
 }
 
-void hamsi512_4way( hamsi_4way_big_context *sc, const void *data, size_t len )
+void hamsi512_4way_update( hamsi_4way_big_context *sc, const void *data,
+      size_t len )
 {
    __m256i *vdata = (__m256i*)data;
-
-// It looks like the only way to get in here is if core was previously called
-// with a very small len
-// That's not likely even with 80 byte input so deprecate partial len
-/*
-   if ( sc->partial_len != 0 )
-   {
-      size_t mlen;
-
-      mlen = 8 - sc->partial_len;
-      if ( len < mlen )
-      {
-         memcpy_256( sc->partial + (sc->partial_len >> 3), data, len>>3 );
-         sc->partial_len += len;
-         return;
-      }
-      else
-      {
-         memcpy_256( sc->partial + (sc->partial_len >> 3), data, mlen>>3 );
-         len -= mlen;
-         vdata += mlen>>3;
-         hamsi_big( sc, sc->partial, 1 );
-         sc->partial_len = 0;
-      }
-   }
-*/
 
    hamsi_big( sc, vdata, len>>3 );
    vdata += ( (len& ~(size_t)7) >> 3 );
@@ -915,13 +1182,12 @@ void hamsi512_4way( hamsi_4way_big_context *sc, const void *data, size_t len )
 void hamsi512_4way_close( hamsi_4way_big_context *sc, void *dst )
 {
    __m256i pad[1];
-   int ch, cl;
+   uint32_t ch, cl;
 
    sph_enc32be( &ch, sc->count_high );
    sph_enc32be( &cl, sc->count_low + ( sc->partial_len << 3 ) );
-   pad[0] =  _mm256_set_epi32( cl, ch, cl, ch, cl, ch, cl, ch );
-   sc->buf[0] = _mm256_set_epi32( 0UL, 0x80UL, 0UL, 0x80UL,
-                                  0UL, 0x80UL, 0UL, 0x80UL );
+   pad[0] = _mm256_set1_epi64x( ((uint64_t)cl << 32 ) | (uint64_t)ch );
+   sc->buf[0] = m256_const1_64( 0x80 );
    hamsi_big( sc, sc->buf, 1 );
    hamsi_big_final( sc, pad );
 

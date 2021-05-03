@@ -10,10 +10,12 @@
 # define some local variables
 
 export LOCAL_LIB="$HOME/usr/lib"
-
-export LDFLAGS="-L$LOCAL_LIB/curl/lib/.libs -L$LOCAL_LIB/gmp/.libs -L$LOCAL_LIB/openssl"
-
 export CONFIGURE_ARGS="--with-curl=$LOCAL_LIB/curl --with-crypto=$LOCAL_LIB/openssl --host=x86_64-w64-mingw32"
+export MINGW_LIB="/usr/x86_64-w64-mingw32/lib"
+# set correct gcc version
+export GCC_MINGW_LIB="/usr/lib/gcc/x86_64-w64-mingw32/10-win32"
+# used by GCC
+export LDFLAGS="-L$LOCAL_LIB/curl/lib/.libs -L$LOCAL_LIB/gmp/.libs -L$LOCAL_LIB/openssl"
 
 # make link to local gmp header file.
 ln -s $LOCAL_LIB/gmp/gmp.h ./gmp.h
@@ -22,80 +24,72 @@ ln -s $LOCAL_LIB/gmp/gmp.h ./gmp.h
 #sed -i 's/"-lpthread"/"-lpthreadGC2"/g' configure.ac
 
 # make release directory and copy selected DLLs.
-mkdir release
-cp README.txt release/
-cp /usr/x86_64-w64-mingw32/lib/zlib1.dll release/
-cp /usr/x86_64-w64-mingw32/lib/libwinpthread-1.dll release/
-cp /usr/lib/gcc/x86_64-w64-mingw32/7.3-win32/libstdc++-6.dll release/
-cp /usr/lib/gcc/x86_64-w64-mingw32/7.3-win32/libgcc_s_seh-1.dll release/
-cp $LOCAL_LIB/openssl/libcrypto-1_1-x64.dll release/
-cp $LOCAL_LIB/curl/lib/.libs/libcurl-4.dll release/
+
+rm -rf bin/win/ > /dev/null
+
+mkdir -p bin/win
+cp $MINGW_LIB/zlib1.dll bin/win/
+cp $MINGW_LIB/libwinpthread-1.dll bin/win/
+cp $GCC_MINGW_LIB/libstdc++-6.dll bin/win/
+cp $GCC_MINGW_LIB/libgcc_s_seh-1.dll bin/win/
+cp $LOCAL_LIB/openssl/libcrypto-1_1-x64.dll bin/win/
+cp $LOCAL_LIB/curl/lib/.libs/libcurl-4.dll bin/win/
+
+DFLAGS="-Wall -fno-common -Wno-comment -Wno-maybe-uninitialized -Wno-array-bounds"
+
+# Start building...
+
+# 1 - Architecture
+# 2 - Output suffix
+# 3 - Additional options
+compile() {
 
 make distclean || echo clean
 rm -f config.status
 ./autogen.sh || echo done
-CFLAGS="-O3 -march=znver1 -Wall" ./configure $CONFIGURE_ARGS
-make -j 16
+CFLAGS="-O3 -march=${1} ${3} ${DFLAGS}" ./configure ${CONFIGURE_ARGS}
+make -j 12
 strip -s cpuminer.exe
-mv cpuminer.exe release/cpuminer-zen.exe
+#mv cpuminer.exe bin/win/cpuminer-${2}.exe
+mv cpuminer.exe /media/sf_Videos/cpuminer/cpuminer-${2}.exe
 
-#make clean || echo clean
-#CFLAGS="-O3 -march=corei7-avx -msha -Wall" ./configure $CONFIGURE_ARGS
-#make
-#strip -s cpuminer.exe
-#mv cpuminer.exe release/cpuminer-avx-sha.exe
+}
 
-make clean || echo clean
-rm -f config.status
-CFLAGS="-O3 -march=core-avx2 -Wall" ./configure $CONFIGURE_ARGS
-make -j 16
-strip -s cpuminer.exe
-mv cpuminer.exe release/cpuminer-avx2.exe
+# Sandybridge AVX AES
+#compile "corei7-avx" "avx" "-maes"
 
-#make clean || echo clean
-#rm -f config.status
-#CFLAGS="-O3 -march=znver1 -Wall" ./configure $CONFIGURE_ARGS
-#make -j 
-#strip -s cpuminer.exe
-#mv cpuminer.exe release/cpuminer-aes-sha.exe
+# Haswell AVX2 AES
+compile "core-avx2" "avx2" "-maes"
+
+# Westmere SSE4.2 AES
+#compile "westmere" "aes-sse42" "-maes"
+
+# AMD Zen1 AVX2 SHA
+compile "znver1" "zen"
+
+# AMD Zen3 AVX2 SHA VAES
+compile "znver2" "zen3" "-mvaes"
+
+# Nehalem SSE4.2
+#compile "corei7" "sse42"
+
+# Core2 SSSE3
+#compile "core2" "ssse3"
+
+# Generic SSE2
+#compile "x86-64" "sse2" "-msse2"
+
+# Icelake AVX512 SHA VAES
+compile "icelake-client" "avx512-sha-vaes"
+
+# Rocketlake AVX512 SHA AES
+compile "cascadelake" "avx512-sha" "-msha"
+
+# Slylake-X AVX512 AES
+compile "skylake-avx512" "avx512"
 
 
-make clean || echo clean
-rm -f config.status
-CFLAGS="-O3 -march=corei7-avx -Wall" ./configure $CONFIGURE_ARGS 
-make -j 16
-strip -s cpuminer.exe
-mv cpuminer.exe release/cpuminer-avx.exe
-
-# -march=westmere is supported in gcc5
-make clean || echo clean
-rm -f config.status
-CFLAGS="-O3 -march=westmere -Wall" ./configure $CONFIGURE_ARGS
-#CFLAGS="-O3 -maes -msse4.2 -Wall" ./configure $CONFIGURE_ARGS
-make -j 16
-strip -s cpuminer.exe
-mv cpuminer.exe release/cpuminer-aes-sse42.exe
-
-#make clean || echo clean
-#rm -f config.status
-#CFLAGS="-O3 -march=corei7 -Wall" ./configure $CONFIGURE_ARGS
-#make 
-#strip -s cpuminer.exe
-#mv cpuminer.exe release/cpuminer-sse42.exe
-
-#make clean || echo clean
-#rm -f config.status
-#CFLAGS="-O3 -march=core2 -Wall" ./configure $CONFIGURE_ARGS
-#make 
-#strip -s cpuminer.exe
-#mv cpuminer.exe release/cpuminer-ssse3.exe
-#make clean || echo clean
-
-make clean || echo clean
-rm -f config.status
-CFLAGS="-O3 -msse2 -Wall" ./configure $CONFIGURE_ARGS
-make -j 16
-strip -s cpuminer.exe
-mv cpuminer.exe release/cpuminer-sse2.exe
-make clean || echo clean
-
+ls -l bin/win
+if (( $(ls bin/win/*.exe | wc -l) != 12 )); then
+    echo "Some binaries did not compile?"
+fi

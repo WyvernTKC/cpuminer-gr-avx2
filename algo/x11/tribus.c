@@ -1,25 +1,26 @@
 #include "tribus-gate.h"
+
+#if !defined(TRIBUS_8WAY) && !defined(TRIBUS_4WAY)
+
 #include <stdlib.h>
 #include <stdint.h>
 #include <string.h>
 #include <stdio.h>
-
 #include "algo/jh//sph_jh.h"
 #include "algo/keccak/sph_keccak.h"
-
-#ifdef NO_AES_NI
-  #include "algo/echo/sph_echo.h"
-#else
+#ifdef __AES__
   #include "algo/echo/aes_ni/hash_api.h"
+#else
+  #include "algo/echo/sph_echo.h"
 #endif
 
 typedef struct {
     sph_jh512_context     jh;
     sph_keccak512_context keccak;
-#ifdef NO_AES_NI
-    sph_echo512_context   echo;
-#else
+#ifdef __AES__
     hashState_echo        echo;
+#else
+    sph_echo512_context   echo;
 #endif
 } tribus_ctx_holder;
 
@@ -29,10 +30,10 @@ bool tribus_thread_init()
 {
    sph_jh512_init( &tribus_ctx.jh );
    sph_keccak512_init( &tribus_ctx.keccak );
-#ifdef NO_AES_NI
-   sph_echo512_init( &tribus_ctx.echo );
-#else
+#ifdef __AES__
    init_echo( &tribus_ctx.echo, 512 );
+#else
+   sph_echo512_init( &tribus_ctx.echo );
 #endif
   return true;
 }
@@ -49,12 +50,12 @@ void tribus_hash(void *state, const void *input)
      sph_keccak512( &ctx.keccak, (const void*) hash, 64 );
      sph_keccak512_close( &ctx.keccak, (void*) hash );
 
-#ifdef NO_AES_NI
-     sph_echo512( &ctx.echo, hash, 64 );
-     sph_echo512_close (&ctx.echo, hash );
-#else
+#ifdef __AES__
      update_final_echo( &ctx.echo, (BitSequence *) hash,
                         (const BitSequence *) hash, 512 );
+#else
+     sph_echo512( &ctx.echo, hash, 64 );
+     sph_echo512_close (&ctx.echo, hash );
 #endif
 
      memcpy(state, hash, 32);
@@ -98,9 +99,6 @@ int scanhash_tribus( struct work *work, uint32_t max_nonce,
         sph_jh512_init( &tribus_ctx.jh );
         sph_jh512( &tribus_ctx.jh, endiandata, 64 );
 
-#ifdef DEBUG_ALGO
-	printf("[%d] Htarg=%X\n", thr_id, Htarg);
-#endif
 	for (int m=0; m < 6; m++) {
 		if (Htarg <= htmax[m]) {
 			uint32_t mask = masks[m];
@@ -108,25 +106,9 @@ int scanhash_tribus( struct work *work, uint32_t max_nonce,
 				pdata[19] = ++n;
 				be32enc(&endiandata[19], n);
 				tribus_hash(hash32, endiandata);
-#ifndef DEBUG_ALGO
-				if ((!(hash32[7] & mask)) && fulltest(hash32, ptarget)) {
-					work_set_target_ratio(work, hash32);
-					*hashes_done = n - first_nonce + 1;
-					return 1;
-				}
-#else
-				if (!(n % 0x1000) && !thr_id) printf(".");
-				if (!(hash32[7] & mask)) {
-					printf("[%d]",thr_id);
-					if (fulltest(hash32, ptarget)) {
-						work_set_target_ratio(work, hash32);
-						*hashes_done = n - first_nonce + 1;
-						return 1;
-					}
-				}
-#endif
+				if ((!(hash32[7] & mask)) && fulltest(hash32, ptarget)) 
+                submit_solution( work, hash32, mythr );
 			} while (n < max_nonce && !work_restart[thr_id].restart);
-			// see blake.c if else to understand the loop on htmax => mask
 			break;
 		}
 	}
@@ -136,4 +118,4 @@ int scanhash_tribus( struct work *work, uint32_t max_nonce,
 	return 0;
 }
 
-
+#endif

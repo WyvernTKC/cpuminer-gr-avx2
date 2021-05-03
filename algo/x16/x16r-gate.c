@@ -1,5 +1,22 @@
 #include "x16r-gate.h"
 
+__thread char x16r_hash_order[ X16R_HASH_FUNC_COUNT + 1 ] = { 0 };
+
+void (*x16_r_s_getAlgoString) ( const uint8_t*, char* ) = NULL;
+
+#if defined (X16R_8WAY)
+
+__thread x16r_8way_context_overlay x16r_ctx;
+
+#elif defined (X16R_4WAY)
+
+__thread x16r_4way_context_overlay x16r_ctx;
+
+#endif
+
+__thread x16r_context_overlay x16_ctx;
+
+
 void x16r_getAlgoString( const uint8_t* prevblock, char *output )
 {
    char *sptr = output;
@@ -34,31 +51,58 @@ void x16s_getAlgoString( const uint8_t* prevblock, char *output )
 
 bool register_x16r_algo( algo_gate_t* gate )
 {
-#if defined (X16R_4WAY)
+#if defined (X16R_8WAY)
+  gate->scanhash  = (void*)&scanhash_x16r_8way;
+  gate->hash      = (void*)&x16r_8way_hash;
+#elif defined (X16R_4WAY)
   gate->scanhash  = (void*)&scanhash_x16r_4way;
   gate->hash      = (void*)&x16r_4way_hash;
 #else
   gate->scanhash  = (void*)&scanhash_x16r;
   gate->hash      = (void*)&x16r_hash;
 #endif
-  gate->optimizations = SSE2_OPT | AES_OPT | AVX2_OPT;
-  gate->set_target = (void*)&alt_set_target;
+  gate->optimizations = SSE2_OPT | AES_OPT | AVX2_OPT | AVX512_OPT |
+	                VAES_OPT | VAES256_OPT;
   x16_r_s_getAlgoString = (void*)&x16r_getAlgoString;
+  opt_target_factor = 256.0;
+  return true;
+};
+
+bool register_x16rv2_algo( algo_gate_t* gate )
+{
+#if defined (X16RV2_8WAY)
+  gate->scanhash  = (void*)&scanhash_x16rv2_8way;
+  gate->hash      = (void*)&x16rv2_8way_hash;
+#elif defined (X16RV2_4WAY)
+  gate->scanhash  = (void*)&scanhash_x16rv2_4way;
+  gate->hash      = (void*)&x16rv2_4way_hash;
+#else
+  gate->scanhash  = (void*)&scanhash_x16rv2;
+  gate->hash      = (void*)&x16rv2_hash;
+#endif
+  gate->optimizations = SSE2_OPT | AES_OPT | AVX2_OPT | AVX512_OPT |
+	                VAES_OPT | VAES256_OPT;
+  x16_r_s_getAlgoString = (void*)&x16r_getAlgoString;
+  opt_target_factor = 256.0;
   return true;
 };
 
 bool register_x16s_algo( algo_gate_t* gate )
 {
-#if defined (X16R_4WAY)
+#if defined (X16R_8WAY)
+  gate->scanhash  = (void*)&scanhash_x16r_8way;
+  gate->hash      = (void*)&x16r_8way_hash;
+#elif defined (X16R_4WAY)
   gate->scanhash  = (void*)&scanhash_x16r_4way;
   gate->hash      = (void*)&x16r_4way_hash;
 #else
   gate->scanhash  = (void*)&scanhash_x16r;
   gate->hash      = (void*)&x16r_hash;
 #endif
-  gate->optimizations = SSE2_OPT | AES_OPT | AVX2_OPT;
-  gate->set_target = (void*)&alt_set_target;
+  gate->optimizations = SSE2_OPT | AES_OPT | AVX2_OPT | AVX512_OPT |
+	                VAES_OPT | VAES256_OPT;
   x16_r_s_getAlgoString = (void*)&x16s_getAlgoString;
+  opt_target_factor = 256.0;
   return true;
 };
 
@@ -92,20 +136,18 @@ void x16rt_getAlgoString( const uint32_t *timeHash, char *output)
    *sptr = '\0';
 }
 
-void x16rt_build_extraheader( struct work* g_work, struct stratum_ctx* sctx )
+void veil_build_extraheader( struct work* g_work, struct stratum_ctx* sctx )
 {
+   uint32_t merkleroothash[8];
+   uint32_t witmerkleroothash[8];
+   uint32_t denom10[8];
+   uint32_t denom100[8];
+   uint32_t denom1000[8];
+   uint32_t denom10000[8];
+   int i;
    uchar merkle_tree[64] = { 0 };
-   size_t t;
 
    algo_gate.gen_merkle_root( merkle_tree, sctx );
-   // Increment extranonce2
-   for ( t = 0; t < sctx->xnonce2_size && !( ++sctx->job.xnonce2[t] ); t++ );
-
-   // Assemble block header
-//   algo_gate.build_block_header( g_work, le32dec( sctx->job.version ),
-//          (uint32_t*) sctx->job.prevhash, (uint32_t*) merkle_tree,
-//          le32dec( sctx->job.ntime ), le32dec(sctx->job.nbits) );
-   int i;
 
    memset( g_work->data, 0, sizeof(g_work->data) );
    g_work->data[0] = le32dec( sctx->job.version );
@@ -123,35 +165,35 @@ void x16rt_build_extraheader( struct work* g_work, struct stratum_ctx* sctx )
    g_work->data[31] = 0x00000280;
 
    for ( i = 0; i < 8; i++ )
-      g_work->merkleroothash[7 - i] = be32dec((uint32_t *)merkle_tree + i);
+      merkleroothash[7 - i] = be32dec((uint32_t *)merkle_tree + i);
    for ( i = 0; i < 8; i++ )
-      g_work->witmerkleroothash[7 - i] = be32dec((uint32_t *)merkle_tree + i);
+      witmerkleroothash[7 - i] = be32dec((uint32_t *)merkle_tree + i);
    for ( i = 0; i < 8; i++ )
-      g_work->denom10[i] =    le32dec((uint32_t *)sctx->job.denom10 + i);
+      denom10[i] =    le32dec((uint32_t *)sctx->job.denom10 + i);
    for ( i = 0; i < 8; i++ )
-      g_work->denom100[i] =   le32dec((uint32_t *)sctx->job.denom100 + i);
+      denom100[i] =   le32dec((uint32_t *)sctx->job.denom100 + i);
    for ( i = 0; i < 8; i++ )
-      g_work->denom1000[i] =  le32dec((uint32_t *)sctx->job.denom1000 + i);
+      denom1000[i] =  le32dec((uint32_t *)sctx->job.denom1000 + i);
    for ( i = 0; i < 8; i++ )
-      g_work->denom10000[i] = le32dec((uint32_t *)sctx->job.denom10000 + i);
+      denom10000[i] = le32dec((uint32_t *)sctx->job.denom10000 + i);
 
    uint32_t pofnhash[8];
    memset(pofnhash, 0x00, 32);
 
-   char denom10_str      [ 2 * sizeof( g_work->denom10 )           + 1 ];
-   char denom100_str     [ 2 * sizeof( g_work->denom100 )          + 1 ];
-   char denom1000_str    [ 2 * sizeof( g_work->denom1000 )         + 1 ];
-   char denom10000_str   [ 2 * sizeof( g_work->denom10000 )        + 1 ];
-   char merkleroot_str   [ 2 * sizeof( g_work->merkleroothash )    + 1 ];
-   char witmerkleroot_str[ 2 * sizeof( g_work->witmerkleroothash ) + 1 ];
+   char denom10_str      [ 2 * sizeof( denom10 )           + 1 ];
+   char denom100_str     [ 2 * sizeof( denom100 )          + 1 ];
+   char denom1000_str    [ 2 * sizeof( denom1000 )         + 1 ];
+   char denom10000_str   [ 2 * sizeof( denom10000 )        + 1 ];
+   char merkleroot_str   [ 2 * sizeof( merkleroothash )    + 1 ];
+   char witmerkleroot_str[ 2 * sizeof( witmerkleroothash ) + 1 ];
    char pofn_str         [ 2 * sizeof( pofnhash )                  + 1 ];
 
-   cbin2hex( denom10_str,       (char*) g_work->denom10,           32 );
-   cbin2hex( denom100_str,      (char*) g_work->denom100,          32 );
-   cbin2hex( denom1000_str,     (char*) g_work->denom1000,         32 );
-   cbin2hex( denom10000_str,    (char*) g_work->denom10000,        32 );
-   cbin2hex( merkleroot_str,    (char*) g_work->merkleroothash,    32 );
-   cbin2hex( witmerkleroot_str, (char*) g_work->witmerkleroothash, 32 );
+   cbin2hex( denom10_str,       (char*) denom10,           32 );
+   cbin2hex( denom100_str,      (char*) denom100,          32 );
+   cbin2hex( denom1000_str,     (char*) denom1000,         32 );
+   cbin2hex( denom10000_str,    (char*) denom10000,        32 );
+   cbin2hex( merkleroot_str,    (char*) merkleroothash,    32 );
+   cbin2hex( witmerkleroot_str, (char*) witmerkleroothash, 32 );
    cbin2hex( pofn_str,          (char*) pofnhash,                  32 );
 
    if ( true )
@@ -181,30 +223,38 @@ void x16rt_build_extraheader( struct work* g_work, struct stratum_ctx* sctx )
 
 bool register_x16rt_algo( algo_gate_t* gate )
 {
-#if defined (X16R_4WAY)
+#if defined (X16R_8WAY)
+  gate->scanhash  = (void*)&scanhash_x16rt_8way;
+  gate->hash      = (void*)&x16r_8way_hash;
+#elif defined (X16R_4WAY)
   gate->scanhash  = (void*)&scanhash_x16rt_4way;
-  gate->hash      = (void*)&x16rt_4way_hash;
+  gate->hash      = (void*)&x16r_4way_hash;
 #else
   gate->scanhash  = (void*)&scanhash_x16rt;
-  gate->hash      = (void*)&x16rt_hash;
+  gate->hash      = (void*)&x16r_hash;
 #endif
-  gate->optimizations = SSE2_OPT | AES_OPT | AVX2_OPT;
-  gate->set_target = (void*)&alt_set_target;
+  gate->optimizations = SSE2_OPT | AES_OPT | AVX2_OPT | AVX512_OPT |
+	                VAES_OPT | VAES256_OPT;
+  opt_target_factor = 256.0;
   return true;
 };
 
 bool register_x16rt_veil_algo( algo_gate_t* gate )
 {
-#if defined (X16R_4WAY)
+#if defined (X16R_8WAY)
+  gate->scanhash  = (void*)&scanhash_x16rt_8way;
+  gate->hash      = (void*)&x16r_8way_hash;
+#elif defined (X16R_4WAY)
   gate->scanhash  = (void*)&scanhash_x16rt_4way;
-  gate->hash      = (void*)&x16rt_4way_hash;
+  gate->hash      = (void*)&x16r_4way_hash;
 #else
   gate->scanhash  = (void*)&scanhash_x16rt;
-  gate->hash      = (void*)&x16rt_hash;
+  gate->hash      = (void*)&x16r_hash;
 #endif
-  gate->optimizations = SSE2_OPT | AES_OPT | AVX2_OPT;
-  gate->set_target = (void*)&alt_set_target;
-  gate->build_extraheader = (void*)&x16rt_build_extraheader;
+  gate->optimizations = SSE2_OPT | AES_OPT | AVX2_OPT | AVX512_OPT |
+	                VAES_OPT | VAES256_OPT;
+  gate->build_extraheader = (void*)&veil_build_extraheader;
+  opt_target_factor = 256.0;
   return true;
 };
 
@@ -212,19 +262,13 @@ bool register_x16rt_veil_algo( algo_gate_t* gate )
 //
 //    HEX
 
-
-void hex_set_target( struct work* work, double job_diff )
-{
-   work_set_target( work, job_diff / (128.0 * opt_diff_factor) );
-}
-
 bool register_hex_algo( algo_gate_t* gate )
 {
   gate->scanhash        = (void*)&scanhash_hex;
-  gate->hash            = (void*)&hex_hash;
-  gate->optimizations   = SSE2_OPT | AES_OPT | AVX2_OPT;
+  gate->hash            = (void*)&x16r_hash;
+  gate->optimizations   = SSE2_OPT | AES_OPT | AVX2_OPT | AVX512_OPT;
   gate->gen_merkle_root = (void*)&SHA256_gen_merkle_root;
-  gate->set_target      = (void*)&hex_set_target;
+  opt_target_factor = 128.0;
   return true;
 };
 
@@ -234,7 +278,11 @@ bool register_hex_algo( algo_gate_t* gate )
 
 bool register_x21s_algo( algo_gate_t* gate )
 {
-#if defined (X16R_4WAY)
+#if defined (X16R_8WAY)
+  gate->scanhash          = (void*)&scanhash_x21s_8way;
+  gate->hash              = (void*)&x21s_8way_hash;
+  gate->miner_thread_init = (void*)&x21s_8way_thread_init;
+#elif defined (X16R_4WAY)
   gate->scanhash          = (void*)&scanhash_x21s_4way;
   gate->hash              = (void*)&x21s_4way_hash;
   gate->miner_thread_init = (void*)&x21s_4way_thread_init;
@@ -243,9 +291,10 @@ bool register_x21s_algo( algo_gate_t* gate )
   gate->hash              = (void*)&x21s_hash;
   gate->miner_thread_init = (void*)&x21s_thread_init;
 #endif
-  gate->optimizations     = SSE2_OPT | AES_OPT | AVX2_OPT | SHA_OPT;
-  gate->set_target        = (void*)&alt_set_target;
+  gate->optimizations     = SSE2_OPT | AES_OPT | AVX2_OPT | AVX512_OPT |
+	                    VAES_OPT | VAES256_OPT;
   x16_r_s_getAlgoString   = (void*)&x16s_getAlgoString;
+  opt_target_factor = 256.0;
   return true;
 };
 

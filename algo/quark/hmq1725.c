@@ -1,4 +1,7 @@
 #include "hmq1725-gate.h"
+
+#if !defined(HMQ1725_8WAY) && !defined(HMQ1725_4WAY)
+
 #include <string.h>
 #include <stdint.h>
 #include "algo/blake/sph_blake.h"
@@ -7,25 +10,26 @@
 #include "algo/jh/sph_jh.h"
 #include "algo/keccak/sph_keccak.h"
 #include "algo/skein/sph_skein.h"
-#include "algo/luffa/sph_luffa.h"
-#include "algo/cubehash/sph_cubehash.h"
 #include "algo/shavite/sph_shavite.h"
-#include "algo/simd/sph_simd.h"
 #include "algo/echo/sph_echo.h"
 #include "algo/hamsi/sph_hamsi.h"
 #include "algo/fugue/sph_fugue.h"
 #include "algo/shabal/sph_shabal.h"
 #include "algo/whirlpool/sph_whirlpool.h"
 #include "algo/haval/sph-haval.h"
-#include <openssl/sha.h>
+#include "algo/sha/sph_sha2.h"
 #if defined(__AES__)
   #include "algo/groestl/aes_ni/hash-groestl.h"
   #include "algo/echo/aes_ni/hash_api.h"
+  #include "algo/fugue/fugue-aesni.h"
+#else
+  #include "algo/groestl/sph_groestl.h"
+  #include "algo/echo/sph_echo.h"
+  #include "algo/fugue/sph_fugue.h"
 #endif
 #include "algo/luffa/luffa_for_sse2.h"
 #include "algo/cubehash/cubehash_sse2.h"
 #include "algo/simd/nist.h"
-#include "algo/jh/sse2/jh_sse2_opt64.h"
 
 typedef struct {
   sph_blake512_context    blake1, blake2;
@@ -38,17 +42,18 @@ typedef struct {
   sph_shavite512_context  shavite1, shavite2;
   hashState_sd            simd1, simd2;
   sph_hamsi512_context    hamsi1;
-  sph_fugue512_context    fugue1, fugue2;
   sph_shabal512_context   shabal1;
   sph_whirlpool_context   whirlpool1, whirlpool2, whirlpool3, whirlpool4;
-  SHA512_CTX              sha1, sha2;
+  sph_sha512_context      sha1, sha2;
   sph_haval256_5_context  haval1, haval2;
 #if defined(__AES__)
   hashState_echo          echo1, echo2;
   hashState_groestl       groestl1, groestl2;
+  hashState_fugue         fugue1, fugue2;
 #else
   sph_groestl512_context  groestl1, groestl2;
   sph_echo512_context     echo1, echo2;
+  sph_fugue512_context    fugue1, fugue2;
 #endif
 } hmq1725_ctx_holder;
 
@@ -86,8 +91,13 @@ void init_hmq1725_ctx()
 
     sph_hamsi512_init(&hmq1725_ctx.hamsi1);
 
+#if defined(__AES__)
+    fugue512_Init( &hmq1725_ctx.fugue1, 512 );
+    fugue512_Init( &hmq1725_ctx.fugue2, 512 );
+#else
     sph_fugue512_init(&hmq1725_ctx.fugue1);
     sph_fugue512_init(&hmq1725_ctx.fugue2);
+#endif
 
     sph_shabal512_init(&hmq1725_ctx.shabal1);
 
@@ -96,8 +106,8 @@ void init_hmq1725_ctx()
     sph_whirlpool_init(&hmq1725_ctx.whirlpool3);
     sph_whirlpool_init(&hmq1725_ctx.whirlpool4);
 
-    SHA512_Init( &hmq1725_ctx.sha1 );
-    SHA512_Init( &hmq1725_ctx.sha2 );
+    sph_sha512_init( &hmq1725_ctx.sha1 );
+    sph_sha512_init( &hmq1725_ctx.sha2 );
 
     sph_haval256_5_init(&hmq1725_ctx.haval1);
     sph_haval256_5_init(&hmq1725_ctx.haval2);
@@ -233,8 +243,13 @@ extern void hmq1725hash(void *state, const void *input)
     sph_hamsi512 (&h_ctx.hamsi1, hashA, 64); //3
     sph_hamsi512_close(&h_ctx.hamsi1, hashB); //4
 
+#if defined(__AES__)
+    fugue512_Update( &h_ctx.fugue1, hashB, 512 ); //2   ////
+    fugue512_Final( &h_ctx.fugue1, hashA ); //3 
+#else
     sph_fugue512 (&h_ctx.fugue1, hashB, 64); //2   ////
     sph_fugue512_close(&h_ctx.fugue1, hashA); //3 
+#endif
 
     if ( hashA[0] & mask ) //4
     {
@@ -260,13 +275,18 @@ extern void hmq1725hash(void *state, const void *input)
 
     if ( hashB[0] & mask ) //7
     {
+#if defined(__AES__)
+        fugue512_Update( &h_ctx.fugue2, hashB, 512 ); //
+        fugue512_Final( &h_ctx.fugue2, hashA ); //8
+#else
         sph_fugue512 (&h_ctx.fugue2, hashB, 64); //
         sph_fugue512_close(&h_ctx.fugue2, hashA); //8
+#endif
     }
     else
     {
-        SHA512_Update( &h_ctx.sha1, hashB, 64 );
-        SHA512_Final( (unsigned char*) hashA, &h_ctx.sha1 );
+        sph_sha512( &h_ctx.sha1, hashB, 64 );
+        sph_sha512_close( &h_ctx.sha1, hashA );
     }
 
 #if defined(__AES__)
@@ -277,8 +297,8 @@ extern void hmq1725hash(void *state, const void *input)
     sph_groestl512_close(&h_ctx.groestl2, hashB); //4
 #endif
 
-    SHA512_Update( &h_ctx.sha2, hashB, 64 );
-    SHA512_Final( (unsigned char*) hashA, &h_ctx.sha2 );
+    sph_sha512( &h_ctx.sha2, hashB, 64 );
+    sph_sha512_close( &h_ctx.sha2, hashA );
 
     if ( hashA[0] & mask ) //4
     {
@@ -331,10 +351,8 @@ int scanhash_hmq1725( struct work *work, uint32_t max_nonce,
 			be32enc(&endiandata[19], n); 
 			hmq1725hash(hash64, endiandata);
 			if (((hash64[7]&0xFFFFFFFF)==0) && 
-					fulltest(hash64, ptarget)) {
-				*hashes_done = n - first_nonce + 1;
-				return true;
-			}
+					fulltest(hash64, ptarget)) 
+            submit_solution( work, hash64, mythr );
 		} while (n < max_nonce && !work_restart[thr_id].restart);	
 	} 
 	else if (ptarget[7]<=0xF) 
@@ -344,10 +362,8 @@ int scanhash_hmq1725( struct work *work, uint32_t max_nonce,
 			be32enc(&endiandata[19], n); 
 			hmq1725hash(hash64, endiandata);
 			if (((hash64[7]&0xFFFFFFF0)==0) && 
-					fulltest(hash64, ptarget)) {
-				*hashes_done = n - first_nonce + 1;
-				return true;
-			}
+					fulltest(hash64, ptarget)) 
+            submit_solution( work, hash64, mythr );
 		} while (n < max_nonce && !work_restart[thr_id].restart);	
 	} 
 	else if (ptarget[7]<=0xFF) 
@@ -357,10 +373,8 @@ int scanhash_hmq1725( struct work *work, uint32_t max_nonce,
 			be32enc(&endiandata[19], n); 
 			hmq1725hash(hash64, endiandata);
 			if (((hash64[7]&0xFFFFFF00)==0) && 
-					fulltest(hash64, ptarget)) {
-				*hashes_done = n - first_nonce + 1;
-				return true;
-			}
+					fulltest(hash64, ptarget)) 
+            submit_solution( work, hash64, mythr );
 		} while (n < max_nonce && !work_restart[thr_id].restart);	
 	} 
 	else if (ptarget[7]<=0xFFF) 
@@ -370,12 +384,9 @@ int scanhash_hmq1725( struct work *work, uint32_t max_nonce,
 			be32enc(&endiandata[19], n); 
 			hmq1725hash(hash64, endiandata);
 			if (((hash64[7]&0xFFFFF000)==0) && 
-					fulltest(hash64, ptarget)) {
-				*hashes_done = n - first_nonce + 1;
-				return true;
-			}
+					fulltest(hash64, ptarget)) 
+            submit_solution( work, hash64, mythr );
 		} while (n < max_nonce && !work_restart[thr_id].restart);	
-
 	} 
 	else if (ptarget[7]<=0xFFFF) 
 	{
@@ -384,12 +395,9 @@ int scanhash_hmq1725( struct work *work, uint32_t max_nonce,
 			be32enc(&endiandata[19], n); 
 			hmq1725hash(hash64, endiandata);
 			if (((hash64[7]&0xFFFF0000)==0) && 
-					fulltest(hash64, ptarget)) {
-				*hashes_done = n - first_nonce + 1;
-				return true;
-			}
+					fulltest(hash64, ptarget)) 
+                submit_solution( work, hash64, mythr );
 		} while (n < max_nonce && !work_restart[thr_id].restart);	
-
 	} 
 	else 
 	{
@@ -397,26 +405,12 @@ int scanhash_hmq1725( struct work *work, uint32_t max_nonce,
 			pdata[19] = ++n;
 			be32enc(&endiandata[19], n); 
 			hmq1725hash(hash64, endiandata);
-			if (fulltest(hash64, ptarget)) {
-				*hashes_done = n - first_nonce + 1;
-				return true;
-			}
+			if (fulltest(hash64, ptarget)) 
+                submit_solution( work, hash64, mythr );
 		} while (n < max_nonce && !work_restart[thr_id].restart);	
 	}
-	
-	
 	*hashes_done = n - first_nonce + 1;
 	pdata[19] = n;
 	return 0;
 }
-/*
-bool register_hmq1725_algo( algo_gate_t* gate )
-{
-  init_hmq1725_ctx();
-  gate->optimizations = SSE2_OPT | AES_OPT | AVX2_OPT;
-  gate->set_target       = (void*)&scrypt_set_target;
-  gate->scanhash         = (void*)&scanhash_hmq1725;
-  gate->hash             = (void*)&hmq1725hash;
-  return true;
-};
-*/
+#endif

@@ -1,4 +1,7 @@
 #include "qubit-gate.h"
+
+#if !defined(QUBIT_8WAY) && !defined(QUBIT_4WAY)
+
 #include <stdlib.h>
 #include <stdint.h>
 #include <string.h>
@@ -7,7 +10,7 @@
 #include "algo/cubehash/cubehash_sse2.h" 
 #include "algo/simd/nist.h"
 #include "algo/shavite/sph_shavite.h"
-#ifndef NO_AES_NI
+#ifdef __AES__
 #include "algo/echo/aes_ni/hash_api.h"
 #else
 #include "algo/echo/sph_echo.h"
@@ -19,10 +22,10 @@ typedef struct
         cubehashParam           cubehash;
         sph_shavite512_context  shavite;
         hashState_sd            simd;
-#ifdef NO_AES_NI
-        sph_echo512_context echo;
-#else
+#ifdef __AES__
         hashState_echo          echo;
+#else
+        sph_echo512_context echo;
 #endif
 } qubit_ctx_holder;
 
@@ -35,10 +38,10 @@ void init_qubit_ctx()
         cubehashInit(&qubit_ctx.cubehash,512,16,32);
         sph_shavite512_init(&qubit_ctx.shavite);
         init_sd(&qubit_ctx.simd,512);
-#ifdef NO_AES_NI
-        sph_echo512_init(&qubit_ctx.echo);
-#else
+#ifdef __AES__
         init_echo(&qubit_ctx.echo, 512);
+#else
+        sph_echo512_init(&qubit_ctx.echo);
 #endif
 };
 
@@ -71,12 +74,12 @@ void qubit_hash(void *output, const void *input)
         update_final_sd( &ctx.simd, (BitSequence *)hash,
                          (const BitSequence*)hash,  512 );
 
-#ifdef NO_AES_NI
-        sph_echo512 (&ctx.echo, (const void*) hash, 64);
-        sph_echo512_close(&ctx.echo, (void*) hash);
-#else
+#ifdef __AES__
         update_final_echo( &ctx.echo, (BitSequence *) hash,
                      (const BitSequence *) hash, 512 );
+#else
+        sph_echo512 (&ctx.echo, (const void*) hash, 64);
+        sph_echo512_close(&ctx.echo, (void*) hash);
 #endif
 
         asm volatile ("emms");
@@ -104,51 +107,26 @@ int scanhash_qubit( struct work *work,	uint32_t max_nonce,
 
         qubit_luffa_midstate( endiandata );
 
-#ifdef DEBUG_ALGO
-	printf("[%d] Htarg=%X\n", thr_id, Htarg);
-#endif
 	for ( int m=0; m < 6; m++ )
-        {
+   {
 	    if ( Htarg <= htmax[m] )
-            {
+       {
 	        uint32_t mask = masks[m];
 	        do
-                {
+           {
 	            pdata[19] = ++n;
-		    be32enc(&endiandata[19], n);
-		    qubit_hash(hash64, endiandata);
-#ifndef DEBUG_ALGO
-		    if (!(hash64[7] & mask))
-                    {
-                       if ( fulltest(hash64, ptarget) )
-                       {
-		          *hashes_done = n - first_nonce + 1;
-		          return true;
-                       }
-//                       else
-//                       {
-//                          applog(LOG_INFO, "Result does not validate on CPU!");
-//                       }
-                     }
-#else
-                    if (!(n % 0x1000) && !thr_id) printf(".");
-	        	if (!(hash64[7] & mask)) {
-		            printf("[%d]",thr_id);
-			    if (fulltest(hash64, ptarget)) {
-                             work_set_target_ratio( work, hash64 );
-                             *hashes_done = n - first_nonce + 1;
-				return true;
-	                    }
- 	                }
-#endif
-                } while ( n < max_nonce && !work_restart[thr_id].restart );
-                // see blake.c if else to understand the loop on htmax => mask
-            break;
-          } 
-        }
+		         be32enc(&endiandata[19], n);
+		         qubit_hash(hash64, endiandata);
+		         if (!(hash64[7] & mask))
+               if ( fulltest(hash64, ptarget) )
+                  submit_solution( work, hash64, mythr );
+           } while ( n < max_nonce && !work_restart[thr_id].restart );
+           break;
+       } 
+   }
 
 	*hashes_done = n - first_nonce + 1;
 	pdata[19] = n;
 	return 0;
 }
-
+#endif

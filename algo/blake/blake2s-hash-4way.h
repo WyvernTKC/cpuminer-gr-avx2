@@ -14,7 +14,7 @@
 #ifndef __BLAKE2S_HASH_4WAY_H__
 #define __BLAKE2S_HASH_4WAY_H__ 1
 
-#if defined(__SSE4_2__)
+#if defined(__SSE2__)
 
 #include "simd-utils.h"
 
@@ -74,6 +74,9 @@ int blake2s_4way_init( blake2s_4way_state *S, const uint8_t outlen );
 int blake2s_4way_update( blake2s_4way_state *S, const void *in,
                          uint64_t inlen );
 int blake2s_4way_final( blake2s_4way_state *S, void *out, uint8_t outlen );
+int blake2s_4way_full_blocks( blake2s_4way_state *S, void *out,
+                              const void *input, uint64_t inlen );
+
 
 #if defined(__AVX2__)
 
@@ -91,6 +94,27 @@ int blake2s_8way_init( blake2s_8way_state *S, const uint8_t outlen );
 int blake2s_8way_update( blake2s_8way_state *S, const void *in,
                          uint64_t inlen );
 int blake2s_8way_final( blake2s_8way_state *S, void *out, uint8_t outlen );
+int blake2s_8way_full_blocks( blake2s_8way_state *S, void *out,
+                              const void *input, uint64_t inlen );
+
+#endif
+
+#if defined(__AVX512F__) && defined(__AVX512VL__) && defined(__AVX512DQ__) && defined(__AVX512BW__)
+
+ALIGN( 128 ) typedef struct __blake2s_16way_state
+{
+   __m512i h[8];
+   uint8_t  buf[ BLAKE2S_BLOCKBYTES * 16 ];
+   uint32_t t[2];
+   uint32_t f[2];
+   size_t   buflen;
+   uint8_t  last_node;
+} blake2s_16way_state ;
+
+int blake2s_16way_init( blake2s_16way_state *S, const uint8_t outlen );
+int blake2s_16way_update( blake2s_16way_state *S, const void *in,
+                         uint64_t inlen );
+int blake2s_16way_final( blake2s_16way_state *S, void *out, uint8_t outlen );
 
 #endif
 
@@ -107,6 +131,6 @@ int blake2s_8way_final( blake2s_8way_state *S, void *out, uint8_t outlen );
 }
 #endif
 
-#endif  // __SSE4_2__
+#endif  // __SSE2__
 
 #endif

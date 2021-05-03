@@ -36,7 +36,7 @@
 //    MMX:     64 bit vectors  
 //    SSE2:   128 bit vectors  (64 bit CPUs only, such as Intel Core2.
 //    AVX2:   256 bit vectors  (Starting with Intel Haswell and AMD Ryzen)
-//    AVX512: 512 bit vectors  (still under development)
+//    AVX512: 512 bit vectors  (Starting with SkylakeX)
 //
 //    Most functions are avalaible at the stated levels but in rare cases
 //    a higher level feature may be required with no compatible alternative.
@@ -105,68 +105,42 @@
 //    Ex: mm256_ror1x64_128 rotates each 128 bit lane of a 256 bit vector
 //        right by 64 bits.
 //
-//   Some random thoughts about macros and inline functions, the pros and
-//   cons, when to use them, etc:
+// Vector constants
 //
-// Macros are very convenient and efficient for statement functions.
-// Macro args are passed by value and modifications are seen by the caller.
-// Macros should not generally call regular functions unless it is for a
-// special purpose such overloading a function name.
-// Statement function macros that return a value should not end in ";"
-// Statement function macros that return a value and don't modify input args
-// may be used in function arguments and expressions.
-// Macro args used in expressions should be protected ex: (x)+1
-// Macros force inlining, function inlining can be overridden by the compiler.
-// Inline functions are preferred when multiple statements or local variables
-// are needed.
-// The compiler can't do any syntax checking or type checking of args making
-// macros difficult to debug.
-// Although it is technically posssible to access the callers data without
-// they being passed as arguments it is good practice to always define
-// arguments even if they have the same name.
+// Vector constants are a big problem because they technically don't exist.
+// All vectors used as constants either reside in memory or must be genererated
+// at run time at significant cost. The cost of generating a constant
+// increases non-linearly with the number of vector elements. A 4 element
+// vector costs between 7 and 11 clocks to generate, an 8 element vector
+// is 15-25 clocks. There are also additional clock due to data dependency
+// stalls.
 //
-// General guidelines for inline functions:
+// Vector constants are often used as control indexes for permute, blend, etc,
+// where generating the index can be over 90% of the operation. This is
+// where the problem occurs. An instruction that only requires one to 3
+// clocks needs may times more just to build the index argument.
 //
-// Inline functions should not have loops, it defeats the purpose of inlining.
-// Inline functions should be short, the benefit is lost and the memory cost
-// increases if the function is referenced often.
-// Inline functions may call other functions, inlined or not. It is convenient
-// for wrapper functions whether or not the wrapped function is itself inlined.
-// Care should be taken when unrolling loops that contain calls to inlined
-// functions that may be large.
-// Large code blocks used only once may use function inlining to
-// improve high level code readability without the penalty of function
-// overhead.
+// There is very little a programmer can do to avoid the worst case scenarios.
+// Smaller integers can be merged to form 64 bit integers, and vectors with
+// repeated elements can be generated more efficiently but they have limited
+// benefit and limited application.
 //
-// A major restructuring is taking place shifting the focus from pointers
-// to registers. Previously pointer casting used memory to provide transparency
-// leaving it up to the compiler to manage everything and it does a very good
-// job. The focus has shifted to register arguments for more control
-// over the actual instructions assuming the data is in a register and the
-// the compiler just needs to manage the registers.
+// If a vector constant is to be used repeatedly it is better to define a local
+// variable to generate the constant only once.
 //
-// Rather than use pointers to provide type transparency
-// specific instructions are used to access specific data as specific types.
-// Previously pointers were cast and the compiler was left to find a way
-// to get the data from wherever it happened to be to the correct registers.
+// If a sequence of constants is to be used it can be more efficient to
+// use arithmetic with already existing constants to generate new ones.
 //
-// The utilities defined here make use features like register aliasing
-// to optimize operations. Many operations have specialized versions as
-// well as more generic versions. It is preferable to use a specialized
-// version whenever possible a sthey can take advantage of certain
-// optimizations not available to the generic version. Specically the generic
-// version usually has a second argument used is some extra calculations.
-// 
-///////////////////////////////////////////////////////
+// ex: const __m512i one = m512_one_64;
+//     const __m512i two = _mm512_add_epi64( one, one );
+//     
+//////////////////////////////////////////////////////////////////////////
 
 #include <inttypes.h>
 #include <x86intrin.h>
 #include <memory.h>
 #include <stdlib.h>
 #include <stdbool.h>
-
-// Various types and overlays
-#include "simd-utils/simd-types.h"
 
 // 64 and 128 bit integers.
 #include "simd-utils/simd-int.h"
@@ -175,7 +149,6 @@
 
 // 64 bit vectors
 #include "simd-utils/simd-64.h"
-//#include "simd-utils/intrlv-mmx.h"
 
 #if defined(__SSE2__)
 
@@ -189,17 +162,19 @@
 
 #if defined(__AVX2__)
 
+// Utilities that require AVX2 are defined in simd-256.h.
+
 // Skylake-X has all these
-#if defined(__AVX512VL__) && defined(__AVX512DQ__) && defined(__AVX512BW__)
+#if defined(__AVX512F__) && defined(__AVX512VL__) && defined(__AVX512DQ__) && defined(__AVX512BW__)
 
 // 512 bit vectors
 #include "simd-utils/simd-512.h"
 
-#endif  // MMX
-#endif  // SSE2
-#endif  // AVX
-#endif  // AVX2
 #endif  // AVX512
+#endif  // AVX2
+#endif  // AVX
+#endif  // SSE2
+#endif  // MMX
 
 #include "simd-utils/intrlv.h"
 
