@@ -54,9 +54,9 @@
 
 #if defined(__AVX2__) && defined(__AES__)
 #define GR_4WAY 1
-#define GR_4WAY_HEAVY 1
+//#define GR_4WAY_HEAVY 1
 //#define GR_4WAY_MEDIUM 1
-//#define GR_4WAY_LIGHT 1
+#define GR_4WAY_LIGHT 1
 #endif
 
 enum Algo {
