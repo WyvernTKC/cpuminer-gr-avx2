@@ -93,9 +93,6 @@ typedef enum
 typedef struct {
   __attribute__ ((aligned (32))) __m128i chaining[SIZE256];
   __attribute__ ((aligned (32))) __m128i buffer[SIZE256];
-//  __attribute__ ((aligned (32))) u64 chaining[SIZE/8];      /* actual state */
-//  __attribute__ ((aligned (32))) BitSequence_gr buffer[SIZE];  /* data buffer */
-//  u64 block_counter;        /* message block counter */
   int hashlen;              // bytes
   int blk_count;
   int buf_ptr;              /* data buffer pointer */
@@ -117,5 +114,8 @@ HashReturn_gr hash_groestli256( int, const BitSequence_gr*, DataLength_gr,
 
 HashReturn_gr update_and_final_groestl256( hashState_groestl256*, void*,
                                            const void*, DataLength_gr );
+
+int groestl256_full( hashState_groestl256* ctx,
+                   void* output, const void* input, DataLength_gr databitlen );
 
 #endif /* __hash_h */

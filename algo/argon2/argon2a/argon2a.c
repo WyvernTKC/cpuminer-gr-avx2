@@ -13,7 +13,7 @@
 #define MASK 8
 #define ZERO 0
 
-inline void argon_call(void *out, void *in, void *salt, int type)
+static inline void argon_call(void *out, void *in, void *salt, int type)
 {
 	argon2_context context;
 
@@ -62,9 +62,7 @@ int scanhash_argon2( struct work* work, uint32_t max_nonce,
 		argon2hash(hash, endiandata);
 		if (hash[7] <= Htarg && fulltest(hash, ptarget)) {
 			pdata[19] = nonce;
-			*hashes_done = pdata[19] - first_nonce;
-			work_set_target_ratio(work, hash);
-			return 1;
+         submit_solution( work, hash, mythr );
 		}
 		nonce++;
 	} while (nonce < max_nonce && !work_restart[thr_id].restart);
@@ -74,19 +72,14 @@ int scanhash_argon2( struct work* work, uint32_t max_nonce,
 	return 0;
 }
 
-int64_t argon2_get_max64 ()
-{
-  return 0x1ffLL;
-}
-
 bool register_argon2_algo( algo_gate_t* gate )
 {
   gate->optimizations = SSE2_OPT | AVX_OPT | AVX2_OPT;
   gate->scanhash        = (void*)&scanhash_argon2;
   gate->hash            = (void*)&argon2hash;
   gate->gen_merkle_root = (void*)&SHA256_gen_merkle_root;
-  gate->set_target      = (void*)&scrypt_set_target;
-  gate->get_max64       = (void*)&argon2_get_max64;
+  opt_target_factor = 65536.0;
+
   return true;
 };
 

@@ -95,13 +95,10 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
-
-#include "insecure_memzero.h"
-#include "sha256_p.h"
-#include "sysendian.h"
+#include "algo/sha/hmac-sha256-hash.h"
+#include "algo/sha/hmac-sha256-hash-4way.h"
 
 #include "yespower.h"
-
 #include "yespower-platform.c"
 
 #if __STDC_VERSION__ >= 199901L
@@ -112,11 +109,13 @@
 #define restrict
 #endif
 
+/*
 #ifdef __GNUC__
 #define unlikely(exp) __builtin_expect(exp, 0)
 #else
 #define unlikely(exp) (exp)
 #endif
+*/
 
 #ifdef __SSE__
 #define PREFETCH(x, hint) _mm_prefetch((const char *)(x), (hint));
@@ -166,6 +165,7 @@ static inline void salsa20_simd_unshuffle(const salsa20_blk_t *Bin,
 }
 
 #ifdef __SSE2__
+
 #define DECL_X \
 	__m128i X0, X1, X2, X3;
 #define DECL_Y \
@@ -175,15 +175,24 @@ static inline void salsa20_simd_unshuffle(const salsa20_blk_t *Bin,
 #define WRITE_X(out) \
 	(out).q[0] = X0; (out).q[1] = X1; (out).q[2] = X2; (out).q[3] = X3;
 
-#ifdef __XOP__
+#if defined(__AVX512VL__)
+
+#define ARX(out, in1, in2, s) \
+   out = _mm_xor_si128(out, _mm_rol_epi32(_mm_add_epi32(in1, in2), s));
+
+#elif defined(__XOP__)
+
 #define ARX(out, in1, in2, s) \
 	out = _mm_xor_si128(out, _mm_roti_epi32(_mm_add_epi32(in1, in2), s));
+
 #else
+
 #define ARX(out, in1, in2, s) { \
 	__m128i tmp = _mm_add_epi32(in1, in2); \
 	out = _mm_xor_si128(out, _mm_slli_epi32(tmp, s)); \
 	out = _mm_xor_si128(out, _mm_srli_epi32(tmp, 32 - s)); \
 }
+
 #endif
 
 #define SALSA20_2ROUNDS \
@@ -529,7 +538,7 @@ static volatile uint64_t Smask2var = Smask2;
 /* 64-bit without AVX.  This relies on out-of-order execution and register
  * renaming.  It may actually be fastest on CPUs with AVX(2) as well - e.g.,
  * it runs great on Haswell. */
-#warning "Note: using x86-64 inline assembly for pwxform.  That's great."
+//#warning "Note: using x86-64 inline assembly for pwxform.  That's great."
 #undef MAYBE_MEMORY_BARRIER
 #define MAYBE_MEMORY_BARRIER \
 	__asm__("" : : : "memory");
@@ -861,7 +870,7 @@ static void smix1(uint8_t *B, size_t r, uint32_t N,
 		salsa20_blk_t *dst = &X[i];
 		size_t k;
 		for (k = 0; k < 16; k++)
-			tmp->w[k] = le32dec(&src->w[k]);
+         tmp->w[k] = src->w[k];
 		salsa20_simd_shuffle(tmp, dst);
 	}
 
@@ -908,7 +917,7 @@ static void smix1(uint8_t *B, size_t r, uint32_t N,
 		salsa20_blk_t *dst = (salsa20_blk_t *)&B[i * 64];
 		size_t k;
 		for (k = 0; k < 16; k++)
-			le32enc(&tmp->w[k], src->w[k]);
+         tmp->w[k] = src->w[k];
 		salsa20_simd_unshuffle(tmp, dst);
 	}
 }
@@ -934,7 +943,7 @@ static void smix2(uint8_t *B, size_t r, uint32_t N, uint32_t Nloop,
 		salsa20_blk_t *dst = &X[i];
 		size_t k;
 		for (k = 0; k < 16; k++)
-			tmp->w[k] = le32dec(&src->w[k]);
+			tmp->w[k] = src->w[k];
 		salsa20_simd_shuffle(tmp, dst);
 	}
 
@@ -966,7 +975,7 @@ static void smix2(uint8_t *B, size_t r, uint32_t N, uint32_t Nloop,
 		salsa20_blk_t *dst = (salsa20_blk_t *)&B[i * 64];
 		size_t k;
 		for (k = 0; k < 16; k++)
-			le32enc(&tmp->w[k], src->w[k]);
+			tmp->w[k]  = src->w[k];
 		salsa20_simd_unshuffle(tmp, dst);
 	}
 }
@@ -1028,90 +1037,117 @@ static void smix(uint8_t *B, size_t r, uint32_t N,
 int yespower(yespower_local_t *local,
     const uint8_t *src, size_t srclen,
     const yespower_params_t *params,
-    yespower_binary_t *dst)
+    yespower_binary_t *dst, int thrid )
 {
-	yespower_version_t version = params->version;
-	uint32_t N = params->N;
-	uint32_t r = params->r;
-	const uint8_t *pers = params->pers;
-	size_t perslen = params->perslen;
-	uint32_t Swidth;
-	size_t B_size, V_size, XY_size, need;
-	uint8_t *B, *S;
-	salsa20_blk_t *V, *XY;
-	pwxform_ctx_t ctx;
-	uint8_t sha256[32];
+   yespower_version_t version = params->version;
+   uint32_t N = params->N;
+   uint32_t r = params->r;
+   const uint8_t *pers = params->pers;
+   size_t perslen = params->perslen;
+   uint32_t Swidth;
+   size_t B_size, V_size, XY_size, need;
+   uint8_t *B, *S;
+   salsa20_blk_t *V, *XY;
+   pwxform_ctx_t ctx;
+   uint8_t sha256[32];
+   sph_sha256_context sha256_ctx;
 
-	/* Sanity-check parameters */
-	if ((version != YESPOWER_0_5 && version != YESPOWER_1_0) ||
-	    N < 1024 || N > 512 * 1024 || r < 8 || r > 32 ||
-	    (N & (N - 1)) != 0 ||
-	    (!pers && perslen)) {
-		errno = EINVAL;
-		return -1;
-	}
+   /* Sanity-check parameters */
+   if ( (version != YESPOWER_0_5 && version != YESPOWER_1_0)
+      || N < 1024 || N > 512 * 1024 || r < 8 || r > 32
+      || (N & (N - 1)) != 0 || ( !pers && perslen ) )
+   {
+      errno = EINVAL;
+      return -1;
+   }
 
-	/* Allocate memory */
-	B_size = (size_t)128 * r;
-	V_size = B_size * N;
-	if (version == YESPOWER_0_5) {
-		XY_size = B_size * 2;
-		Swidth = Swidth_0_5;
-		ctx.Sbytes = 2 * Swidth_to_Sbytes1(Swidth);
-	} else {
-		XY_size = B_size + 64;
-		Swidth = Swidth_1_0;
-		ctx.Sbytes = 3 * Swidth_to_Sbytes1(Swidth);
-	}
-	need = B_size + V_size + XY_size + ctx.Sbytes;
-	if (local->aligned_size < need) {
-		if (free_region(local))
-			return -1;
-		if (!alloc_region(local, need))
-			return -1;
-	}
-	B = (uint8_t *)local->aligned;
-	V = (salsa20_blk_t *)((uint8_t *)B + B_size);
-	XY = (salsa20_blk_t *)((uint8_t *)V + V_size);
-	S = (uint8_t *)XY + XY_size;
-	ctx.S0 = S;
-	ctx.S1 = S + Swidth_to_Sbytes1(Swidth);
+   /* Allocate memory */
+   B_size = (size_t)128 * r;
+   V_size = B_size * N;
+   if ( version == YESPOWER_0_5 )
+   {
+      XY_size = B_size * 2;
+      Swidth = Swidth_0_5;
+      ctx.Sbytes = 2 * Swidth_to_Sbytes1( Swidth );
+   }
+   else
+   {
+      XY_size = B_size + 64;
+      Swidth = Swidth_1_0;
+      ctx.Sbytes = 3 * Swidth_to_Sbytes1( Swidth );
+   }
+   need = B_size + V_size + XY_size + ctx.Sbytes;
+   if ( local->aligned_size < need )
+   {
+      if ( free_region( local ) )
+         return -1;
+      if ( !alloc_region( local, need ) )
+         return -1;
+   }
+   B = (uint8_t *)local->aligned;
+   V = (salsa20_blk_t *)((uint8_t *)B + B_size);
+   XY = (salsa20_blk_t *)((uint8_t *)V + V_size);
+   S = (uint8_t *)XY + XY_size;
+   ctx.S0 = S;
+   ctx.S1 = S + Swidth_to_Sbytes1( Swidth );
 
-	SHA256_Buf(src, srclen, sha256);
+   // copy prehash, do tail   
+   memcpy( &sha256_ctx, &sha256_prehash_ctx, sizeof sha256_ctx );
 
-	if (version == YESPOWER_0_5) {
-		PBKDF2_SHA256(sha256, sizeof(sha256), src, srclen, 1,
-		    B, B_size);
-		memcpy(sha256, B, sizeof(sha256));
-		smix(B, r, N, V, XY, &ctx);
-		PBKDF2_SHA256(sha256, sizeof(sha256), B, B_size, 1,
-		    (uint8_t *)dst, sizeof(*dst));
+   sph_sha256( &sha256_ctx, src+64, srclen-64 );
+   sph_sha256_close( &sha256_ctx, sha256 );
 
-		if (pers) {
-			HMAC_SHA256_Buf(dst, sizeof(*dst), pers, perslen,
-			    sha256);
-			SHA256_Buf(sha256, sizeof(sha256), (uint8_t *)dst);
-		}
-	} else {
-		ctx.S2 = S + 2 * Swidth_to_Sbytes1(Swidth);
-		ctx.w = 0;
+   if ( version == YESPOWER_0_5 )
+   {
+      PBKDF2_SHA256( sha256, sizeof(sha256), src, srclen, 1, B, B_size );
 
-		if (pers) {
-			src = pers;
-			srclen = perslen;
-		} else {
-			srclen = 0;
-		}
+      if ( work_restart[thrid].restart ) return 0;
+   
+      memcpy( sha256, B, sizeof(sha256) );
+      smix( B, r, N, V, XY, &ctx );
 
-		PBKDF2_SHA256(sha256, sizeof(sha256), src, srclen, 1, B, 128);
-		memcpy(sha256, B, sizeof(sha256));
-		smix_1_0(B, r, N, V, XY, &ctx);
-		HMAC_SHA256_Buf(B + B_size - 64, 64,
-		    sha256, sizeof(sha256), (uint8_t *)dst);
-	}
+      if ( work_restart[thrid].restart ) return 0;
 
-	/* Success! */
-	return 0;
+      PBKDF2_SHA256( sha256, sizeof(sha256), B, B_size, 1, (uint8_t *)dst,
+                     sizeof(*dst) );
+
+      if ( work_restart[thrid].restart ) return 0;
+
+      if ( pers )
+      {
+         src = pers;
+         srclen = perslen;
+      }
+
+      HMAC_SHA256_Buf( dst, sizeof(*dst), src, srclen, sha256 );
+      SHA256_Buf( sha256, sizeof(sha256), (uint8_t *)dst );
+      
+   }
+   else
+   {
+      ctx.S2 = S + 2 * Swidth_to_Sbytes1( Swidth );
+      ctx.w = 0;
+      if ( pers )
+      {
+         src = pers;
+         srclen = perslen;
+      }
+      else
+         srclen = 0;
+
+      PBKDF2_SHA256( sha256, sizeof(sha256), src, srclen, 1, B, 128 );
+      memcpy( sha256, B, sizeof(sha256) );
+
+      if ( work_restart[thrid].restart ) return 0;
+
+      smix_1_0( B, r, N, V, XY, &ctx );
+      
+      HMAC_SHA256_Buf( B + B_size - 64, 64, sha256, sizeof(sha256),
+                       (uint8_t *)dst );
+   }
+
+   /* Success! */
+   return 1;
 }
 
 /**
@@ -1122,7 +1158,7 @@ int yespower(yespower_local_t *local,
  * Return 0 on success; or -1 on error.
  */
 int yespower_tls(const uint8_t *src, size_t srclen,
-    const yespower_params_t *params, yespower_binary_t *dst)
+    const yespower_params_t *params, yespower_binary_t *dst, int thrid )
 {
 	static __thread int initialized = 0;
 	static __thread yespower_local_t local;
@@ -1133,7 +1169,7 @@ int yespower_tls(const uint8_t *src, size_t srclen,
 		initialized = 1;
 	}
 
-	return yespower(&local, src, srclen, params, dst);
+	return yespower( &local, src, srclen, params, dst, thrid );
 }
 
 int yespower_init_local(yespower_local_t *local)

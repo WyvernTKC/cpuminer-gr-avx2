@@ -38,7 +38,7 @@ void decred_decode_extradata( struct work* work, uint64_t* net_blocks )
    if (!have_longpoll && work->height > *net_blocks + 1)
    {
       char netinfo[64] = { 0 };
-      if (opt_showdiff && net_diff > 0.)
+      if ( net_diff > 0. )
       {
          if (net_diff != work->targetdiff)
             sprintf(netinfo, ", diff %.3f, target %.1f", net_diff,
@@ -78,7 +78,6 @@ void decred_build_extraheader( struct work* g_work, struct stratum_ctx* sctx )
    uint32_t extraheader[32] = { 0 };
    int headersize = 0;
    uint32_t* extradata = (uint32_t*) sctx->xnonce1;
-   size_t t;
    int i;
 
    // getwork over stratum, getwork merkle + header passed in coinb1
@@ -86,9 +85,6 @@ void decred_build_extraheader( struct work* g_work, struct stratum_ctx* sctx )
    headersize = min((int)sctx->job.coinbase_size - 32,
                   sizeof(extraheader) );
    memcpy( extraheader, &sctx->job.coinbase[32], headersize );
-
-   // Increment extranonce2 
-   for ( t = 0; t < sctx->xnonce2_size && !( ++sctx->job.xnonce2[t] ); t++ );
 
    // Assemble block header 
    memset( g_work->data, 0, sizeof(g_work->data) );
@@ -116,7 +112,7 @@ void decred_build_extraheader( struct work* g_work, struct stratum_ctx* sctx )
    // block header suffix from coinb2 (stake version)
    memcpy( &g_work->data[44],
            &sctx->job.coinbase[ sctx->job.coinbase_size-4 ], 4 );
-   sctx->bloc_height = g_work->data[32];
+   sctx->block_height = g_work->data[32];
    //applog_hex(work->data, 180);
    //applog_hex(&work->data[36], 36);
 }
@@ -153,8 +149,7 @@ bool register_decred_algo( algo_gate_t* gate )
   gate->hash      = (void*)&decred_hash;
 #endif
   gate->optimizations = AVX2_OPT;
-  gate->get_nonceptr          = (void*)&decred_get_nonceptr;
-  gate->get_max64             = (void*)&get_max64_0x3fffffLL;
+//  gate->get_nonceptr          = (void*)&decred_get_nonceptr;
   gate->decode_extra_data     = (void*)&decred_decode_extradata;
   gate->build_stratum_request = (void*)&decred_be_build_stratum_request;
   gate->work_decode           = (void*)&std_be_work_decode;

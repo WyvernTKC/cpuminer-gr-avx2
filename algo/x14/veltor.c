@@ -1,4 +1,7 @@
 #include "veltor-gate.h"
+
+#if !defined(VELTOR_8WAY) && !defined(VELTOR_4WAY)
+
 #include <stdlib.h>
 #include <stdint.h>
 #include <string.h>
@@ -89,11 +92,10 @@ int scanhash_veltor( struct work *work, uint32_t max_nonce,
 		be32enc(&endiandata[19], nonce);
 		veltor_hash(hash, endiandata);
 
-		if (hash[7] <= Htarg && fulltest(hash, ptarget)) {
-			work_set_target_ratio(work, hash);
+		if (hash[7] <= Htarg && fulltest(hash, ptarget))
+      {
 			pdata[19] = nonce;
-			*hashes_done = pdata[19] - first_nonce;
-			return 1;
+         submit_solution( work, hash, mythr );
 		}
 		nonce++;
 
@@ -103,3 +105,4 @@ int scanhash_veltor( struct work *work, uint32_t max_nonce,
 	*hashes_done = pdata[19] - first_nonce + 1;
 	return 0;
 }
+#endif

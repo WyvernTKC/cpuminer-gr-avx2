@@ -1,4 +1,7 @@
 #include "timetravel10-gate.h"
+
+#if !defined(TIMETRAVEL10_8WAY) && !defined(TIMETRAVEL10_4WAY)
+
 #include <stdlib.h>
 #include <stdint.h>
 #include <string.h>
@@ -12,11 +15,10 @@
 #include "algo/cubehash/cubehash_sse2.h"
 #include "algo/shavite/sph_shavite.h"
 #include "algo/simd/nist.h"
-
-#ifdef NO_AES_NI
-  #include "algo/groestl/sph_groestl.h"
-#else
+#ifdef __AES__
   #include "algo/groestl/aes_ni/hash-groestl.h"
+#else
+  #include "algo/groestl/sph_groestl.h"
 #endif
 
 static __thread uint32_t s_ntime = UINT32_MAX;
@@ -32,10 +34,10 @@ typedef struct {
         cubehashParam           cube;
         sph_shavite512_context  shavite;
         hashState_sd            simd;
-#ifdef NO_AES_NI
-        sph_groestl512_context  groestl;
-#else
+#ifdef __AES__
         hashState_groestl       groestl;
+#else
+        sph_groestl512_context  groestl;
 #endif
 } tt10_ctx_holder;
 
@@ -53,10 +55,10 @@ void init_tt10_ctx()
         cubehashInit( &tt10_ctx.cube, 512, 16, 32 );
         sph_shavite512_init( &tt10_ctx.shavite );
         init_sd( &tt10_ctx.simd, 512 );
-#ifdef NO_AES_NI
-        sph_groestl512_init( &tt10_ctx.groestl );
-#else
+#ifdef __AES__
         init_groestl( &tt10_ctx.groestl, 64 );
+#else
+        sph_groestl512_init( &tt10_ctx.groestl );
 #endif
 };
 
@@ -116,7 +118,10 @@ void timetravel10_hash(void *output, const void *input)
         }
         break;
      case 2:
-#ifdef NO_AES_NI
+#ifdef __AES__
+           update_and_final_groestl( &ctx.groestl, (char*)hashB,
+                                    (char*)hashA, dataLen*8 );
+#else
         if ( i == 0 )
         {
            memcpy( &ctx.groestl, &tt10_mid.groestl, sizeof tt10_mid.groestl );
@@ -128,19 +133,6 @@ void timetravel10_hash(void *output, const void *input)
            sph_groestl512( &ctx.groestl, hashA, dataLen );
            sph_groestl512_close( &ctx.groestl, hashB );
         }
-#else
-// groestl midstate is slower
-//        if ( i == 0 )
-//        {
-//           memcpy( &ctx.groestl, &tt10_mid.groestl, sizeof tt10_mid.groestl );
-//           update_and_final_groestl( &ctx.groestl, (char*)hashB,
-//                                    (char*)input + midlen, tail*8 );
-//        }
-//        else
-//        {
-           update_and_final_groestl( &ctx.groestl, (char*)hashB,
-                                    (char*)hashA, dataLen*8 );
-//        }
 #endif
         break;
      case 3:
@@ -286,13 +278,9 @@ int scanhash_timetravel10( struct work *work, uint32_t max_nonce,
            sph_bmw512( &tt10_mid.bmw, endiandata, 64 );
            break;
         case 2:
-#ifdef NO_AES_NI
+#ifndef __AES__
            memcpy( &tt10_mid.groestl, &tt10_ctx.groestl, sizeof(tt10_mid.groestl ) );
            sph_groestl512( &tt10_mid.groestl, endiandata, 64 );
-#else
-// groestl midstate is slower
-//         memcpy( &tt10_mid.groestl, &tt10_ctx.groestl, sizeof(tt10_mid.groestl ) );
-//         update_groestl( &tt10_mid.groestl, (char*)endiandata, 64*8 );
 #endif
            break;
         case 3:
@@ -334,17 +322,14 @@ int scanhash_timetravel10( struct work *work, uint32_t max_nonce,
 
         if ( hash[7] <= Htarg && fulltest( hash, ptarget) )
         {
-              work_set_target_ratio( work, hash );
               pdata[19] = nonce;
-              work_set_target_ratio( work, hash );
-              *hashes_done = pdata[19] - first_nonce;
-              return 1;
-         }
-         nonce++;
-
+              submit_solution( work, hash, mythr );
+        }
+        nonce++;
         } while (nonce < max_nonce && !(*restart));
 
         pdata[19] = nonce;
         *hashes_done = pdata[19] - first_nonce + 1;
   return 0;
 }
+#endif

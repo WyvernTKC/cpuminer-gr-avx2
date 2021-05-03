@@ -32,6 +32,10 @@
 
 #include <stdint.h>
 #include <stdlib.h> /* for size_t */
+#include "miner.h"
+#include "simd-utils.h"
+#include "algo/sha/sph_sha2.h"
+#include <openssl/sha.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -71,7 +75,13 @@ typedef struct {
  */
 typedef struct {
 	unsigned char uc[32];
-} yespower_binary_t;
+} yespower_binary_t __attribute__ ((aligned (64)));
+
+extern yespower_params_t yespower_params;
+
+//SHA256_CTX sha256_prehash_ctx;
+extern __thread sph_sha256_context sha256_prehash_ctx;
+//extern __thread SHA256_CTX sha256_prehash_ctx;
 
 /**
  * yespower_init_local(local):
@@ -109,7 +119,11 @@ extern int yespower_free_local(yespower_local_t *local);
  */
 extern int yespower(yespower_local_t *local,
     const uint8_t *src, size_t srclen,
-    const yespower_params_t *params, yespower_binary_t *dst);
+    const yespower_params_t *params, yespower_binary_t *dst, int thrid);
+
+extern int yespower_b2b(yespower_local_t *local,
+    const uint8_t *src, size_t srclen,
+    const yespower_params_t *params, yespower_binary_t *dst, int thrid );
 
 /**
  * yespower_tls(src, srclen, params, dst):
@@ -121,7 +135,28 @@ extern int yespower(yespower_local_t *local,
  * MT-safe as long as dst is local to the thread.
  */
 extern int yespower_tls(const uint8_t *src, size_t srclen,
-    const yespower_params_t *params, yespower_binary_t *dst);
+    const yespower_params_t *params, yespower_binary_t *dst, int thr_id);
+
+extern int yespower_b2b_tls(const uint8_t *src, size_t srclen,
+    const yespower_params_t *params, yespower_binary_t *dst, int thr_id);
+
+
+#if defined(__AVX2__)
+
+typedef struct
+{
+   __m256i uc[8];
+} yespower_8way_binary_t __attribute__ ((aligned (128)));
+
+extern int yespower_8way( yespower_local_t *local, const __m256i *src,
+                          size_t srclen, const yespower_params_t *params,
+                          yespower_8way_binary_t *dst, int thrid );
+
+
+extern int yespower_8way_tls( const __m256i *src, size_t srclen,
+    const yespower_params_t *params, yespower_8way_binary_t *dst, int thr_id );
+
+#endif // AVX2
 
 #ifdef __cplusplus
 }

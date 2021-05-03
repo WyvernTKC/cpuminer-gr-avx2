@@ -316,5 +316,4 @@ void sph_echo512_addbits_and_close(
 #ifdef __cplusplus
 }
 #endif
-
 #endif

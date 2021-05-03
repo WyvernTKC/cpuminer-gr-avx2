@@ -70,7 +70,7 @@ int scanhash_hodl_wolf( struct work* work, uint32_t max_nonce,
     uint32_t *ptarget = work->target;
     int threadNumber = mythr->id;
     CacheEntry *Garbage = (CacheEntry*)hodl_scratchbuf;
-    CacheEntry Cache[AES_PARALLEL_N];
+    CacheEntry Cache[AES_PARALLEL_N] __attribute__ ((aligned (64)));
     __m128i* data[AES_PARALLEL_N];
     const __m128i* next[AES_PARALLEL_N];
     uint32_t CollisionCount = 0;
@@ -129,9 +129,10 @@ int scanhash_hodl_wolf( struct work* work, uint32_t max_nonce,
 	      if( FinalPoW[7] <= ptarget[7] )
 	      {
 	          pdata[20] = swab32( BlockHdr[20] );
-		  pdata[21] = swab32( BlockHdr[21] );
-		  *hashes_done = CollisionCount;
-		  return(1);
+             pdata[21] = swab32( BlockHdr[21] );
+		       *hashes_done = CollisionCount;
+             submit_solution( work, FinalPoW, mythr );
+             return(0);
 	      }
 	   }
 	}
@@ -198,7 +199,8 @@ int scanhash_hodl_wolf( struct work* work, uint32_t max_nonce,
                   pdata[20] = swab32( BlockHdr[20] );
                   pdata[21] = swab32( BlockHdr[21] );
                   *hashes_done = CollisionCount;
-                  return(1);
+                  submit_solution( work, FinalPoW, mythr );
+                  return(0);
               }
            }
         }

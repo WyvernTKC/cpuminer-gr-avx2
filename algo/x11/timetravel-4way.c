@@ -45,12 +45,12 @@ void init_tt8_4way_ctx()
 
 void timetravel_4way_hash(void *output, const void *input)
 {
-   uint64_t hash0[8] __attribute__ ((aligned (64)));
-   uint64_t hash1[8] __attribute__ ((aligned (64)));
-   uint64_t hash2[8] __attribute__ ((aligned (64)));
-   uint64_t hash3[8] __attribute__ ((aligned (64)));
-   uint64_t vhashX[8*4] __attribute__ ((aligned (64)));
-   uint64_t vhashY[8*4] __attribute__ ((aligned (64)));
+   uint64_t hash0[10] __attribute__ ((aligned (64)));
+   uint64_t hash1[10] __attribute__ ((aligned (64)));
+   uint64_t hash2[10] __attribute__ ((aligned (64)));
+   uint64_t hash3[10] __attribute__ ((aligned (64)));
+   uint64_t vhashX[10*4] __attribute__ ((aligned (64)));
+   uint64_t vhashY[10*4] __attribute__ ((aligned (64)));
    uint64_t *vhashA, *vhashB;
    tt8_4way_ctx_holder ctx __attribute__ ((aligned (64)));
    uint32_t dataLen = 64;
@@ -84,13 +84,13 @@ void timetravel_4way_hash(void *output, const void *input)
       switch ( permutation[i] )
       {
         case 0:
-           blake512_4way( &ctx.blake, vhashA, dataLen );
+           blake512_4way_update( &ctx.blake, vhashA, dataLen );
            blake512_4way_close( &ctx.blake, vhashB );
            if ( i == 7 )
               dintrlv_4x64( hash0, hash1, hash2, hash3, vhashB, dataLen<<3 );
         break;
         case 1:
-           bmw512_4way( &ctx.bmw, vhashA, dataLen );
+           bmw512_4way_update( &ctx.bmw, vhashA, dataLen );
            bmw512_4way_close( &ctx.bmw, vhashB );
            if ( i == 7 )
               dintrlv_4x64( hash0, hash1, hash2, hash3, vhashB, dataLen<<3 );
@@ -112,19 +112,19 @@ void timetravel_4way_hash(void *output, const void *input)
               intrlv_4x64( vhashB, hash0, hash1, hash2, hash3, dataLen<<3 );
         break;
         case 3:
-           skein512_4way( &ctx.skein, vhashA, dataLen );
+           skein512_4way_update( &ctx.skein, vhashA, dataLen );
            skein512_4way_close( &ctx.skein, vhashB );
            if ( i == 7 )
               dintrlv_4x64( hash0, hash1, hash2, hash3, vhashB, dataLen<<3 );
         break;
         case 4:
-           jh512_4way( &ctx.jh, vhashA, dataLen );
+           jh512_4way_update( &ctx.jh, vhashA, dataLen );
            jh512_4way_close( &ctx.jh, vhashB );
            if ( i == 7 )
               dintrlv_4x64( hash0, hash1, hash2, hash3, vhashB, dataLen<<3 );
         break;
         case 5:
-           keccak512_4way( &ctx.keccak, vhashA, dataLen );
+           keccak512_4way_update( &ctx.keccak, vhashA, dataLen );
            keccak512_4way_close( &ctx.keccak, vhashB );
            if ( i == 7 )
               dintrlv_4x64( hash0, hash1, hash2, hash3, vhashB, dataLen<<3 );
@@ -221,7 +221,7 @@ int scanhash_timetravel_4way( struct work *work, uint32_t max_nonce,
           && !opt_benchmark )
       {
           pdata[19] = n+i;
-          submit_lane_solution( work, hash+(i<<3), mythr, i );
+          submit_solution( work, hash+(i<<3), mythr );
       }
       n += 4;
    } while ( ( n < max_nonce ) && !(*restart) );
