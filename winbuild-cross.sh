@@ -13,7 +13,7 @@ export LOCAL_LIB="$HOME/usr/lib"
 export CONFIGURE_ARGS="--with-curl=$LOCAL_LIB/curl --with-crypto=$LOCAL_LIB/openssl --host=x86_64-w64-mingw32"
 export MINGW_LIB="/usr/x86_64-w64-mingw32/lib"
 # set correct gcc version
-export GCC_MINGW_LIB="/usr/lib/gcc/x86_64-w64-mingw32/10-win32"
+export GCC_MINGW_LIB="/usr/lib/gcc/x86_64-w64-mingw32/9.3-win32"
 # used by GCC
 export LDFLAGS="-L$LOCAL_LIB/curl/lib/.libs -L$LOCAL_LIB/gmp/.libs -L$LOCAL_LIB/openssl"
 
@@ -25,9 +25,10 @@ ln -s $LOCAL_LIB/gmp/gmp.h ./gmp.h
 
 # make release directory and copy selected DLLs.
 
-rm -rf bin/win/ > /dev/null
+rm -rf bin/win/ 2>/dev/null
+mkdir -p bin/win/{Medium,Heavy} 2>/dev/null
 
-mkdir -p bin/win
+
 cp $MINGW_LIB/zlib1.dll bin/win/
 cp $MINGW_LIB/libwinpthread-1.dll bin/win/
 cp $GCC_MINGW_LIB/libstdc++-6.dll bin/win/
@@ -48,36 +49,44 @@ make distclean || echo clean
 rm -f config.status
 ./autogen.sh || echo done
 CFLAGS="-O3 -march=${1} ${3} ${DFLAGS}" ./configure ${CONFIGURE_ARGS}
-make -j 12
+make -j 16
 strip -s cpuminer.exe
-#mv cpuminer.exe bin/win/cpuminer-${2}.exe
-mv cpuminer.exe /media/sf_Videos/cpuminer/cpuminer-${2}.exe
+mv cpuminer.exe bin/win/${4}/cpuminer-${2}.exe
 
 }
 
-# Sandybridge AVX AES
-#compile "corei7-avx" "avx" "-maes"
+#Non-AES
+# Generic SSE2
+compile "x86-64" "sse2" "-msse"
 
-# Haswell AVX2 AES
-compile "core-avx2" "avx2" "-maes"
+# Core2 SSSE3
+compile "core2" "ssse3"
 
+# Nehalem SSE4.2
+compile "corei7" "sse42"
+
+
+#AES
 # Westmere SSE4.2 AES
-#compile "westmere" "aes-sse42" "-maes"
+compile "westmere" "aes-sse42" "-maes"
+
+# Sandybridge AVX AES
+compile "corei7-avx" "avx" "-maes"
+
+
+#AVX2+ Light
+# Haswell AVX2 AES
+# GCC 9 doesn't include AES with core-avx2
+compile "core-avx2" "avx2" "-maes"
 
 # AMD Zen1 AVX2 SHA
 compile "znver1" "zen"
 
+# AMD Zen2 AVX2 SHA
+compile "znver2" "zen2"
+
 # AMD Zen3 AVX2 SHA VAES
 compile "znver2" "zen3" "-mvaes"
-
-# Nehalem SSE4.2
-#compile "corei7" "sse42"
-
-# Core2 SSSE3
-#compile "core2" "ssse3"
-
-# Generic SSE2
-#compile "x86-64" "sse2" "-msse2"
 
 # Icelake AVX512 SHA VAES
 compile "icelake-client" "avx512-sha-vaes"
@@ -89,7 +98,49 @@ compile "cascadelake" "avx512-sha" "-msha"
 compile "skylake-avx512" "avx512"
 
 
-ls -l bin/win
-if (( $(ls bin/win/*.exe | wc -l) != 12 )); then
-    echo "Some binaries did not compile?"
-fi
+#AVX2+ Medium
+# Haswell AVX2 AES
+# GCC 9 doesn't include AES with core-avx2
+compile "core-avx2" "avx2" "-maes -DGR_4WAY_MEDIUM" "Medium"
+
+# AMD Zen1 AVX2 SHA
+compile "znver1" "zen" " -DGR_4WAY_MEDIUM" "Medium"
+
+# AMD Zen2 AVX2 SHA
+compile "znver2" "zen2" "-DGR_4WAY_MEDIUM" "Medium"
+
+# AMD Zen3 AVX2 SHA VAES
+compile "znver2" "zen3" "-mvaes -DGR_4WAY_MEDIUM" "Medium"
+
+# Icelake AVX512 SHA VAES
+compile "icelake-client" "avx512-sha-vaes" "-DGR_4WAY_MEDIUM" "Medium"
+
+# Rocketlake AVX512 SHA AES
+compile "cascadelake" "avx512-sha" "-msha -DGR_4WAY_MEDIUM" "Medium"
+
+# Slylake-X AVX512 AES
+compile "skylake-avx512" "avx512" "-DGR_4WAY_MEDIUM" "Medium"
+
+
+#AVX2+ Heavy
+# Haswell AVX2 AES
+# GCC 9 doesn't include AES with core-avx2
+compile "core-avx2" "avx2" "-maes -DGR_4WAY_HEAVY" "Heavy"
+
+# AMD Zen1 AVX2 SHA
+compile "znver1" "zen" "-DGR_4WAY_HEAVY" "Heavy"
+
+# AMD Zen2 AVX2 SHA
+compile "znver2" "zen2" "-DGR_4WAY_HEAVY" "Heavy"
+
+# AMD Zen3 AVX2 SHA VAES
+compile "znver2" "zen3" "-mvaes -DGR_4WAY_HEAVY" "Heavy"
+
+# Icelake AVX512 SHA VAES
+compile "icelake-client" "avx512-sha-vaes" "-DGR_4WAY_HEAVY" "Heavy"
+
+# Rocketlake AVX512 SHA AES
+compile "cascadelake" "avx512-sha" "-msha -DGR_4WAY_HEAVY" "Heavy"
+
+# Slylake-X AVX512 AES
+compile "skylake-avx512" "avx512" "-DGR_4WAY_HEAVY" "Heavy"

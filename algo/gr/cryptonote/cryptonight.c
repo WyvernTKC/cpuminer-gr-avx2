@@ -371,6 +371,14 @@ void cryptonight_turtlelite_hash(const void *input, void *output) {
 
 #ifdef __AVX2__ // GR_4WAY
 
+// GCC 7.5 Does not have _mm256_set_mi128i
+#ifdef __GNUC__
+#if __GNUC__ < 8
+#define _mm256_set_m128i(a, b)                                                 \
+  _mm256_insertf128_si256(_mm256_castsi128_si256(b), a, 1)
+#endif // __GNUC__ < 8
+#endif // __GNUC__
+
 #define RDATA_ALIGN16 __attribute__((aligned(16)))
 #define R128(x) ((__m128i *)(x))
 

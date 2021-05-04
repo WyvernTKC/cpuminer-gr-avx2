@@ -2837,7 +2837,7 @@ static void show_credits() {
          "  *********** \n");
   printf("     A CPU miner with multi algo support and optimized for CPUs\n");
   printf("     with AVX512, SHA and VAES extensions by JayDDee.\n");
-  printf("     with Ghostrider Algo SSE&AVX2 by Ausminer.\n");
+  printf("     with Ghostrider Algo SSE&AVX2 by Ausminer & Delgon.\n");
   printf("     Jay D Dee's BTC donation address: "
          "12tdvfF7KmAsihBXQXynT6E6th2c2pByTT\n\n");
   printf(
