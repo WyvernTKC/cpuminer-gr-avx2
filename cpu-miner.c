@@ -800,9 +800,8 @@ static bool gbt_work_decode(const json_t *val, struct work *work) {
     }
     if (xsig_len) {
       unsigned char *ssig_end = cbtx + 42 + cbtx[41];
-      int push_len = cbtx[41] + xsig_len < 76        ? 1
-                     : cbtx[41] + 2 + xsig_len > 100 ? 0
-                                                     : 2;
+      int push_len =
+          cbtx[41] + xsig_len < 76 ? 1 : cbtx[41] + 2 + xsig_len > 100 ? 0 : 2;
       n = xsig_len + push_len;
       memmove(ssig_end + n, ssig_end, cbtx_size - 42 - cbtx[41]);
       cbtx[41] += n;
@@ -995,10 +994,8 @@ void report_summary_log(bool force) {
   struct timeval diff;
 
   if (!opt_quiet || (curr_temp >= 80)) {
-    int wait_time = curr_temp >= 90   ? 5
-                    : curr_temp >= 80 ? 30
-                    : curr_temp >= 70 ? 60
-                                      : 120;
+    int wait_time =
+        curr_temp >= 90 ? 5 : curr_temp >= 80 ? 30 : curr_temp >= 70 ? 60 : 120;
     timeval_subtract(&diff, &now, &cpu_temp_time);
     if ((diff.tv_sec > wait_time) ||
         ((curr_temp > prev_temp) && (curr_temp >= 75))) {
@@ -2821,12 +2818,9 @@ static void *stratum_thread(void *userdata) {
           stratum_handle_response(s);
         free(s);
       } else {
-        free(s);
         stratum_disconnect(&stratum);
-        // stratum_need_reset = true;
         applog(LOG_WARNING,
                "Stratum session has expired, enable keepalives next time");
-        return NULL;
       }
     } else {
       applog(LOG_ERR, "Stratum connection timeout");
@@ -3846,8 +3840,8 @@ int main(int argc, char *argv[]) {
 #endif
 
   // Prepare and check Large Pages. At least 4MiB per thread.
-  bool pages = InitHugePages(opt_n_threads * 2);
-  if (!pages) {
+  huge_pages = InitHugePages(opt_n_threads * 2);
+  if (!huge_pages) {
     applog(LOG_ERR, "Could not prepare Huge Pages.");
   } else {
     applog(LOG_BLUE, "Huge Pages set up successfuly.");

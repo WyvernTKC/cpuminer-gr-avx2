@@ -13,7 +13,6 @@ __thread gr_4way_context_overlay gr_4way_ctx;
 __thread gr_context_overlay gr_ctx;
 
 __thread uint8_t *hp_state = NULL;
-__thread int hp_allocated = 0;
 
 bool register_gr_algo(algo_gate_t *gate) {
 #if defined(GR_4WAY)
@@ -144,7 +143,7 @@ void *statistic_thread() {
   double elapsed;
   gettimeofday(&start, NULL);
   while (true) {
-    usleep(1500000);
+    usleep(3000000);
     // Change rotation.
     rotation = (rotation + 1) % 20;
     gettimeofday(&end, NULL);

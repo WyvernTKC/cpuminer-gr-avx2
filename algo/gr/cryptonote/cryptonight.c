@@ -20,29 +20,30 @@
 
 extern __thread uint8_t *hp_state;
 
-static void do_blake_hash(const void *input, size_t len, char *output) {
+static void do_blake_hash(const void *input, size_t len, void *output) {
   blake256_hash((uint8_t *)output, input, len);
 }
 
-static void do_groestl_hash(const void *input, size_t len, char *output) {
+static void do_groestl_hash(const void *input, size_t len, void *output) {
   groestl(input, len * 8, (uint8_t *)output);
 }
 
-static void do_jh_hash(const void *input, size_t len, char *output) {
+static void do_jh_hash(const void *input, size_t len, void *output) {
   int r = jh_hash(HASH_SIZE * 8, input, 8 * len, (uint8_t *)output);
   assert(SUCCESS == r);
 }
 
-static void do_skein_hash(const void *input, size_t len, char *output) {
+static void do_skein_hash(const void *input, size_t len, void *output) {
   int r = c_skein_hash(8 * HASH_SIZE, input, 8 * len, (uint8_t *)output);
   assert(SKEIN_SUCCESS == r);
 }
 
-static void (*const extra_hashes[4])(const void *, size_t, char *) = {
+static void (*const extra_hashes[4])(const void *, size_t, void *) = {
     do_blake_hash, do_groestl_hash, do_jh_hash, do_skein_hash};
 
-static inline uint64_t __umul128(uint64_t a, uint64_t b, uint64_t *hi) {
-  unsigned __int128 r = (unsigned __int128)a * (unsigned __int128)b;
+static __attribute__((always_inline)) uint64_t
+__umul128(const uint64_t *a, const uint64_t *b, uint64_t *hi) {
+  unsigned __int128 r = (unsigned __int128)(*a) * (unsigned __int128)(*b);
   *hi = r >> 64;
   return (uint64_t)r;
 }
@@ -261,78 +262,80 @@ static inline void implode_scratchpad(const __m128i *input, __m128i *output,
 }
 
 __attribute__((always_inline)) void
-cryptonight_hash(const char *input, char *output, const uint32_t memory,
+cryptonight_hash(const void *input, void *output, const uint32_t memory,
                  const uint32_t iterations, const uint32_t mask) {
-  uint8_t *state = (uint8_t *)alloca(200);
+  uint8_t state[200];
 
-  keccak1600((const uint8_t *)input, 64, (uint8_t *)state);
-
-  explode_scratchpad((const __m128i *)state, (__m128i *)hp_state, memory);
-
-  const size_t MASK = mask;
+  keccak1600(input, 64, state);
 
   uint64_t *h0 = (uint64_t *)state;
   uint8_t *l0 = hp_state;
+
+  explode_scratchpad((const __m128i *)state, (__m128i *)l0, memory);
 
   const uint64_t tweak1_2_0 = (*((uint64_t *)(input + 35))) ^ h0[24];
 
   uint64_t al0 = h0[0] ^ h0[4];
   uint64_t ah0 = h0[1] ^ h0[5];
-  uint64_t idx0 = al0;
+  uint64_t idx0 = al0 & mask;
   __m128i bx0 =
       _mm_set_epi64x((int64_t)(h0[3] ^ h0[7]), (int64_t)(h0[2] ^ h0[6]));
-  //__m128i bx1 =
-  //    _mm_set_epi64x((int64_t)(h0[9] ^ h0[11]), (int64_t)(h0[8] ^ h0[10]));
 
   for (size_t i = 0; i < iterations; i++) {
     // Pre AES
-    __m128i cx = _mm_load_si128((const __m128i *)(&l0[idx0 & MASK]));
-    const __m128i ax0 = _mm_set_epi64x((int64_t)(ah0), (int64_t)(al0));
+    __m128i cx = _mm_load_si128((const __m128i *)(&l0[idx0]));
 
     // AES
 #ifdef __AES__
-    cx = _mm_aesenc_si128(cx, ax0);
+    cx = _mm_aesenc_si128(cx, _mm_set_epi64x((int64_t)(ah0), (int64_t)(al0)));
 #else
+    const __m128i ax0 = _mm_set_epi64x((int64_t)(ah0), (int64_t)(al0));
     cx = soft_aesenc(&cx, &ax0);
+    // cx = soft_aesenc(&cx, &ax0);
 #endif
 
     // Post AES
     __m128i tmp = _mm_xor_si128(bx0, cx);
-    ((uint64_t *)(&l0[idx0 & MASK]))[0] = _mm_cvtsi128_si64(tmp);
+    ((uint64_t *)(&l0[idx0]))[0] = _mm_cvtsi128_si64(tmp);
 
     tmp = _mm_castps_si128(
         _mm_movehl_ps(_mm_castsi128_ps(tmp), _mm_castsi128_ps(tmp)));
     uint64_t vh = _mm_cvtsi128_si64(tmp);
 
-    uint8_t x = (uint8_t)(vh >> 24);
+    const uint8_t x = (uint8_t)(vh >> 24);
     static const uint16_t table = 0x7531;
     const uint8_t index = (((x >> (3)) & 6) | (x & 1)) << 1;
     vh ^= ((table >> index) & 0x3) << 28;
 
-    ((uint64_t *)(&l0[idx0 & MASK]))[1] = vh;
+    ((uint64_t *)(&l0[idx0]))[1] = vh;
 
-    idx0 = (uint64_t)(_mm_cvtsi128_si64(cx));
+    const uint64_t cx0l = (uint64_t)(_mm_cvtsi128_si64(cx));
+    idx0 = cx0l & mask;
 
     uint64_t hi, lo, cl, ch;
-    cl = ((uint64_t *)(&l0[idx0 & MASK]))[0];
-    ch = ((uint64_t *)(&l0[idx0 & MASK]))[1];
+    cl = ((uint64_t *)(&l0[idx0]))[0];
+    ch = ((uint64_t *)(&l0[idx0]))[1];
 
-    lo = __umul128(idx0, cl, &hi);
+    lo = __umul128(&cx0l, &cl, &hi);
+    //__asm("mulq %3\n\t" : "=d"(hi), "=a"(lo) : "1"(cx0l), "rm"(cl) : "cc");
+
     al0 += hi;
     ah0 += lo;
 
-    ((uint64_t *)(&l0[idx0 & MASK]))[0] = al0;
-    ((uint64_t *)(&l0[idx0 & MASK]))[1] = ah0 ^ tweak1_2_0;
+    ((uint64_t *)(&l0[idx0]))[0] = al0;
+    ((uint64_t *)(&l0[idx0]))[1] = ah0 ^ tweak1_2_0;
 
     al0 ^= cl;
     ah0 ^= ch;
-    idx0 = al0;
+
+    idx0 = al0 & mask;
     bx0 = cx;
   }
 
-  implode_scratchpad((const __m128i *)hp_state, (__m128i *)state, memory);
-  keccakf((uint64_t *)state, 24);
+  implode_scratchpad((const __m128i *)l0, (__m128i *)state, memory);
+  keccakf(h0, 24);
   extra_hashes[state[0] & 3](state, 200, output);
+  memset(output + 32, 0, 32);
 }
 
 // Variant      MEMORY            ITERATIONS      MASK
@@ -342,27 +345,27 @@ cryptonight_hash(const char *input, char *output, const uint32_t memory,
 // Lite         1Mib,   2^20      2^18            (MEMORY - 16)
 // Turtle       256KiB, 2^18      2^16            (MEMORY - 16)
 // Turtlelite   256KiB, 2^18      2^16            (MEMORY - 16) / 2
-void cryptonight_dark_hash(const char *input, char *output) {
+void cryptonight_dark_hash(const void *input, void *output) {
   cryptonight_hash(input, output, 524288, 131072, 524272);
 }
 
-void cryptonight_darklite_hash(const char *input, char *output) {
+void cryptonight_darklite_hash(const void *input, void *output) {
   cryptonight_hash(input, output, 524288, 131072, 262128);
 }
 
-void cryptonight_fast_hash(const char *input, char *output) {
+void cryptonight_fast_hash(const void *input, void *output) {
   cryptonight_hash(input, output, 2097152, 262144, 2097136);
 }
 
-void cryptonight_lite_hash(const char *input, char *output) {
+void cryptonight_lite_hash(const void *input, void *output) {
   cryptonight_hash(input, output, 1048576, 262144, 1048560);
 }
 
-void cryptonight_turtle_hash(const char *input, char *output) {
+void cryptonight_turtle_hash(const void *input, void *output) {
   cryptonight_hash(input, output, 262144, 65536, 262128);
 }
 
-void cryptonight_turtlelite_hash(const char *input, char *output) {
+void cryptonight_turtlelite_hash(const void *input, void *output) {
   cryptonight_hash(input, output, 262144, 65536, 131056);
 }
 
@@ -370,19 +373,12 @@ void cryptonight_turtlelite_hash(const char *input, char *output) {
 
 #define RDATA_ALIGN16 __attribute__((aligned(16)))
 #define R128(x) ((__m128i *)(x))
-#if defined(__INTEL_COMPILER)
-#define ASM __asm__
-#elif !defined(_MSC_VER)
-#define ASM __asm__
-#else
-#define ASM __asm
-#endif
 
-#define NONCE_POINTER(input) (((const uint8_t *)input) + 35)
+#define NONCE_POINTER(input) (((const void *)input) + 35)
 #define state_index(x, cn_aes_init) (((((uint64_t)x) >> 4) & cn_aes_init) << 4)
 
-static inline void aes_pseudo_round(const uint8_t *in, uint8_t *out,
-                                    const uint8_t *expandedKey, int nblocks) {
+static inline void aes_pseudo_round(const void *in, void *out,
+                                    const void *expandedKey, int nblocks) {
   __m128i *k = R128(expandedKey);
   __m128i d;
   int i;
@@ -403,9 +399,9 @@ static inline void aes_pseudo_round(const uint8_t *in, uint8_t *out,
   }
 }
 
-static inline void aes_pseudo_round_xor(const uint8_t *in, uint8_t *out,
-                                        const uint8_t *expandedKey,
-                                        const uint8_t * xor, int nblocks) {
+static inline void aes_pseudo_round_xor(const void *in, void *out,
+                                        const void *expandedKey,
+                                        const void * xor, int nblocks) {
   __m128i *k = R128(expandedKey);
   __m128i *x = R128(xor);
   __m128i d;
@@ -453,7 +449,7 @@ static inline void aes_256_assist2(__m128i *t1, __m128i *t3) {
   *t3 = _mm_xor_si128(*t3, t2);
 }
 
-static inline void aes_expand_key(const uint8_t *key, uint8_t *expandedKey) {
+static inline void aes_expand_key(const void *key, void *expandedKey) {
   __m128i *ek = R128(expandedKey);
   __m128i t1, t2, t3;
 
@@ -500,8 +496,8 @@ static inline void aes_expand_key(const uint8_t *key, uint8_t *expandedKey) {
 
 // Requires 2x memory allocated in hp_state.
 __attribute__((always_inline)) void
-cryptonight_2way_hash(const char *input0, const char *input1, char *output0,
-                      char *output1, const uint32_t memory,
+cryptonight_2way_hash(const void *input0, const void *input1, void *output0,
+                      void *output1, const uint32_t memory,
                       const uint32_t iter_div, const uint32_t cn_aes_init) {
   union cn_slow_hash_state state[2];
   RDATA_ALIGN16 uint8_t text[INIT_SIZE_BYTE];
@@ -644,10 +640,12 @@ cryptonight_2way_hash(const char *input0, const char *input1, char *output0,
   memcpy(state[1].init, text, INIT_SIZE_BYTE);
 
   hash_permutation(&state[0].hs);
-  hash_permutation(&state[1].hs);
-
   extra_hashes[state[0].hs.b[0] & 3](&state[0], 200, output0);
+  memset(output0 + 32, 0, 32);
+
+  hash_permutation(&state[1].hs);
   extra_hashes[state[1].hs.b[0] & 3](&state[1], 200, output1);
+  memset(output1 + 32, 0, 32);
 }
 
 // Variant      MEMORY            ITERATIONS      CN_AES_INIT
@@ -657,37 +655,37 @@ cryptonight_2way_hash(const char *input0, const char *input1, char *output0,
 // Lite         1Mib,   2^20      2^18            (MEMORY - 16)
 // Turtle       256KiB, 2^18      2^16            (MEMORY - 16)
 // Turtlelite   256KiB, 2^18      2^16            (MEMORY - 16) / 2
-void cryptonight_dark_2way_hash(const char *input0, const char *input1,
-                                char *output0, char *output1) {
+void cryptonight_dark_2way_hash(const void *input0, const void *input1,
+                                void *output0, void *output1) {
   cryptonight_2way_hash(input0, input1, output0, output1, 524288, 131072,
                         32767);
 }
 
-void cryptonight_darklite_2way_hash(const char *input0, const char *input1,
-                                    char *output0, char *output1) {
+void cryptonight_darklite_2way_hash(const void *input0, const void *input1,
+                                    void *output0, void *output1) {
   cryptonight_2way_hash(input0, input1, output0, output1, 524288, 131072,
                         16383);
 }
 
-void cryptonight_fast_2way_hash(const char *input0, const char *input1,
-                                char *output0, char *output1) {
+void cryptonight_fast_2way_hash(const void *input0, const void *input1,
+                                void *output0, void *output1) {
   cryptonight_2way_hash(input0, input1, output0, output1, 2097152, 262144,
                         131071);
 }
 
-void cryptonight_lite_2way_hash(const char *input0, const char *input1,
-                                char *output0, char *output1) {
+void cryptonight_lite_2way_hash(const void *input0, const void *input1,
+                                void *output0, void *output1) {
   cryptonight_2way_hash(input0, input1, output0, output1, 1048576, 262144,
                         65535);
 }
 
-void cryptonight_turtle_2way_hash(const char *input0, const char *input1,
-                                  char *output0, char *output1) {
+void cryptonight_turtle_2way_hash(const void *input0, const void *input1,
+                                  void *output0, void *output1) {
   cryptonight_2way_hash(input0, input1, output0, output1, 262144, 65536, 16383);
 }
 
-void cryptonight_turtlelite_2way_hash(const char *input0, const char *input1,
-                                      char *output0, char *output1) {
+void cryptonight_turtlelite_2way_hash(const void *input0, const void *input1,
+                                      void *output0, void *output1) {
   cryptonight_2way_hash(input0, input1, output0, output1, 262144, 65536, 8191);
 }
 

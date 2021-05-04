@@ -5,6 +5,8 @@
 #include <stdint.h>
 #include <stdlib.h>
 
+static bool huge_pages = false;
+
 bool InitHugePages(size_t threads);
 
 void *AllocateLargePagesMemory(size_t size);

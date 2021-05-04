@@ -118,10 +118,7 @@ static BOOL TrySetLockPagesPrivilege() {
   return ObtainLockPagesPrivilege() && SetLockPagesPrivilege();
 }
 
-bool InitHugePages(size_t threads) {
-  bool huge_pages = TrySetLockPagesPrivilege();
-  return huge_pages;
-}
+bool InitHugePages(size_t threads) { return TrySetLockPagesPrivilege(); }
 
 void *AllocateLargePagesMemory(size_t size) {
   const size_t min = GetLargePageMinimum();
@@ -202,7 +199,11 @@ void *AllocateLargePagesMemory(size_t size) {
 #endif
 
   if (mem == MAP_FAILED) {
-    applog(LOG_ERR, "Huge Pages allocation failed. Run with root privileges.");
+    if (huge_pages) {
+      applog(LOG_ERR,
+             "Huge Pages allocation failed. Run with root privileges.");
+    }
+
     // Retry without huge pages.
 #if defined(__FreeBSD__)
     mem = mmap(0, size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1,
@@ -221,12 +222,12 @@ void *AllocateLargePagesMemory(size_t size) {
 void *AllocateMemory(size_t size) {
   void *mem = AllocateLargePagesMemory(size);
   if (mem == NULL) {
-    fprintf(stderr, "1\n");
-    applog(LOG_NOTICE, "Using malloc as allocation method");
+    if (opt_debug) {
+      applog(LOG_NOTICE, "Using malloc as allocation method");
+    }
     mem = malloc(size);
   }
   if (mem == NULL) {
-    fprintf(stderr, "2\n");
     applog(LOG_ERR, "Could not allocate any memory for thread");
     exit(1);
   }

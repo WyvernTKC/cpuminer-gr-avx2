@@ -12,16 +12,16 @@ extern "C" {
 #define INIT_SIZE_BLK 8
 #define INIT_SIZE_BYTE 128
 
-void cryptonight_hash(const char *input, char *output, const uint32_t memory,
+void cryptonight_hash(const void *input, void *output, const uint32_t memory,
                       const uint32_t iterations, const uint32_t mask);
 
 // Helper functions for different types of Cryptonight variants.
-void cryptonight_dark_hash(const char *input, char *output);
-void cryptonight_darklite_hash(const char *input, char *output);
-void cryptonight_fast_hash(const char *input, char *output);
-void cryptonight_lite_hash(const char *input, char *output);
-void cryptonight_turtle_hash(const char *input, char *output);
-void cryptonight_turtlelite_hash(const char *input, char *output);
+void cryptonight_dark_hash(const void *input, void *output);
+void cryptonight_darklite_hash(const void *input, void *output);
+void cryptonight_fast_hash(const void *input, void *output);
+void cryptonight_lite_hash(const void *input, void *output);
+void cryptonight_turtle_hash(const void *input, void *output);
+void cryptonight_turtlelite_hash(const void *input, void *output);
 
 #if defined(__AVX2__)
 #include "crypto/hash-ops.h"
@@ -43,24 +43,23 @@ struct cryptonight_ctx {
 };
 #pragma pack(pop)
 
-void cryptonight_2way_hash(const char *input0, const char *input1,
-                           char *output0, char *output1, const uint32_t memory,
+void cryptonight_2way_hash(const void *input0, const void *input1,
+                           void *output0, void *output1, const uint32_t memory,
                            const uint32_t iter_div, const uint32_t cn_aes_init);
 
 // Helper functions for different types of Cryptonight variants.
-void cryptonight_dark_2way_hash(const char *input0, const char *input1,
-                                char *output0, char *output1);
-void cryptonight_darklite_2way_hash(const char *input0, const char *input1,
-                                    char *output0, char *output1);
-void cryptonight_fast_2way_hash(const char *input0, const char *input1,
-                                char *output0, char *output1);
-void cryptonight_lite_2way_hash(const char *input0, const char *input1,
-                                char *output0, char *output1);
-void cryptonight_turtle_2way_hash(const char *input0, const char *input1,
-                                  char *output0, char *output1);
-void cryptonight_turtlelite_2way_hash(const char *input0, const char *input1,
-                                      char *output0, char *output1);
-
+void cryptonight_dark_2way_hash(const void *input0, const void *input1,
+                                void *output0, void *output1);
+void cryptonight_darklite_2way_hash(const void *input0, const void *input1,
+                                    void *output0, void *output1);
+void cryptonight_fast_2way_hash(const void *input0, const void *input1,
+                                void *output0, void *output1);
+void cryptonight_lite_2way_hash(const void *input0, const void *input1,
+                                void *output0, void *output1);
+void cryptonight_turtle_2way_hash(const void *input0, const void *input1,
+                                  void *output0, void *output1);
+void cryptonight_turtlelite_2way_hash(const void *input0, const void *input1,
+                                      void *output0, void *output1);
 #endif // __AVX2__ / 2way
 
 #ifdef __cplusplus

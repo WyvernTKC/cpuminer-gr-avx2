@@ -90,33 +90,30 @@ int gr_hash_generic(void *output, const void *input, int thrid) {
       sph_whirlpool512_full(&ctx.whirlpool, hash, in, size);
       break;
     case CNDark:
-      cryptonight_dark_hash((const char *)in, (char *)hash);
-      memset(hash + 4, 0, 32);
+      cryptonight_dark_hash(in, hash);
       break;
     case CNDarklite:
-      cryptonight_darklite_hash((const char *)in, (char *)hash);
-      memset(hash + 4, 0, 32);
+      cryptonight_darklite_hash(in, hash);
       break;
     case CNFast:
-      cryptonight_fast_hash((const char *)in, (char *)hash);
-      memset(hash + 4, 0, 32);
+      cryptonight_fast_hash(in, hash);
       break;
     case CNLite:
-      cryptonight_lite_hash((const char *)in, (char *)hash);
-      memset(hash + 4, 0, 32);
+      cryptonight_lite_hash(in, hash);
       break;
     case CNTurtle:
-      cryptonight_turtle_hash((const char *)in, (char *)hash);
-      memset(hash + 4, 0, 32);
+      cryptonight_turtle_hash(in, hash);
       break;
     case CNTurtlelite:
-      cryptonight_turtlelite_hash((const char *)in, (char *)hash);
-      memset(hash + 4, 0, 32);
+      cryptonight_turtlelite_hash(in, hash);
       break;
     }
 
     // Stop early.
     if (work_restart[thrid].restart && !opt_benchmark) {
+      if (opt_debug) {
+        applog(LOG_DEBUG, "Thread %d exit early", thrid);
+      }
       return 0;
     }
     in = (void *)hash;
