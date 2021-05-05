@@ -93,6 +93,7 @@ bool opt_debug = false;
 bool opt_debug_diff = false;
 bool opt_protocol = false;
 bool opt_benchmark = false;
+bool opt_benchmark_config = false;
 bool opt_redirect = true;
 bool opt_extranonce = true;
 bool want_longpoll = true;
@@ -223,6 +224,7 @@ int default_api_listen = 4048;
 
 pthread_mutex_t applog_lock;
 pthread_mutex_t stats_lock;
+pthread_cond_t sync_cond;
 
 static struct timeval session_start;
 static struct timeval five_min_start;
@@ -3475,6 +3477,13 @@ void parse_arg(int key, char *arg) {
       show_usage_and_exit(1);
     }
     break;
+  case 1102: // benchmark
+    opt_benchmark = true;
+    opt_benchmark_config = true;
+    want_longpoll = false;
+    want_stratum = false;
+    have_stratum = false;
+    break;
   default:
     show_usage_and_exit(1);
   }
@@ -3584,6 +3593,7 @@ int main(int argc, char *argv[]) {
   int i, err;
 
   pthread_mutex_init(&applog_lock, NULL);
+  pthread_cond_init(&sync_cond, NULL);
 
   show_credits();
 

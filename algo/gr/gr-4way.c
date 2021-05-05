@@ -399,15 +399,19 @@ int scanhash_gr_4way(struct work *work, uint32_t max_nonce,
 
   if (hp_state == NULL) {
     // Allocate 4MiB instead of 2MiB if 2way Fast is used.
-    if (cn_config[Fast] == 1) {
+    if (cn_config[Fast] == 1 || opt_benchmark_config) {
       hp_state = (uint8_t *)AllocateMemory(1 << 22);
     } else {
       hp_state = (uint8_t *)AllocateMemory(1 << 21);
     }
   }
 
+  if (opt_benchmark_config) {
+    benchmark_configs(pdata, thr_id);
+  }
+
   if (opt_benchmark) {
-    benchmark(pdata, thr_id);
+    benchmark(pdata, thr_id, 0);
     diff_to_hash(ptarget, 0.05 / 65536.0);
   }
 

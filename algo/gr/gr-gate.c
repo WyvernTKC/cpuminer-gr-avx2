@@ -111,7 +111,9 @@ void gr_getAlgoString(const uint8_t *block, uint8_t *selectedAlgoOutput) {
 
 static double bench_time = 0.0;
 static double bench_hashes = 0.0;
+static double bench_hashrate = 0.0;
 static uint8_t rotation = 0;
+static volatile bool stop_benchmark = false;
 
 static void print_stats(const char *prefix, bool same_line) {
   double hashrate;
@@ -119,6 +121,7 @@ static void print_stats(const char *prefix, bool same_line) {
 
   // lock is not necessary.
   hashrate = bench_hashes / bench_time;
+  bench_hashrate = hashrate;
   scale_hash_for_display(&hashrate, hr_units);
   if (same_line) {
     pthread_mutex_unlock(&applog_lock);
@@ -136,23 +139,56 @@ static void print_stats(const char *prefix, bool same_line) {
   }
 }
 
+static void sync_lock(const int locks) {
+  static volatile int done = 0;
+
+  pthread_mutex_lock(&stats_lock);
+  done++;
+  if (done != locks) {
+    pthread_cond_wait(&sync_cond, &stats_lock);
+  } else {
+    done = 0;
+    pthread_cond_broadcast(&sync_cond);
+  }
+  pthread_mutex_unlock(&stats_lock);
+}
+
+static void sync_conf() { sync_lock(opt_n_threads); }
+
+static void sync_bench() { sync_lock(opt_n_threads + 1); }
+
 // Detached thread for changing rotation every 1.5s.
 // Prints data every rotation.
-void *statistic_thread() {
+void *statistic_thread(void *arg) {
+  bool infinite = true;
+  long sleep_time = 3000000;
+  if (arg != NULL) {
+    infinite = false;
+    sleep_time = *((long *)arg);
+  }
   struct timeval start, end, diff;
   double elapsed;
-  gettimeofday(&start, NULL);
+  sync_bench(); // Sync before benchmark starts.
+  sync_bench(); // Rotation change. Threads start with new rotation.
   while (true) {
-    usleep(3000000);
+    gettimeofday(&start, NULL);
+    usleep(sleep_time);
     // Change rotation.
     rotation = (rotation + 1) % 20;
     gettimeofday(&end, NULL);
     timeval_subtract(&diff, &end, &start);
     elapsed = (double)diff.tv_sec + (double)diff.tv_usec / 1e6;
-    bench_time = elapsed;
+    bench_time += elapsed;
     if (rotation == 0) {
       // Print permanently after full 20 rotations.
       print_stats("Hashrate (Avg): ", false);
+      if (!infinite) {
+        stop_benchmark =
+            true;     // Make sure it is true before other threads sync.
+        sync_bench(); // Config change sync.
+        return NULL;
+      }
+      sync_bench(); // Rotation change sync.
     } else {
       print_stats("Hashrate (Avg): ", true);
     }
@@ -165,10 +201,11 @@ static const uint8_t cn[20][3] = {
     {0, 3, 4}, {0, 3, 5}, {0, 4, 5}, {1, 2, 3}, {1, 2, 4}, {1, 2, 5}, {1, 3, 4},
     {1, 3, 5}, {1, 4, 5}, {2, 3, 4}, {2, 3, 5}, {2, 4, 5}, {3, 4, 5}};
 
-void benchmark(void *input, int thr_id) {
+void benchmark(void *input, int thr_id, long sleep_time) {
   pthread_t pthr;
   if (thr_id == 0) {
-    pthread_create(&pthr, NULL, &statistic_thread, NULL);
+    pthread_create(&pthr, NULL, &statistic_thread,
+                   sleep_time ? &sleep_time : NULL);
   }
 
   uint32_t edata[20] __attribute__((aligned(64)));
@@ -183,46 +220,93 @@ void benchmark(void *input, int thr_id) {
   mm128_bswap32_80(edata, input);
 #endif
   uint8_t local_rotation = 255;
-#if defined(GR_4WAY)
-  const int iters = 1;
-#else
-  const int iters = 2;
-#endif
-  while (true) {
-    for (int i = 0; i < iters; i++) {
-      // gr_hash_order is calculated once per rotation as that is how it is done
-      // in scanhash_gr.
-      if (likely(local_rotation != rotation)) {
-        local_rotation = rotation;
-        // Change first part of the hash to get different core rotation.
-        edata[1] = rand();
-        edata[2] = rand();
 
-        // Use new rotation.
-        gr_getAlgoString((const uint8_t *)(&edata[1]), gr_hash_order);
-        gr_hash_order[5] = cn[rotation][0] + 15;
-        gr_hash_order[11] = cn[rotation][1] + 15;
-        gr_hash_order[17] = cn[rotation][2] + 15;
+  sync_bench(); // Sync before benchmark starts.
+  while (true) {
+    // gr_hash_order is calculated once per rotation as that is how it is done
+    // in scanhash_gr.
+    if (likely(local_rotation != rotation)) {
+      local_rotation = rotation;
+      // Change first part of the hash to get different core rotation.
+      edata[1] = rand();
+      edata[2] = rand();
+
+      // Use new rotation.
+      gr_getAlgoString((const uint8_t *)(&edata[1]), gr_hash_order);
+      gr_hash_order[5] = cn[rotation][0] + 15;
+      gr_hash_order[11] = cn[rotation][1] + 15;
+      gr_hash_order[17] = cn[rotation][2] + 15;
+      if (rotation == 0) {
+        sync_bench(); // Rotation change sync.
+        if (likely(stop_benchmark)) {
+          return;
+        }
       }
-#if defined(GR_4WAY)
-      // Make sure nonces are increased for each hash. Same hashes will result
-      // in better data locality on CN algos leading to better/innaccurate
-      // results.
-      *noncev = mm256_intrlv_blend_32(
-          _mm256_set_epi32(n + 3, 0, n + 2, 0, n + 1, 0, n, 0), *noncev);
-      gr_4way_hash(hash, vdata, thr_id);
-#else
-      // Increase nonce.
-      edata[19]++;
-      gr_hash(hash, edata, thr_id);
-#endif
     }
+#if defined(GR_4WAY)
+    // Make sure nonces are increased for each hash. Same hashes will result
+    // in better data locality on CN algos leading to better/innaccurate
+    // results.
+    *noncev = mm256_intrlv_blend_32(
+        _mm256_set_epi32(n + 3, 0, n + 2, 0, n + 1, 0, n, 0), *noncev);
+    gr_4way_hash(hash, vdata, thr_id);
+#else
+    // Increase nonce.
+    edata[19]++;
+    gr_hash(hash, edata, thr_id);
+#endif
+    // Calculated hash. Do not count half finished hahshes.
     pthread_mutex_lock(&stats_lock);
 #if defined(GR_4WAY)
-    bench_hashes += iters * 4;
+    bench_hashes += 4;
 #else
-    bench_hashes += iters;
+    bench_hashes += 1;
 #endif
     pthread_mutex_unlock(&stats_lock);
+  }
+}
+
+void benchmark_configs(void *input, int thr_id) {
+  int best_config = 0;
+  int best_hashrate = 0;
+
+  for (int i = 0; i < (1 << 6); i++) {
+    if (thr_id == 0) {
+      // Set new cn_config to test.
+      cn_config[0] = (i & 1) >> 0;
+      cn_config[1] = (i & 2) >> 1;
+      cn_config[2] = (i & 4) >> 2;
+      cn_config[3] = (i & 8) >> 3;
+      cn_config[4] = (i & 16) >> 4;
+      cn_config[5] = (i & 32) >> 5;
+      applog(LOG_NOTICE, "Testing Cryptonigh --cn-config %d,%d,%d,%d,%d,%d",
+             cn_config[0], cn_config[1], cn_config[2], cn_config[3],
+             cn_config[4], cn_config[5]);
+
+      // Reset benchamrk variables to default.
+      bench_time = 0.0;
+      bench_hashes = 0.0;
+      bench_hashrate = 0.0;
+      rotation = 0;
+    }
+    sync_conf();
+    stop_benchmark = false;
+    sync_conf();
+    benchmark(input, thr_id, 1000000);
+
+    // Check if this config is better.
+    if (thr_id == 0) {
+      if (bench_hashrate > best_hashrate) {
+        best_hashrate = bench_hashrate;
+        best_config = i;
+      }
+    }
+  }
+  // Show best config.
+  if (thr_id == 0) {
+    applog(LOG_NOTICE, "Best --cn-config %d,%d,%d,%d,%d,%d",
+           (best_config & 1) >> 0, (best_config & 2) >> 1,
+           (best_config & 4) >> 2, (best_config & 8) >> 3,
+           (best_config & 16) >> 4, (best_config & 32) >> 5);
   }
 }

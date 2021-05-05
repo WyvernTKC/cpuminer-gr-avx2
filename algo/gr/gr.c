@@ -139,8 +139,12 @@ int scanhash_gr(struct work *work, uint32_t max_nonce, uint64_t *hashes_done,
     hp_state = (uint8_t *)AllocateMemory(1 << 21);
   }
 
+  if (opt_benchmark_config) {
+    benchmark_configs(pdata, thr_id);
+  }
+
   if (opt_benchmark) {
-    benchmark(pdata, thr_id);
+    benchmark(pdata, thr_id, 0);
     diff_to_hash(ptarget, 0.05 / 65536.0);
   }
 

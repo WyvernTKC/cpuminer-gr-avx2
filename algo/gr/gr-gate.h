@@ -157,7 +157,8 @@ int scanhash_gr(struct work *work, uint32_t max_nonce, uint64_t *hashes_done,
 
 extern __thread uint8_t *hp_state;
 
-void benchmark(void *input, int thr_id);
+void benchmark(void *input, int thr_id, long sleep_time);
+void benchmark_configs(void *input, int thr_id);
 
 bool register_gr_algo(algo_gate_t *gate);
 
