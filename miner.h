@@ -626,6 +626,7 @@ extern enum algos opt_algo;
 extern bool opt_debug;
 extern bool opt_debug_diff;
 extern bool opt_benchmark;
+extern bool opt_benchmark_config;
 extern bool opt_protocol;
 extern bool opt_extranonce;
 extern bool opt_quiet;
@@ -678,11 +679,13 @@ extern uint32_t rejected_share_count;
 extern uint32_t solved_block_count;
 extern pthread_mutex_t applog_lock;
 extern pthread_mutex_t stats_lock;
+extern pthread_cond_t sync_cond;
 extern bool opt_sapling;
 extern const int pk_buffer_size_max;
 extern int pk_buffer_size;
 extern char *opt_data_file;
 extern bool opt_verify;
+extern uint8_t cn_config[6];
 
 static char const usage[] = "\
 Usage: cpuminer [OPTIONS]\n\
@@ -705,6 +708,7 @@ Options:\n\
                           decred        Blake256r14dcr\n\
                           deep          Deepcoin (DCN)\n\
                           dmd-gr        Diamond\n\
+                          gr            Ghost Rider - Raptoreum (RTM)\n\
                           groestl       Groestl coin\n\
                           hex           x16r-hex\n\
                           hmq1725       Espers\n\
@@ -818,6 +822,7 @@ Options:\n\
                             "\
   -B, --background      run the miner in the background\n\
       --benchmark       run in offline benchmark mode\n\
+      --benchmark-config run in offline benchmark mode. Test different Cryptonight configurations\n\
       --cpu-affinity    set process affinity to cpu core(s), mask 0x3 for cores 0 and 1\n\
       --cpu-priority    set process priority (default: 0 idle, 2 normal to 5 highest)\n\
   -b, --api-bind=address[:port]   IP address for the miner API, default port is 4048)\n\
@@ -829,6 +834,18 @@ Options:\n\
       --data-file       path and name of data file\n\
       --verify          enable additional time consuming start up tests\n\
   -V, --version         display version information and exit\n\
+  -y                    disable application of MSR mod on the system\n"
+#ifdef __AVX2__
+                            "\
+      --cn-config=[LIST]  list of which cryptonight variant should be calculated using 2way method.\n\
+                          Cryptonight variants: Turtlelite, Turtle, Darklite, Dark, Lite, Fast\n\
+                          Available options:\n\
+                          'light' - default, use only SSE. [0,0,0,0,0,0]\n\
+                          'medium' - use mix of SSE2 & 2way. [0,1,1,1,0,0]\n\
+                          'heavy' - use only 2way. [1,1,1,1,1,1]\n\
+                          [LIST] - customm, list of ',' separated 6 values, 0 - SSE2,  1 - 2way\n"
+#endif
+                            "\
   -h, --help            display this help text and exit\n\
 ";
 
@@ -849,6 +866,7 @@ static struct option const options[] = {
     {"api-remote", 0, NULL, 1030},
     {"background", 0, NULL, 'B'},
     {"benchmark", 0, NULL, 1005},
+    {"benchmark-config", 0, NULL, 1102},
     {"cputest", 0, NULL, 1006},
     {"cert", 1, NULL, 1001},
     {"coinbase-addr", 1, NULL, 1016},
@@ -897,6 +915,9 @@ static struct option const options[] = {
     {"data-file", 1, NULL, 1027},
     {"verify", 0, NULL, 1028},
     {"version", 0, NULL, 'V'},
+#ifdef __AVX2__
+    {"cn-config", 1, NULL, 1101},
+#endif
     {0, 0, 0, 0}};
 
 #endif /* __MINER_H__ */

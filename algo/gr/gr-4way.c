@@ -3,7 +3,7 @@
 
 #if defined(GR_4WAY)
 
-int gr_4way_hash_generic(void *output, const void *input, int thrid) {
+int gr_4way_hash(void *output, const void *input, int thrid) {
   uint64_t vhash[10 * 4] __attribute__((aligned(128)));
   uint64_t vhashA[10 * 2] __attribute__((aligned(128)));
   uint64_t vhashB[10 * 2] __attribute__((aligned(128)));
@@ -267,116 +267,95 @@ int gr_4way_hash_generic(void *output, const void *input, int thrid) {
       whirlpool_4way_close(&ctx.whirlpool, vhash);
       vectorized = true;
       break;
-    case CNDark:
+    case CNTurtlelite:
       if (vectorized) {
         dintrlv_4x64_512(hash0, hash1, hash2, hash3, vhash);
       }
-#if defined(GR_4WAY_HEAVY)
-      cryptonight_dark_2way_hash(hash0, hash1, hash0, hash1);
-      cryptonight_dark_2way_hash(hash2, hash3, hash2, hash3);
-#elif defined(GR_4WAY_MEDIUM)
-      cryptonight_dark_2way_hash(hash0, hash1, hash0, hash1);
-      cryptonight_dark_2way_hash(hash2, hash3, hash2, hash3);
-#else // do as GR_4WAY_LIGHT
-      cryptonight_dark_hash(hash0, hash0);
-      cryptonight_dark_hash(hash1, hash1);
-      cryptonight_dark_hash(hash2, hash2);
-      cryptonight_dark_hash(hash3, hash3);
-#endif
-      vectorized = false;
-      break;
-    case CNDarklite:
-      if (vectorized) {
-        dintrlv_4x64_512(hash0, hash1, hash2, hash3, vhash);
+      if (cn_config[Turtlelite]) {
+        cryptonight_turtlelite_2way_hash(hash0, hash1, hash0, hash1);
+        cryptonight_turtlelite_2way_hash(hash2, hash3, hash2, hash3);
+      } else {
+        cryptonight_turtlelite_hash(hash0, hash0);
+        cryptonight_turtlelite_hash(hash1, hash1);
+        cryptonight_turtlelite_hash(hash2, hash2);
+        cryptonight_turtlelite_hash(hash3, hash3);
       }
-#if defined(GR_4WAY_HEAVY)
-      cryptonight_darklite_2way_hash(hash0, hash1, hash0, hash1);
-      cryptonight_darklite_2way_hash(hash2, hash3, hash2, hash3);
-#elif defined(GR_4WAY_MEDIUM)
-      cryptonight_darklite_2way_hash(hash0, hash1, hash0, hash1);
-      cryptonight_darklite_2way_hash(hash2, hash3, hash2, hash3);
-#else // do as GR_4WAY_LIGHT
-      cryptonight_darklite_hash(hash0, hash0);
-      cryptonight_darklite_hash(hash1, hash1);
-      cryptonight_darklite_hash(hash2, hash2);
-      cryptonight_darklite_hash(hash3, hash3);
-#endif
-      vectorized = false;
-      break;
-    case CNFast:
-      if (vectorized) {
-        dintrlv_4x64_512(hash0, hash1, hash2, hash3, vhash);
-      }
-#if defined(GR_4WAY_HEAVY)
-      cryptonight_fast_2way_hash(hash0, hash1, hash0, hash1);
-      cryptonight_fast_2way_hash(hash2, hash3, hash2, hash3);
-#elif defined(GR_4WAY_MEDIUM)
-      cryptonight_fast_hash(hash0, hash0);
-      cryptonight_fast_hash(hash1, hash1);
-      cryptonight_fast_hash(hash2, hash2);
-      cryptonight_fast_hash(hash3, hash3);
-#else // do as GR_4WAY_LIGHT
-      cryptonight_fast_hash(hash0, hash0);
-      cryptonight_fast_hash(hash1, hash1);
-      cryptonight_fast_hash(hash2, hash2);
-      cryptonight_fast_hash(hash3, hash3);
-#endif
-      vectorized = false;
-      break;
-    case CNLite:
-      if (vectorized) {
-        dintrlv_4x64_512(hash0, hash1, hash2, hash3, vhash);
-      }
-#if defined(GR_4WAY_HEAVY)
-      cryptonight_lite_2way_hash(hash0, hash1, hash0, hash1);
-      cryptonight_lite_2way_hash(hash2, hash3, hash2, hash3);
-#elif defined(GR_4WAY_MEDIUM)
-      cryptonight_lite_hash(hash0, hash0);
-      cryptonight_lite_hash(hash1, hash1);
-      cryptonight_lite_hash(hash2, hash2);
-      cryptonight_lite_hash(hash3, hash3);
-#else // do as GR_4WAY_LIGHT
-      cryptonight_lite_hash(hash0, hash0);
-      cryptonight_lite_hash(hash1, hash1);
-      cryptonight_lite_hash(hash2, hash2);
-      cryptonight_lite_hash(hash3, hash3);
-#endif
       vectorized = false;
       break;
     case CNTurtle:
       if (vectorized) {
         dintrlv_4x64_512(hash0, hash1, hash2, hash3, vhash);
       }
-#if defined(GR_4WAY_HEAVY)
-      cryptonight_turtle_2way_hash(hash0, hash1, hash0, hash1);
-      cryptonight_turtle_2way_hash(hash2, hash3, hash2, hash3);
-#elif defined(GR_4WAY_MEDIUM)
-      cryptonight_turtle_2way_hash(hash0, hash1, hash0, hash1);
-      cryptonight_turtle_2way_hash(hash2, hash3, hash2, hash3);
-#else // do as GR_4WAY_LIGHT
-      cryptonight_turtle_hash(hash0, hash0);
-      cryptonight_turtle_hash(hash1, hash1);
-      cryptonight_turtle_hash(hash2, hash2);
-      cryptonight_turtle_hash(hash3, hash3);
-#endif
+      if (cn_config[Turtle]) {
+        cryptonight_turtle_2way_hash(hash0, hash1, hash0, hash1);
+        cryptonight_turtle_2way_hash(hash2, hash3, hash2, hash3);
+      } else {
+        cryptonight_turtle_hash(hash0, hash0);
+        cryptonight_turtle_hash(hash1, hash1);
+        cryptonight_turtle_hash(hash2, hash2);
+        cryptonight_turtle_hash(hash3, hash3);
+      }
       vectorized = false;
       break;
-    case CNTurtlelite:
+    case CNDarklite:
       if (vectorized) {
         dintrlv_4x64_512(hash0, hash1, hash2, hash3, vhash);
       }
-#if defined(GR_4WAY_HEAVY)
-      cryptonight_turtlelite_2way_hash(hash0, hash1, hash0, hash1);
-      cryptonight_turtlelite_2way_hash(hash2, hash3, hash2, hash3);
-#elif defined(GR_4WAY_MEDIUM)
-      cryptonight_turtlelite_2way_hash(hash0, hash1, hash0, hash1);
-      cryptonight_turtlelite_2way_hash(hash2, hash3, hash2, hash3);
-#else // do as GR_4WAY_LIGHT
-      cryptonight_turtlelite_hash(hash0, hash0);
-      cryptonight_turtlelite_hash(hash1, hash1);
-      cryptonight_turtlelite_hash(hash2, hash2);
-      cryptonight_turtlelite_hash(hash3, hash3);
-#endif
+
+      if (cn_config[Darklite]) {
+        cryptonight_darklite_2way_hash(hash0, hash1, hash0, hash1);
+        cryptonight_darklite_2way_hash(hash2, hash3, hash2, hash3);
+      } else {
+        cryptonight_darklite_hash(hash0, hash0);
+        cryptonight_darklite_hash(hash1, hash1);
+        cryptonight_darklite_hash(hash2, hash2);
+        cryptonight_darklite_hash(hash3, hash3);
+      }
+      vectorized = false;
+      break;
+    case CNDark:
+      if (vectorized) {
+        dintrlv_4x64_512(hash0, hash1, hash2, hash3, vhash);
+      }
+      if (cn_config[Dark]) {
+        cryptonight_dark_2way_hash(hash0, hash1, hash0, hash1);
+        cryptonight_dark_2way_hash(hash2, hash3, hash2, hash3);
+      } else {
+        cryptonight_dark_hash(hash0, hash0);
+        cryptonight_dark_hash(hash1, hash1);
+        cryptonight_dark_hash(hash2, hash2);
+        cryptonight_dark_hash(hash3, hash3);
+      }
+      vectorized = false;
+      break;
+    case CNLite:
+      if (vectorized) {
+        dintrlv_4x64_512(hash0, hash1, hash2, hash3, vhash);
+      }
+      if (cn_config[Lite]) {
+        cryptonight_lite_2way_hash(hash0, hash1, hash0, hash1);
+        cryptonight_lite_2way_hash(hash2, hash3, hash2, hash3);
+      } else {
+        cryptonight_lite_hash(hash0, hash0);
+        cryptonight_lite_hash(hash1, hash1);
+        cryptonight_lite_hash(hash2, hash2);
+        cryptonight_lite_hash(hash3, hash3);
+      }
+      vectorized = false;
+      break;
+    case CNFast:
+      if (vectorized) {
+        dintrlv_4x64_512(hash0, hash1, hash2, hash3, vhash);
+      }
+      if (cn_config[Fast]) {
+        cryptonight_fast_2way_hash(hash0, hash1, hash0, hash1);
+        cryptonight_fast_2way_hash(hash2, hash3, hash2, hash3);
+      } else {
+        cryptonight_fast_hash(hash0, hash0);
+        cryptonight_fast_hash(hash1, hash1);
+        cryptonight_fast_hash(hash2, hash2);
+        cryptonight_fast_hash(hash3, hash3);
+      }
       vectorized = false;
       break;
     }
@@ -392,6 +371,7 @@ int gr_4way_hash_generic(void *output, const void *input, int thrid) {
     size = 64;
   }
 
+  // This should not happen as CN should be last algorithm.
   if (vectorized) {
     dintrlv_4x64_512(hash0, hash1, hash2, hash3, vhash);
   }
@@ -400,82 +380,6 @@ int gr_4way_hash_generic(void *output, const void *input, int thrid) {
   memcpy(output + 64, hash2, 32);
   memcpy(output + 96, hash3, 32);
 
-  return 1;
-}
-
-int gr_4way_hash(void *output, void *input, int thrid) {
-  if (!gr_4way_hash_generic(output, input, thrid)) {
-    return 0;
-  }
-
-  /*uint32_t edata0[20];
-  uint32_t edata1[20];
-  uint32_t edata2[20];
-  uint32_t edata3[20];
-  dintrlv_4x64(edata0, edata1, edata2, edata3, input, 640);
-  uint8_t hash2[32 * 4] __attribute__((aligned(128)));
-  cryptonight_turtle_hash_alt( edata0,  hash2);
-  cryptonight_turtle_hash_alt( edata1,  hash2 + 32);
-  cryptonight_turtle_2way_hash(edata0, edata1, hash2 + 64, hash2 + 96);
-
-  bool bad = false;
-  for (int i = 0; i < 64; i++) {
-    if (((uint8_t *)&hash2[64])[i] != hash2[i]) {
-      bad = true;
-      break;
-    }
-  }
-  if (bad) {
-    printf("\n\nBAD!\n");
-    for (int i = 0; i < 64; i++) {
-      printf("%02X | %02X\n", ((uint8_t *)&hash2[64])[i], hash2[i]);
-    }
-  }*/
-
-  /*
-    // for (int i = 0; i < 20; i++) {
-    //  applog(LOG_NOTICE, "edata %16X %16X %16X %16X", ((uint64_t *)edata0)[i],
-    //         ((uint64_t *)edata1)[i], ((uint64_t *)edata2)[i],
-    //         ((uint64_t *)edata3)[i]);
-    // }
-    // for (int i = 0; i < 20; i++) {
-    //  applog(LOG_NOTICE, "input1 %08X", ((uint32_t *)input)[i]);
-    //}
-
-    memset(hash2, 0, 32 * 4);
-
-    // gr_hash(hash2, edata0, thrid);
-    // gr_hash(hash2 + 32, edata1, thrid);
-    // gr_hash(hash2 + 64, edata2, thrid);
-    // gr_hash(hash2 + 96, edata3, thrid);
-
-    gr_hash_4way_old(hash2, hash2 + 32, hash2 + 64, hash2 + 96, edata0, edata1,
-                     edata2, edata3, -1);
-
-    bool bad = false;
-    for (int i = 0; i < 128; i++) {
-      if (((uint8_t *)output)[i] != hash2[i]) {
-        bad = true;
-        break;
-      }
-    }
-    if (bad) {
-      printf("\n\nBAD!\n");
-      for (int i = 0; i < 128; i++) {
-        printf("%02X | %02X\n", ((uint8_t *)output)[i], hash2[i]);
-      }
-      for (int i = 0; i < 15 + 3; i++) {
-        printf("New %d: %d\n", i, gr_hash_order[i]);
-      }
-
-      // gr_hash(hash2, edata0, thrid);
-      // gr_hash(hash2 + 32, edata1, thrid);
-      // gr_hash(hash2 + 64, edata2, thrid);
-      // gr_hash(hash2 + 96, edata3, thrid);
-
-      gr_hash_4way_old(hash2, hash2 + 32, hash2 + 64, hash2 + 96, edata0,
-    edata1, edata2, edata3, -1);
-    }*/
   return 1;
 }
 
@@ -494,11 +398,20 @@ int scanhash_gr_4way(struct work *work, uint32_t max_nonce,
   volatile uint8_t *restart = &(work_restart[thr_id].restart);
 
   if (hp_state == NULL) {
-    hp_state = (uint8_t *)AllocateMemory(MEMORY);
+    // Allocate 4MiB instead of 2MiB if 2way Fast is used.
+    if (cn_config[Fast] == 1 || opt_benchmark_config) {
+      hp_state = (uint8_t *)AllocateMemory(1 << 22);
+    } else {
+      hp_state = (uint8_t *)AllocateMemory(1 << 21);
+    }
+  }
+
+  if (opt_benchmark_config) {
+    benchmark_configs(pdata, thr_id);
   }
 
   if (opt_benchmark) {
-    benchmark(pdata, thr_id);
+    benchmark(pdata, thr_id, 0);
     diff_to_hash(ptarget, 0.05 / 65536.0);
   }
 
@@ -524,20 +437,11 @@ int scanhash_gr_4way(struct work *work, uint32_t max_nonce,
       _mm256_set_epi32(n + 3, 0, n + 2, 0, n + 1, 0, n, 0), *noncev);
 
   do {
-    // for (int i = 0; i < 20; i++) {
-    //  pdata[i] = rand();
-    //}
-    // mm256_bswap32_intrlv80_4x64(vdata, pdata);
-    // mm128_bswap32_80(edata, pdata);
-    //*noncev = mm256_intrlv_blend_32(
-    //    _mm256_set_epi32(n + 0, 0, n + 1, 0, n + 2, 0, n + 3, 0), *noncev);
-    // gr_getAlgoString((const uint8_t *)(&edata[1]), gr_hash_order);
-
     if (gr_4way_hash(hash, vdata, thr_id)) {
       for (int i = 0; i < 4; i++) {
         if (unlikely(valid_hash(hash + (i << 3), ptarget))) {
           if (opt_debug) {
-            printf("Solution: %u %.10lf\n", bswap_32(n + i),
+            applog(LOG_BLUE, "Solution: %u %.10lf", bswap_32(n + i),
                    hash_to_diff(hash + (i << 3)));
           }
           pdata[19] = bswap_32(n + i);

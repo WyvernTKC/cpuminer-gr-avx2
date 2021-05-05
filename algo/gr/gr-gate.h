@@ -54,9 +54,6 @@
 
 #if defined(__AVX2__) && defined(__AES__)
 #define GR_4WAY 1
-//#define GR_4WAY_HEAVY 1
-//#define GR_4WAY_MEDIUM 1
-#define GR_4WAY_LIGHT 1
 #endif
 
 enum Algo {
@@ -83,6 +80,8 @@ enum Algo {
   CNTurtlelite,
   GR_HASH_FUNC_COUNT
 };
+
+enum CryptonightConfig { Turtlelite = 0, Turtle, Darklite, Dark, Lite, Fast };
 
 // Only 3 CN algos are selected from available 6.
 extern __thread uint8_t gr_hash_order[GR_HASH_FUNC_COUNT - 3 + 1];
@@ -118,8 +117,7 @@ typedef union _gr_4way_context_overlay gr_4way_context_overlay;
 
 extern __thread gr_4way_context_overlay gr_4way_ctx;
 
-int gr_4way_hash(void *state, void *input, int thrid);
-int gr_4way_hash_generic(void *state, const void *input, int thrid);
+int gr_4way_hash(void *state, const void *input, int thrid);
 int scanhash_gr_4way(struct work *work, uint32_t max_nonce,
                      uint64_t *hashes_done, struct thr_info *mythr);
 
@@ -153,20 +151,14 @@ typedef union _gr_context_overlay gr_context_overlay;
 
 extern __thread gr_context_overlay gr_ctx;
 
-int gr_hash(void *state, void *input, int thrid);
-int gr_hash_generic(void *state, const void *input, int thrid);
+int gr_hash(void *state, const void *input, int thrid);
 int scanhash_gr(struct work *work, uint32_t max_nonce, uint64_t *hashes_done,
                 struct thr_info *mythr);
 
-#if defined(GR_4WAY_HEAVY)
-#define MEMORY 4194304 // 2MiB * 2
-#else
-#define MEMORY 2097152 // 2MiB
-#endif
-
 extern __thread uint8_t *hp_state;
 
-void benchmark(void *input, int thr_id);
+void benchmark(void *input, int thr_id, long sleep_time);
+void benchmark_configs(void *input, int thr_id);
 
 bool register_gr_algo(algo_gate_t *gate);
 
