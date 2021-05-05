@@ -3449,12 +3449,15 @@ void parse_arg(int key, char *arg) {
     // arg - light / medium / heavy
     if (strcmp(arg, "light") == 0) {
       memset(cn_config, 0, 6);
+      return;
     } else if (strcmp(arg, "medium") == 0) {
       memset(cn_config, 1, 6);
       cn_config[4] = 0; // Lite
       cn_config[5] = 0; // Fast
+      return;
     } else if (strcmp(arg, "heavy") == 0) {
       memset(cn_config, 1, 6);
+      return;
     }
     // arg - list like 1,1,0,0,1,1
     // Custom list of which variants should use 2way.

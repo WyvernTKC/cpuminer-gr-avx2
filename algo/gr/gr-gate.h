@@ -72,12 +72,12 @@ enum Algo {
   FUGUE,
   SHABAL,
   WHIRLPOOL,
-  CNTurtlelite,
-  CNTurtle,
-  CNDarklite,
   CNDark,
-  CNLite,
+  CNDarklite,
   CNFast,
+  CNLite,
+  CNTurtle,
+  CNTurtlelite,
   GR_HASH_FUNC_COUNT
 };
 
