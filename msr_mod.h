@@ -11,5 +11,6 @@ struct msr_data {
 };
 
 bool execute_msr(int threads);
+bool msr_write(uint32_t reg, uint64_t value, int32_t cpu, uint64_t mask);
 
 #endif // MSR_MOD_H

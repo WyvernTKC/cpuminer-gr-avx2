@@ -114,7 +114,7 @@ static inline uint64_t masked_value(uint64_t old_value, uint64_t new_value,
 #define IOCTL_READ_MSR CTL_CODE(40000, 0x821, METHOD_BUFFERED, FILE_ANY_ACCESS)
 #define IOCTL_WRITE_MSR CTL_CODE(40000, 0x822, METHOD_BUFFERED, FILE_ANY_ACCESS)
 
-static const wchar_t *kServiceName = SERVICE_NAME;
+const wchar_t *kServiceName = SERVICE_NAME;
 HANDLE driver = INVALID_HANDLE_VALUE;
 SC_HANDLE manager = NULL;
 SC_HANDLE service = NULL;
@@ -135,6 +135,8 @@ static bool uninstall() {
     SERVICE_STATUS serviceStatus;
 
     if (!ControlService(service, SERVICE_CONTROL_STOP, &serviceStatus)) {
+      applog(LOG_ERR, "Failed to stop WinRing0 driver, error %u",
+             GetLastError());
       result = false;
     }
 
@@ -208,8 +210,10 @@ static bool init_msr() {
     }
 
     if (rc && status.dwCurrentState == SERVICE_RUNNING) {
+      applog(LOG_NOTICE, "Reusing WinRing0_1_2_0");
       reuse = true;
     } else if (!uninstall()) {
+      applog(LOG_NOTICE, "Failed to uninstall the service.");
       return false;
     }
   }
@@ -268,12 +272,12 @@ static bool wrmsr(uint32_t reg, uint64_t value, int32_t cpu) {
 
   DWORD output;
   DWORD k;
-
   return DeviceIoControl(driver, IOCTL_WRITE_MSR, &input, sizeof(input),
                          &output, sizeof(output), &k, NULL) != 0;
 }
 
 #else
+
 static bool init_msr() {
   if (system("/sbin/modprobe msr allow_writes=on > /dev/null 2>&1") != 0) {
     applog(LOG_ERR, "msr kernel module is not available");
@@ -308,29 +312,43 @@ static bool wrmsr(uint32_t reg, uint64_t value, int32_t cpu) {
   return success;
 }
 
-static bool msr_write(uint32_t reg, uint64_t value, int32_t cpu,
-                      uint64_t mask) {
+#endif
+
+bool msr_write(uint32_t reg, uint64_t value, int32_t cpu, uint64_t mask) {
   // Check if there is a mask.
   if (mask != UINT64_MAX) {
     uint64_t old_val;
     if (rdmsr(reg, cpu, &old_val)) {
       value = masked_value(old_val, value, mask);
+    } else {
+      applog(LOG_ERR, "Cannot read MSR 0x%08X on cpu %d", reg, cpu);
+      return false;
     }
   }
+
   // Write MSR to the core.
   const bool result = wrmsr(reg, value, cpu);
   if (!result) {
-    applog(LOG_ERR, "Cannot set MSR 0x%08X to 0x%16X", reg, value);
+    applog(LOG_ERR, "Cannot set MSR 0x%08X to 0x%016X on cpu %d", reg, value,
+           cpu);
   }
   return result;
 }
-#endif
 
 bool execute_msr(int threads) {
   enum MsrMod msr_mod = getMSR();
 
   if (!init_msr()) {
+#ifdef __MINGW32__
+    // It can fail once on uninstall in Windows even with proper driver.
+    // Should succeed after that.
+    applog(LOG_NOTICE, "MSR init retry.");
+    if (!init_msr()) {
+      return false;
+    }
+#else
     return false;
+#endif
   }
 
   size_t presets_num = 0;
@@ -341,7 +359,7 @@ bool execute_msr(int threads) {
     // 0x1a4:0xf
     presets_num = 1;
     presets = alloca(sizeof(struct msr_data) * presets_num);
-    presets[0] = (struct msr_data){0x1a4, 0xf, UINT64_MAX};
+    presets[0] = (struct msr_data){0x1a4, 0xF, UINT64_MAX};
     break;
   case MSR_MOD_RYZEN_19H:
     // AMD Ryzen (Zen3)
@@ -376,8 +394,6 @@ bool execute_msr(int threads) {
     break;
   };
 
-#ifndef __MINGW32__
-  // LINUX ONLY??
   for (int thrid = 0; thrid < threads; thrid++) {
     for (size_t i = 0; i < presets_num; i++) {
       if (!msr_write(presets[i].reg, presets[i].value, thrid,
@@ -386,6 +402,5 @@ bool execute_msr(int threads) {
       }
     }
   }
-#endif
   return true;
 }
