@@ -204,16 +204,20 @@ static bool init_msr() {
 
         if (QueryServiceConfigA(service, config, dwBytesNeeded,
                                 &dwBytesNeeded)) {
-          applog(LOG_NOTICE, "service path: %s", config->lpBinaryPathName);
+          if (opt_debug) {
+            applog(LOG_DEBUG, "service path: %s", config->lpBinaryPathName);
+          }
         }
       }
     }
 
     if (rc && status.dwCurrentState == SERVICE_RUNNING) {
-      applog(LOG_NOTICE, "Reusing WinRing0_1_2_0");
+      if (opt_debug) {
+        applog(LOG_DEBUG, "Reusing WinRing0_1_2_0");
+      }
       reuse = true;
     } else if (!uninstall()) {
-      applog(LOG_NOTICE, "Failed to uninstall the service.");
+      applog(LOG_ERR, "Failed to uninstall the service.");
       return false;
     }
   }

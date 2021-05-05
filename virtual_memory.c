@@ -4,7 +4,10 @@
 
 #ifdef __MINGW32__
 // Windows
+#define UNICODE
+#define _UNICODE
 #include <ntsecapi.h>
+#include <ntstatus.h>
 #include <tchar.h>
 #include <windows.h>
 #include <winsock2.h>
@@ -26,9 +29,11 @@ Return value: TRUE indicates success, FALSE failure.
 static BOOL SetLockPagesPrivilege() {
   HANDLE token;
 
-  if (!OpenProcessToken(GetCurrentProcess(),
-                        TOKEN_ADJUST_PRIVILEGES | TOKEN_QUERY, &token)) {
-    applog(LOG_NOTICE, "Huge Pages: Failed to open process token.");
+  if (OpenProcessToken(GetCurrentProcess(),
+                       TOKEN_ADJUST_PRIVILEGES | TOKEN_QUERY, &token) != TRUE) {
+    if (opt_debug) {
+      applog(LOG_DEBUG, "Huge Pages: Failed to open process token.");
+    }
     return FALSE;
   }
 
@@ -38,14 +43,17 @@ static BOOL SetLockPagesPrivilege() {
 
   if (!LookupPrivilegeValue(NULL, SE_LOCK_MEMORY_NAME,
                             &(tp.Privileges[0].Luid))) {
-    applog(LOG_NOTICE, "Huge Pages: Failed to lookup privilege table.");
+    if (opt_debug) {
+      applog(LOG_DEBUG, "Huge Pages: Failed to lookup privilege table.");
+    }
     return FALSE;
   }
 
-  BOOL rc = AdjustTokenPrivileges(token, FALSE, (PTOKEN_PRIVILEGES)&tp, 0, NULL,
-                                  NULL);
+  BOOL rc = AdjustTokenPrivileges(token, FALSE, &tp, 0, NULL, NULL);
   if (!rc || GetLastError() != ERROR_SUCCESS) {
-    applog(LOG_NOTICE, "Huge Pages: Failed to adjust privelege token.");
+    if (opt_debug) {
+      applog(LOG_DEBUG, "Huge Pages: Failed to adjust privelege token.");
+    }
     return FALSE;
   }
 
@@ -54,14 +62,34 @@ static BOOL SetLockPagesPrivilege() {
   return TRUE;
 }
 
-static LSA_UNICODE_STRING StringToLsaUnicodeString(LPCTSTR string) {
-  LSA_UNICODE_STRING lsaString;
-
+static void StringToLsaUnicodeString(PLSA_UNICODE_STRING lsaString,
+                                     LPWSTR string) {
   const DWORD dwLen = (DWORD)wcslen(string);
-  lsaString.Buffer = (LPWSTR)string;
-  lsaString.Length = (USHORT)((dwLen) * sizeof(WCHAR));
-  lsaString.MaximumLength = (USHORT)((dwLen + 1) * sizeof(WCHAR));
-  return lsaString;
+  lsaString->Buffer = (LPWSTR)string;
+  lsaString->Length = (USHORT)((dwLen) * sizeof(WCHAR));
+  lsaString->MaximumLength = (USHORT)((dwLen + 1) * sizeof(WCHAR));
+}
+
+NTSTATUS OpenPolicy(LPWSTR name, DWORD access, PLSA_HANDLE policy_handle) {
+  LSA_OBJECT_ATTRIBUTES attributes;
+  ZeroMemory(&attributes, sizeof(attributes));
+  LSA_UNICODE_STRING pc_str;
+  PLSA_UNICODE_STRING pc = NULL;
+
+  if (name != NULL) {
+    StringToLsaUnicodeString(&pc_str, name);
+    pc = &pc_str;
+  }
+
+  return LsaOpenPolicy(pc, &attributes, access, policy_handle);
+}
+
+NTSTATUS SetPrivilege(LSA_HANDLE policy_handle, PSID account_sid,
+                      LPWSTR privilege_name) {
+  LSA_UNICODE_STRING priv_string;
+  StringToLsaUnicodeString(&priv_string, privilege_name);
+
+  return LsaAddAccountRights(policy_handle, account_sid, &priv_string, 1);
 }
 
 static BOOL ObtainLockPagesPrivilege() {
@@ -73,7 +101,7 @@ static BOOL ObtainLockPagesPrivilege() {
 
     GetTokenInformation(token, TokenUser, NULL, 0, &size);
     if (size) {
-      user = (PTOKEN_USER)LocalAlloc(LPTR, size);
+      user = (PTOKEN_USER)malloc(size);
     }
 
     GetTokenInformation(token, TokenUser, user, size, &size);
@@ -81,33 +109,33 @@ static BOOL ObtainLockPagesPrivilege() {
   }
 
   if (!user) {
-    applog(LOG_NOTICE, "Huge Pages: Failed token query.");
+    if (opt_debug) {
+      applog(LOG_DEBUG, "Huge Pages: Failed token query.");
+    }
     return FALSE;
   }
 
-  LSA_HANDLE handle;
-  LSA_OBJECT_ATTRIBUTES attributes;
-  ZeroMemory(&attributes, sizeof(attributes));
-
+  NTSTATUS status;
   BOOL result = FALSE;
-  if (LsaOpenPolicy(NULL, &attributes, POLICY_ALL_ACCESS, &handle) == 0) {
-    LSA_UNICODE_STRING str = StringToLsaUnicodeString(_T(SE_LOCK_MEMORY_NAME));
-    applog(LOG_NOTICE, "LSA: '%s'", str.Buffer);
-    NTSTATUS status = LsaAddAccountRights(handle, user->User.Sid, &str, 1);
-    if (status == 0) {
-      applog(LOG_NOTICE,
-             "Huge pages support was successfully enabled, but reboot "
-             "is required to use it");
-      result = TRUE;
-    } else {
-      applog(LOG_NOTICE, "Huge pages: Failed to add account rights %lu",
-             LsaNtStatusToWinError(status));
-    }
-
-    LsaClose(handle);
+  LSA_HANDLE handle;
+  if ((status = OpenPolicy(NULL, POLICY_ALL_ACCESS, &handle))) {
+    applog(LOG_ERR, "Huge Pages: failed to open policy %u",
+           LsaNtStatusToWinError(status));
   }
 
-  LocalFree(user);
+  if ((status =
+           SetPrivilege(handle, user->User.Sid, _T(SE_LOCK_MEMORY_NAME)))) {
+    applog(LOG_NOTICE, "Huge pages: Failed to add account rights %lu",
+           LsaNtStatusToWinError(status));
+    result = FALSE;
+  } else {
+    applog(LOG_NOTICE,
+           "Huge pages support was successfully enabled, but reboot "
+           "is required to use it");
+    result = TRUE;
+  }
+
+  free(user);
   return result;
 }
 
