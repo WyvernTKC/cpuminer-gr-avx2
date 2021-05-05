@@ -160,7 +160,7 @@ int turn = 0;
 #if defined(GR_4WAY_HEAVY)
 uint8_t cn_config[6] = {1, 1, 1, 1, 1, 1};
 #elif defined(GR_4WAY_MEDIUM)
-uint8_t cn_config[6] = {1, 1, 1, 1, 0, 0};
+uint8_t cn_config[6] = {0, 1, 1, 1, 0, 0};
 #else
 uint8_t cn_config[6] = {0, 0, 0, 0, 0, 0};
 #endif
@@ -800,9 +800,8 @@ static bool gbt_work_decode(const json_t *val, struct work *work) {
     }
     if (xsig_len) {
       unsigned char *ssig_end = cbtx + 42 + cbtx[41];
-      int push_len = cbtx[41] + xsig_len < 76        ? 1
-                     : cbtx[41] + 2 + xsig_len > 100 ? 0
-                                                     : 2;
+      int push_len =
+          cbtx[41] + xsig_len < 76 ? 1 : cbtx[41] + 2 + xsig_len > 100 ? 0 : 2;
       n = xsig_len + push_len;
       memmove(ssig_end + n, ssig_end, cbtx_size - 42 - cbtx[41]);
       cbtx[41] += n;
@@ -995,10 +994,8 @@ void report_summary_log(bool force) {
   struct timeval diff;
 
   if (!opt_quiet || (curr_temp >= 80)) {
-    int wait_time = curr_temp >= 90   ? 5
-                    : curr_temp >= 80 ? 30
-                    : curr_temp >= 70 ? 60
-                                      : 120;
+    int wait_time =
+        curr_temp >= 90 ? 5 : curr_temp >= 80 ? 30 : curr_temp >= 70 ? 60 : 120;
     timeval_subtract(&diff, &now, &cpu_temp_time);
     if ((diff.tv_sec > wait_time) ||
         ((curr_temp > prev_temp) && (curr_temp >= 75))) {

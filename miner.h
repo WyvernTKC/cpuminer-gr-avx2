@@ -841,7 +841,7 @@ Options:\n\
                           Cryptonight variants: Turtlelite, Turtle, Darklite, Dark, Lite, Fast\n\
                           Available options:\n\
                           'light' - default, use only SSE. [0,0,0,0,0,0]\n\
-                          'medium' - use mix of SSE2 & 2way. [1,1,1,1,0,0]\n\
+                          'medium' - use mix of SSE2 & 2way. [0,1,1,1,0,0]\n\
                           'heavy' - use only 2way. [1,1,1,1,1,1]\n\
                           [LIST] - customm, list of ',' separated 6 values, 0 - SSE2,  1 - 2way\n"
 #endif
