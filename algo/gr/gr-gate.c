@@ -22,7 +22,7 @@ bool register_gr_algo(algo_gate_t *gate) {
   gate->scanhash = (void *)&scanhash_gr;
   gate->hash = (void *)&gr_hash;
 #endif
-  gate->optimizations = SSE2_OPT | AES_OPT | AVX2_OPT | SHA_OPT;
+  gate->optimizations = SSE2_OPT | AES_OPT | VAES_OPT | AVX_OPT | AVX2_OPT;
   opt_target_factor = 65536.0;
   return true;
 }

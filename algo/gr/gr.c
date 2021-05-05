@@ -1,7 +1,7 @@
 #include "gr-gate.h"
 #include "virtual_memory.h"
 
-int gr_hash_generic(void *output, const void *input, int thrid) {
+int gr_hash(void *output, const void *input, int thrid) {
   uint64_t hash[8] __attribute__((aligned(64)));
   gr_context_overlay ctx;
   memcpy(&ctx, &gr_ctx, sizeof(ctx));
@@ -89,23 +89,23 @@ int gr_hash_generic(void *output, const void *input, int thrid) {
     case WHIRLPOOL:
       sph_whirlpool512_full(&ctx.whirlpool, hash, in, size);
       break;
-    case CNDark:
-      cryptonight_dark_hash(in, hash);
-      break;
-    case CNDarklite:
-      cryptonight_darklite_hash(in, hash);
-      break;
-    case CNFast:
-      cryptonight_fast_hash(in, hash);
-      break;
-    case CNLite:
-      cryptonight_lite_hash(in, hash);
+    case CNTurtlelite:
+      cryptonight_turtlelite_hash(in, hash);
       break;
     case CNTurtle:
       cryptonight_turtle_hash(in, hash);
       break;
-    case CNTurtlelite:
-      cryptonight_turtlelite_hash(in, hash);
+    case CNDarklite:
+      cryptonight_darklite_hash(in, hash);
+      break;
+    case CNDark:
+      cryptonight_dark_hash(in, hash);
+      break;
+    case CNLite:
+      cryptonight_lite_hash(in, hash);
+      break;
+    case CNFast:
+      cryptonight_fast_hash(in, hash);
       break;
     }
 
@@ -123,13 +123,6 @@ int gr_hash_generic(void *output, const void *input, int thrid) {
   return 1;
 }
 
-int gr_hash(void *output, void *input, int thrid) {
-  if (!gr_hash_generic(output, input, thrid)) {
-    return 0;
-  }
-  return 1;
-}
-
 int scanhash_gr(struct work *work, uint32_t max_nonce, uint64_t *hashes_done,
                 struct thr_info *mythr) {
 
@@ -143,7 +136,7 @@ int scanhash_gr(struct work *work, uint32_t max_nonce, uint64_t *hashes_done,
   volatile uint8_t *restart = &(work_restart[thr_id].restart);
 
   if (hp_state == NULL) {
-    hp_state = (uint8_t *)AllocateMemory(MEMORY);
+    hp_state = (uint8_t *)AllocateMemory(1 << 21);
   }
 
   if (opt_benchmark) {
@@ -171,7 +164,6 @@ int scanhash_gr(struct work *work, uint32_t max_nonce, uint64_t *hashes_done,
   do {
     edata[19] = nonce;
     if (gr_hash(hash32, edata, thr_id)) {
-      // if (unlikely(hash32[7] <= ptarget[7])) {
       if (unlikely(valid_hash(hash32, ptarget))) {
         pdata[19] = bswap_32(nonce);
         submit_solution(work, hash32, mythr);

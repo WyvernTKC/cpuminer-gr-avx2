@@ -82,21 +82,6 @@
 
 #define LP_SCANTIME 60
 
-#if !defined(__MINGW32__)
-#include <sys/mman.h>
-#include <sys/syscall.h>
-#endif
-//#define MEMORY          1048576
-//#define MEMORY 2097152
-//#define MEMORY          4194304
-
-#if defined(_MSC_VER)
-#define THREADV __declspec(thread)
-#else
-#define THREADV __thread
-#endif
-//#define MAP_HUGE_2MB (21 << MAP_HUGE_SHIFT)
-
 #include <errno.h>
 #include <fcntl.h>
 #include <sys/stat.h>
@@ -166,6 +151,19 @@ char *donation_pass = NULL;
 bool enable_donation = true;
 int donation_percent = 1;
 int turn = 0;
+
+// Default config for CN variants.
+// 0 - Use default 1way/SSE
+// 1 - Use 2way algorithm.
+// Use defines to keep compatibility with v1.1.1
+#if defined(GR_4WAY_HEAVY)
+uint8_t cn_config[6] = {1, 1, 1, 1, 1, 1};
+#elif defined(GR_4WAY_MEDIUM)
+uint8_t cn_config[6] = {1, 1, 1, 1, 0, 0};
+#else
+uint8_t cn_config[6] = {0, 0, 0, 0, 0, 0};
+#endif
+
 unsigned long donation_time_start = 0;
 unsigned long donation_time_stop = 0;
 char *rpc_user_old, *rpc_pass_old, *rpc_url_old;
@@ -800,8 +798,9 @@ static bool gbt_work_decode(const json_t *val, struct work *work) {
     }
     if (xsig_len) {
       unsigned char *ssig_end = cbtx + 42 + cbtx[41];
-      int push_len =
-          cbtx[41] + xsig_len < 76 ? 1 : cbtx[41] + 2 + xsig_len > 100 ? 0 : 2;
+      int push_len = cbtx[41] + xsig_len < 76        ? 1
+                     : cbtx[41] + 2 + xsig_len > 100 ? 0
+                                                     : 2;
       n = xsig_len + push_len;
       memmove(ssig_end + n, ssig_end, cbtx_size - 42 - cbtx[41]);
       cbtx[41] += n;
@@ -994,8 +993,10 @@ void report_summary_log(bool force) {
   struct timeval diff;
 
   if (!opt_quiet || (curr_temp >= 80)) {
-    int wait_time =
-        curr_temp >= 90 ? 5 : curr_temp >= 80 ? 30 : curr_temp >= 70 ? 60 : 120;
+    int wait_time = curr_temp >= 90   ? 5
+                    : curr_temp >= 80 ? 30
+                    : curr_temp >= 70 ? 60
+                                      : 120;
     timeval_subtract(&diff, &now, &cpu_temp_time);
     if ((diff.tv_sec > wait_time) ||
         ((curr_temp > prev_temp) && (curr_temp >= 75))) {
@@ -1616,6 +1617,67 @@ start:
         applog2(LOG_INFO, "Miner TTF @ %.2f %sh/s %s, Net TTF @ %.2f %sh/s %s",
                 miner_hr, miner_hr_units, miner_ttf, net_hr, net_hr_units,
                 net_ttf);
+
+        double hashrate = 0.;
+        pthread_mutex_lock(&stats_lock);
+        for (int i = 0; i < opt_n_threads; i++) {
+          hashrate += thr_hashrates[i];
+        }
+        if ((hashrate < global_min_hr) && (hashrate > 0)) {
+          global_min_hr = hashrate;
+        }
+        if (hashrate > global_max_hr) {
+          global_max_hr = hashrate;
+        }
+        if (hashrate > 0) {
+          hr_count++;
+          global_avg_hr =
+              (global_avg_hr * (hr_count - 1) + hashrate) / hr_count;
+        }
+        pthread_mutex_unlock(&stats_lock);
+        char hr[16];
+        char nhr[16];
+        char xhr[16];
+        char ahr[16];
+        char hr_units[2] = {0, 0};
+        scale_hash_for_display(&hashrate, hr_units);
+        sprintf(hr, "%.2f", hashrate);
+        sprintf(xhr, "%.2f", global_max_hr);
+        sprintf(nhr, "%.2f", global_min_hr);
+        sprintf(ahr, "%.2f", global_avg_hr);
+        applog(LOG_NOTICE, "Hash: %s%sh/s Min: %s Avg: %s Max: %s", hr,
+               hr_units, nhr, ahr, xhr);
+
+        uint32_t endiandata[20];
+        swab32_array(endiandata, work->data, 20);
+        uint8_t selectedCNAlgoOutput[6] = {0};
+        getGRAlgoString(&endiandata[4], 64, selectedCNAlgoOutput, 6);
+        char block_CN[400];
+        memset(block_CN, 0, 400);
+        for (int i = 0; i < 6; i++) {
+          const uint8_t algo = selectedCNAlgoOutput[i];
+          switch (algo) {
+          case 0:
+            strcat(block_CN, "Dark ");
+            break;
+          case 1:
+            strcat(block_CN, "DarkLite ");
+            break;
+          case 2:
+            strcat(block_CN, "Fast ");
+            break;
+          case 3:
+            strcat(block_CN, "Lite ");
+            break;
+          case 4:
+            strcat(block_CN, "Turtle ");
+            break;
+          case 5:
+            strcat(block_CN, "TurtleLite ");
+            break;
+          }
+        }
+        applog(LOG_BLUE, "New Block Cryptonight Algos %s", block_CN);
       }
     } // work->height > last_block_height
     else if (memcmp(&work->data[1], &g_work.data[1], 32))
@@ -1835,133 +1897,22 @@ bool submit_solution(struct work *work, const void *hash,
                submitted_share_count, work->sharediff, work->height,
                work->data[algo_gate.ntime_index]);
 
-      if (opt_debug) {
-        uint32_t *pdata = work->data;
-        uint32_t _ALIGN(64) endiandata[20];
-        swab32_array(endiandata, pdata, 20);
-        uint8_t selectedAlgoOutput[15] = {0};
-        uint8_t selectedCNAlgoOutput[6] = {0};
-        getGRAlgoString(&endiandata[4], 64, selectedAlgoOutput, 15);
-        getGRAlgoString(&endiandata[4], 64, selectedCNAlgoOutput, 6);
-        char block_CN[200];
-        memset(block_CN, 0, 200);
-        for (int i = 0; i < 18; i++) {
-          uint8_t algo;
-          uint8_t cnAlgo;
-          int coreSelection;
-          int cnSelection = -1;
-          if (i < 5) {
-            coreSelection = i;
-          } else if (i < 11) {
-            coreSelection = i - 1;
-          } else {
-            coreSelection = i - 2;
-          }
-          if (i == 5) {
-            coreSelection = -1;
-            cnSelection = 0;
-          }
-          if (i == 11) {
-            coreSelection = -1;
-            cnSelection = 1;
-          }
-          if (i == 17) {
-            coreSelection = -1;
-            cnSelection = 2;
-          }
-          if (coreSelection >= 0) {
-            algo = selectedAlgoOutput[(uint8_t)coreSelection];
-          } else {
-            algo = 16; // skip core hashing for this loop iteration
-          }
-          if (cnSelection >= 0) {
-            cnAlgo = selectedCNAlgoOutput[(uint8_t)cnSelection];
-          } else {
-            cnAlgo = 14; // skip cn hashing for this loop iteration
-          }
-          switch (cnAlgo) {
-          case 0:
-            strcat(block_CN, "Dark ");
-            break;
-          case 1:
-            strcat(block_CN, "DarkLite ");
-            break;
-          case 2:
-            strcat(block_CN, "Fast ");
-            break;
-          case 3:
-            strcat(block_CN, "Lite ");
-            break;
-          case 4:
-            strcat(block_CN, "Turtle ");
-            break;
-          case 5:
-            strcat(block_CN, "TurtleLite ");
-            break;
-          }
-          // selection core algo
-          switch (algo) {
-          case 0:
-            break;
-          case 1:
-            break;
-          case 2:
-            break;
-          case 3:
-            break;
-          case 4:
-            break;
-          case 5:
-            break;
-          case 6:
-            break;
-          case 7:
-            break;
-          case 8:
-            break;
-          case 9:
-            break;
-          case 10:
-            break;
-          case 11:
-            break;
-          case 12:
-            break;
-          case 13:
-            break;
-          case 14:
-            break;
-          }
-        }
-        applog(LOG_BLUE, "Block CN Algo %s", block_CN);
-        double hashrate = 0.;
-        pthread_mutex_lock(&stats_lock);
-
-        for (int i = 0; i < opt_n_threads; i++)
-          hashrate += thr_hashrates[i];
-        if ((hashrate < global_min_hr) && (hashrate > 0))
-          global_min_hr = hashrate;
-        if (hashrate > global_max_hr)
-          global_max_hr = hashrate;
-        if (hashrate > 0) {
-          hr_count++;
-          global_avg_hr =
-              (global_avg_hr * (hr_count - 1) + hashrate) / hr_count;
-        }
-        pthread_mutex_unlock(&stats_lock);
-        char hr[16];
-        char nhr[16];
-        char xhr[16];
-        char ahr[16];
-        char hr_units[2] = {0, 0};
-        scale_hash_for_display(&hashrate, hr_units);
-        sprintf(hr, "%.2f", hashrate);
-        sprintf(xhr, "%.2f", global_max_hr);
-        sprintf(nhr, "%.2f", global_min_hr);
-        sprintf(ahr, "%.2f", global_avg_hr);
-        applog(LOG_NOTICE, "Hash: %s%sh/s Min: %s Avg: %s Max: %s", hr,
-               hr_units, nhr, ahr, xhr);
+      double hashrate = 0.;
+      pthread_mutex_lock(&stats_lock);
+      for (int i = 0; i < opt_n_threads; i++) {
+        hashrate += thr_hashrates[i];
       }
+      if ((hashrate < global_min_hr) && (hashrate > 0)) {
+        global_min_hr = hashrate;
+      }
+      if (hashrate > global_max_hr) {
+        global_max_hr = hashrate;
+      }
+      if (hashrate > 0) {
+        hr_count++;
+        global_avg_hr = (global_avg_hr * (hr_count - 1) + hashrate) / hr_count;
+      }
+      pthread_mutex_unlock(&stats_lock);
     }
 
     if (opt_debug) {
@@ -3494,7 +3445,33 @@ void parse_arg(int key, char *arg) {
     exit(0);
   case 'h':
     show_usage_and_exit(0);
-
+  case 1101: // cn-config
+    // arg - light / medium / heavy
+    if (strcmp(arg, "light") == 0) {
+      memset(cn_config, 0, 6);
+    } else if (strcmp(arg, "medium") == 0) {
+      memset(cn_config, 1, 6);
+      cn_config[4] = 0; // Lite
+      cn_config[5] = 0; // Fast
+    } else if (strcmp(arg, "heavy") == 0) {
+      memset(cn_config, 1, 6);
+    }
+    // arg - list like 1,1,0,0,1,1
+    // Custom list of which variants should use 2way.
+    char *cn = strtok(arg, ",");
+    int count = 0;
+    while (cn != NULL && count < 6) {
+      v = atoi(cn);
+      if (v != 0 && v != 1) {
+        show_usage_and_exit(1);
+      }
+      cn_config[count++] = v;
+      cn = strtok(NULL, ",");
+    }
+    if (count != 6) {
+      show_usage_and_exit(1);
+    }
+    break;
   default:
     show_usage_and_exit(1);
   }

@@ -683,6 +683,7 @@ extern const int pk_buffer_size_max;
 extern int pk_buffer_size;
 extern char *opt_data_file;
 extern bool opt_verify;
+extern uint8_t cn_config[6];
 
 static char const usage[] = "\
 Usage: cpuminer [OPTIONS]\n\
@@ -705,6 +706,7 @@ Options:\n\
                           decred        Blake256r14dcr\n\
                           deep          Deepcoin (DCN)\n\
                           dmd-gr        Diamond\n\
+                          gr            Ghost Rider - Raptoreum (RTM)\n\
                           groestl       Groestl coin\n\
                           hex           x16r-hex\n\
                           hmq1725       Espers\n\
@@ -829,6 +831,18 @@ Options:\n\
       --data-file       path and name of data file\n\
       --verify          enable additional time consuming start up tests\n\
   -V, --version         display version information and exit\n\
+  -y                    disable application of MSR mod on the system\n"
+#ifdef __AVX2__
+                            "\
+      --cn-config=[LIST]  list of which cryptonight variant should be calculated using 2way method.\n\
+                          Cryptonight variants: Turtlelite, Turtle, Darklite, Dark, Lite, Fast\n\
+                          Available options:\n\
+                          'light' - default, use only SSE. [0,0,0,0,0,0]\n\
+                          'medium' - use mix of SSE2 & 2way. [1,1,1,1,0,0]\n\
+                          'heavy' - use only 2way. [1,1,1,1,1,1]\n\
+                          [LIST] - customm, list of ',' separated 6 values, 0 - SSE2,  1 - 2way\n"
+#endif
+                            "\
   -h, --help            display this help text and exit\n\
 ";
 
@@ -897,6 +911,9 @@ static struct option const options[] = {
     {"data-file", 1, NULL, 1027},
     {"verify", 0, NULL, 1028},
     {"version", 0, NULL, 'V'},
+#ifdef __AVX2__
+    {"cn-config", 1, NULL, 1101},
+#endif
     {0, 0, 0, 0}};
 
 #endif /* __MINER_H__ */
