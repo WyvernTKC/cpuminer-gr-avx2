@@ -155,7 +155,17 @@ int gr_hash(void *state, const void *input, int thrid);
 int scanhash_gr(struct work *work, uint32_t max_nonce, uint64_t *hashes_done,
                 struct thr_info *mythr);
 
+// Memory state
 extern __thread uint8_t *hp_state;
+
+// Values for 20 CN rotations.
+const static uint8_t cn[20][3] = {
+    {0, 1, 2}, {0, 1, 3}, {0, 1, 4}, {0, 1, 5}, {0, 2, 3}, {0, 2, 4}, {0, 2, 5},
+    {0, 3, 4}, {0, 3, 5}, {0, 4, 5}, {1, 2, 3}, {1, 2, 4}, {1, 2, 5}, {1, 3, 4},
+    {1, 3, 5}, {1, 4, 5}, {2, 3, 4}, {2, 3, 5}, {2, 4, 5}, {3, 4, 5}};
+
+void select_tuned_config();
+void tune(void *input, int thr_id);
 
 void benchmark(void *input, int thr_id, long sleep_time);
 void benchmark_configs(void *input, int thr_id);

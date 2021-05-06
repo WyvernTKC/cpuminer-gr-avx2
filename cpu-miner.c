@@ -150,15 +150,19 @@ bool opt_verify = false;
 // 1 - Use 2way algorithm.
 // Use defines to keep compatibility with v1.1.1
 #if defined(GR_4WAY_HEAVY)
-uint8_t cn_config[6] = {1, 1, 1, 1, 1, 1};
+__thread uint8_t cn_config[6] = {1, 1, 1, 1, 1, 1};
 #elif defined(GR_4WAY_MEDIUM)
-uint8_t cn_config[6] = {0, 1, 1, 1, 0, 0};
+__thread uint8_t cn_config[6] = {0, 1, 1, 1, 0, 0};
 #else
-uint8_t cn_config[6] = {0, 0, 0, 0, 0, 0};
+__thread uint8_t cn_config[6] = {0, 0, 0, 0, 0, 0};
 #endif
 
+bool opt_tune = false;
+bool opt_tuned = false;
+uint8_t cn_tune[20][6];
+
 // pk_buffer_size is used as a version selector by b58 code, therefore
-// it must be set correctly to work.
+// it must be ret correctly to work.
 const int pk_buffer_size_max = 26;
 int pk_buffer_size = 25;
 static unsigned char pk_script[26] = {0};
@@ -3140,6 +3144,32 @@ void show_usage_and_exit(int status) {
   exit(status);
 }
 
+static bool load_tune_config(char *config_name) {
+  FILE *fd;
+  fd = fopen(config_name, "r");
+  if (fd == NULL) {
+    applog(LOG_ERR, "Could not load %s file", config_name);
+    return false;
+  }
+  for (int i = 0; i < 20; i++) {
+    fscanf(fd, "%hhd %hhd %hhd %hhd %hhd %hhd\n", &cn_tune[i][0],
+           &cn_tune[i][1], &cn_tune[i][2], &cn_tune[i][3], &cn_tune[i][4],
+           &cn_tune[i][5]);
+    if (ferror(fd) != 0) {
+      applog(LOG_ERR, "Could not read from %s file", config_name);
+      return false;
+    }
+    if (opt_debug) {
+      applog(LOG_DEBUG, "Loading config for rotation %d: %d %d %d %d %d %d", i,
+             cn_tune[i][0], cn_tune[i][1], cn_tune[i][2], cn_tune[i][3],
+             cn_tune[i][4], cn_tune[i][5]);
+    }
+  }
+  fclose(fd);
+
+  return true;
+}
+
 void strhide(char *s) {
   if (*s)
     *s++ = 'x';
@@ -3549,12 +3579,21 @@ void parse_arg(int key, char *arg) {
       show_usage_and_exit(1);
     }
     break;
-  case 1102: // benchmark
+  case 1102: // benchmark-config
     opt_benchmark = true;
     opt_benchmark_config = true;
     want_longpoll = false;
     want_stratum = false;
     have_stratum = false;
+    break;
+  case 1103: // tune
+    opt_tune = true;
+    break;
+  case 1104: // tune-config
+    opt_tuned = true;
+    if (!load_tune_config(arg)) {
+      show_usage_and_exit(1);
+    }
     break;
   default:
     show_usage_and_exit(1);
