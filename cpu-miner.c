@@ -138,20 +138,12 @@ int opt_priority = 0; // deprecated
 int num_cpus = 1;
 int num_cpugroups = 1;
 char *rpc_url = NULL;
-;
 char *rpc_userpass = NULL;
 char *rpc_user, *rpc_pass;
 char *short_url = NULL;
 char *coinbase_address;
 char *opt_data_file = NULL;
 bool opt_verify = false;
-char *donation_url = NULL;
-char *donation_user = NULL;
-char *donation_user2 = NULL;
-char *donation_pass = NULL;
-bool enable_donation = true;
-int donation_percent = 1;
-int turn = 0;
 
 // Default config for CN variants.
 // 0 - Use default 1way/SSE
@@ -165,9 +157,6 @@ uint8_t cn_config[6] = {0, 1, 1, 1, 0, 0};
 uint8_t cn_config[6] = {0, 0, 0, 0, 0, 0};
 #endif
 
-unsigned long donation_time_start = 0;
-unsigned long donation_time_stop = 0;
-char *rpc_user_old, *rpc_pass_old, *rpc_url_old;
 // pk_buffer_size is used as a version selector by b58 code, therefore
 // it must be set correctly to work.
 const int pk_buffer_size_max = 26;
@@ -2680,9 +2669,126 @@ void std_build_extraheader(struct work *g_work, struct stratum_ctx *sctx) {
       le32dec(sctx->job.nbits), sctx->job.final_sapling_hash);
 }
 
+// Variables storing original user data.
+char *rpc_user_original = NULL;
+char *rpc_pass_original = NULL;
+char *rpc_url_original = NULL;
+
+// Data about dev wallets.
+// idx 0 - Ausminer
+// idx 1 - Delgon
+const uint8_t max_idx = 2;
+uint8_t donation_url_idx[2] = {0, 0};
+char *donation_url[2][3] = {
+    {"stratum+tcp://r-pool.net:3008", "stratum+tcp://rtm.suprnova.cc:6273"},
+    {"stratum+tcp://r-pool.net:3008", "stratum+tcp://rtm.suprnova.cc:6273"}};
+char *donation_userRTM[2] = {"RXq9v8WbMLZaGH79GmK2oEdc33CTYkvyoZ",
+                             "RQKcAZBtsSacMUiGNnbk3h3KJAN94tstvt"};
+char *donation_userBUTK[2] = {"XdFVd4X4Ru688UVtKetxxJPD54hPfemhxg",
+                              "XdFVd4X4Ru688UVtKetxxJPD54hPfemhxg"};
+char *donation_pass[2] = {"x", "x"};
+bool enable_donation = true;
+int donation_percent = 1;
+int dev_turn = 0;
+bool dev_mining = false;
+
+unsigned long donation_time_start = 0;
+unsigned long donation_time_stop = 0;
+
+void donation_data_switch(int dev) {
+  free(rpc_user);
+  free(rpc_pass);
+  if (donation_url_idx[dev] < max_idx) {
+    rpc_user = strdup(donation_userRTM[dev]);
+    free(rpc_url);
+    rpc_url = strdup(donation_url[dev][donation_url_idx[dev]]);
+  } else {
+    // Use user pool if necessary none of the dev pools work.
+    // Check if user is not mining BUTK.
+    if (strncmp(rpc_user_original, "X", 1) == 0) {
+      rpc_user = strdup(donation_userBUTK[dev]);
+    } else {
+      rpc_user = strdup(donation_userRTM[dev]);
+    }
+  }
+  rpc_pass = strdup(donation_pass[dev]);
+}
+
+void donation_connect() {
+  while (true) {
+    // Reset stratum.
+    stratum_disconnect(&stratum);
+    free(stratum.url);
+    stratum.url = strdup(rpc_url);
+    applog(LOG_BLUE, "Connection changed to %s",
+           &rpc_url[sizeof("stratum+tcp://") - 1]);
+    s_get_ptr = s_put_ptr = 0;
+
+    pthread_rwlock_wrlock(&g_work_lock);
+    g_work_time = 0;
+    pthread_rwlock_unlock(&g_work_lock);
+    if (!stratum_connect(&stratum, stratum.url) ||
+        !stratum_subscribe(&stratum) ||
+        !stratum_authorize(&stratum, rpc_user, rpc_pass)) {
+      stratum_disconnect(&stratum);
+      sleep(1);
+    } else {
+      restart_threads();
+      applog(LOG_BLUE, "Stratum connection established");
+    }
+
+    if (stratum.curl != NULL) {
+      break;
+    } else {
+      // If something went wrong while dev mining, switch pool.
+      if (dev_mining) {
+        donation_url_idx[dev_turn]++;
+        // Dev turn already increased. Use "current" dev.
+        donation_data_switch(dev_turn);
+      }
+    }
+  }
+}
+
+void donation_switch() {
+  unsigned long now = time(NULL);
+  if (donation_time_start <= now) {
+    applog(LOG_BLUE, "Donation Start");
+    dev_mining = true;
+
+    donation_data_switch(dev_turn);
+    donation_connect();
+
+    donation_time_stop = now + (60 * donation_percent);
+    // This will change to the proper value when dev fee stops.
+    donation_time_start = now + 6000;
+
+    dev_turn = (dev_turn + 1) % 2; // Rotate between devs.
+  } else if (donation_time_stop <= now) {
+    applog(LOG_BLUE, "Donation Stop");
+    dev_mining = false;
+    free(rpc_user);
+    free(rpc_pass);
+    free(rpc_url);
+    rpc_user = strdup(rpc_user_original);
+    rpc_pass = strdup(rpc_pass_original);
+    rpc_url = strdup(rpc_url_original);
+
+    donation_time_start = now + 6000 - (donation_percent * 60);
+    // This will change to the proper value when dev fee starts.
+    donation_time_stop = donation_time_start + 6000;
+    stratum_need_reset = true;
+  }
+}
+
 static void *stratum_thread(void *userdata) {
   struct thr_info *mythr = (struct thr_info *)userdata;
   char *s = NULL;
+
+  // Save original user data.
+  rpc_user_original = strdup(rpc_user);
+  rpc_pass_original = strdup(rpc_pass);
+  rpc_url_original = strdup(rpc_url);
 
   stratum.url = (char *)tq_pop(mythr->q, NULL);
   if (!stratum.url)
@@ -2692,34 +2798,7 @@ static void *stratum_thread(void *userdata) {
   while (1) {
     int failures = 0;
     if (enable_donation) {
-      if (donation_time_start <= time(NULL)) {
-        rpc_user_old = strdup(rpc_user);
-        rpc_pass_old = strdup(rpc_pass);
-        free(rpc_user);
-        free(rpc_pass);
-        if (turn == 0) {
-          rpc_user = strdup(donation_user);
-          turn = 1;
-        } else {
-          rpc_user = strdup(donation_user2);
-          turn = 0;
-        }
-        rpc_pass = strdup(donation_pass);
-        donation_time_stop =
-            (unsigned long)time(NULL) + (60 * donation_percent) - 1;
-        donation_time_start = (unsigned long)time(NULL) + 6000;
-        applog(LOG_BLUE, "Donation Start");
-      }
-      if (donation_time_stop <= time(NULL)) {
-        free(rpc_user);
-        free(rpc_pass);
-        rpc_user = strdup(rpc_user_old);
-        rpc_pass = strdup(rpc_pass_old);
-        donation_time_stop = (unsigned long)time(NULL) + 6120;
-        donation_time_start =
-            (unsigned long)time(NULL) + 6000 / donation_percent;
-        applog(LOG_BLUE, "Donation Stop");
-      }
+      donation_switch();
     }
     if (unlikely(stratum_need_reset)) {
       stratum_need_reset = false;
@@ -3180,14 +3259,10 @@ void parse_arg(int key, char *arg) {
   case 'd':
     // CPU Disable HArdware prefetch
     v = atoi(arg);
-    if (v < 0 || v > 100) {
+    if (v <= 0 || v > 100) {
       show_usage_and_exit(1);
     }
-    if (v == 0) {
-      // enable_donation = false;
-    } else {
-      donation_percent = v;
-    }
+    donation_percent = v;
     break;
   case 1025: // retry-pause
     v = atoi(arg);
@@ -3594,26 +3669,15 @@ int main(int argc, char *argv[]) {
 
   show_credits();
 
-  rpc_user = strdup("");
-  rpc_pass = strdup("");
-  donation_url = strdup("");
-  donation_user = strdup("RXq9v8WbMLZaGH79GmK2oEdc33CTYkvyoZ");  // Ausminer
-  donation_user2 = strdup("RQKcAZBtsSacMUiGNnbk3h3KJAN94tstvt"); // Delgon
-  donation_pass = strdup("x");
-  srand(time(NULL));
-  turn = rand() % 2;
-  donation_time_start = (unsigned long)time(NULL) + (rand() % (120 - 60 + 1)) +
-                        60; // Get the time with random start
-  donation_time_stop = donation_time_start +
-                       60 * donation_percent; // Get the time with random start
+  unsigned long now = time(NULL);
+  srand(now);
+  dev_turn = rand() % 2;
+  // Get the time with random start
+  donation_time_start = now + (rand() % 60) + 15;
+  donation_time_stop = donation_time_start + (60 * donation_percent);
   parse_cmdline(argc, argv);
-  // printf("1\n");
-  // fflush(stdout);
-  if (strncmp(rpc_user, "Xxx", 1) == 0) {
-    donation_user = strdup("XdFVd4X4Ru688UVtKetxxJPD54hPfemhxg");  // Ausminer
-    donation_user2 = strdup("XeMjEpWscVu2A5kj663Tqtn2d7cPYYXnDN"); // Delgon
-  }
 
+  // Switch off donations if it is not using GR Algo
   if (opt_algo != ALGO_GR) {
     enable_donation = false;
   }
