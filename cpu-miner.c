@@ -3586,10 +3586,6 @@ void parse_arg(int key, char *arg) {
     break;
   case 1103: // tune
     opt_tune = true;
-    opt_benchmark = true;
-    want_longpoll = false;
-    want_stratum = false;
-    have_stratum = false;
     break;
   case 1104: // tune-config
     opt_tuned = true;
@@ -3717,9 +3713,15 @@ int main(int argc, char *argv[]) {
   srand(now);
   dev_turn = rand() % 2;
   // Get the time with random start
-  donation_time_start = now + (rand() % 60) + 15;
-  donation_time_stop = donation_time_start + (60 * donation_percent);
   parse_cmdline(argc, argv);
+
+  donation_time_start = now + (rand() % 60) + 60;
+  donation_time_stop = donation_time_start + (60 * donation_percent);
+  if (opt_tune) {
+    // Tuning takes ~33 minutes. Add it to the donation timers.
+    donation_time_start += (35 * 60);
+    donation_time_stop += (35 * 60);
+  }
 
   // Switch off donations if it is not using GR Algo
   if (opt_algo != ALGO_GR || opt_benchmark) {

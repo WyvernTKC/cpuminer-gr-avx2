@@ -346,9 +346,6 @@ void tune(void *input, int thr_id) {
     opt_tune = false;
     opt_tuned = true;
     save_config();
-    // TODO
-    // This is temporary exit. Should be able to tune and start mining.
-    exit(0);
   }
   sync_conf();
 }
