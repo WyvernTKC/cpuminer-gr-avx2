@@ -225,6 +225,8 @@ void *statistic_thread(void *arg) {
   }
 }
 
+#ifdef __AVX2__
+
 static void tune_config(void *input, int thr_id, int rot) {
   rotation = 19;
   long sleep_time = 12500000;
@@ -344,9 +346,14 @@ void tune(void *input, int thr_id) {
     opt_tune = false;
     opt_tuned = true;
     save_config();
+    // TODO
+    // This is temporary exit. Should be able to tune and start mining.
+    exit(0);
   }
   sync_conf();
 }
+
+#endif // __AVX2__ // GR_4WAY
 
 void benchmark(void *input, int thr_id, long sleep_time) {
   pthread_t pthr;

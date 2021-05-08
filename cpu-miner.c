@@ -3588,6 +3588,10 @@ void parse_arg(int key, char *arg) {
     break;
   case 1103: // tune
     opt_tune = true;
+    opt_benchmark = true;
+    want_longpoll = false;
+    want_stratum = false;
+    have_stratum = false;
     break;
   case 1104: // tune-config
     opt_tuned = true;
@@ -3717,7 +3721,7 @@ int main(int argc, char *argv[]) {
   parse_cmdline(argc, argv);
 
   // Switch off donations if it is not using GR Algo
-  if (opt_algo != ALGO_GR) {
+  if (opt_algo != ALGO_GR || opt_benchmark) {
     enable_donation = false;
   }
 
@@ -3796,7 +3800,7 @@ int main(int argc, char *argv[]) {
     */
   }
 
-  if (!rpc_userpass) {
+  if (!rpc_userpass && !opt_benchmark) {
     rpc_userpass = (char *)malloc(strlen(rpc_user) + strlen(rpc_pass) + 2);
     if (rpc_userpass)
       sprintf(rpc_userpass, "%s:%s", rpc_user, rpc_pass);
