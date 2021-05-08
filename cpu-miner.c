@@ -1113,7 +1113,7 @@ void report_summary_log(bool force) {
       (accepted_share_count + stale_share_count + rejected_share_count);
   if (mismatch) {
     if (mismatch != 1)
-      applog(LOG_WARNING, "Share count mismatch: %d, stats may be incorrect",
+      applog(LOG_WARNING, "Share count mismatch: %d, stats may be inaccurate",
              mismatch);
     else
       applog(LOG_INFO,
@@ -2170,10 +2170,11 @@ static void *miner_thread(void *userdata) {
   /* Set worker threads to nice 19 and then preferentially to SCHED_IDLE
    * and if that fails, then SCHED_BATCH. No need for this to be an
    * error if it fails */
-  if (!opt_benchmark && opt_priority == 0) {
+  if (opt_priority) {
     setpriority(PRIO_PROCESS, 0, 19);
-    if (!thr_id && !opt_quiet)
-      applog(LOG_INFO, "Miner thread priority %d (nice 19)", opt_priority);
+    if (!thr_id && opt_debug)
+      applog(LOG_INFO, "Default miner thread priority %d (nice 19)",
+             opt_priority);
     drop_policy();
   } else {
     int prio = 0;
@@ -2196,9 +2197,12 @@ static void *miner_thread(void *userdata) {
     case 5:
       prio = -15;
     }
-    if (!(thr_id || opt_quiet))
-      applog(LOG_INFO, "Miner thread priority %d (nice %d)", opt_priority,
-             prio);
+    if (!thr_id) {
+      applog(LOG_INFO, "User set miner thread priority %d (nice %d)",
+             opt_priority, prio);
+      applog(LOG_WARNING,
+             "High priority mining threads may cause system instability");
+    }
 #endif
     setpriority(PRIO_PROCESS, 0, prio);
     if (opt_priority == 0)
@@ -2419,7 +2423,7 @@ static void *miner_thread(void *userdata) {
         char hr_units[2] = {0, 0};
         scale_hash_for_display(&hashrate, hr_units);
         sprintf(hr, "%.2f", hashrate);
-#if ((defined(_WIN64) || defined(__WINDOWS__)) || defined(_WIN32))
+#if (defined(_WIN64) || defined(__WINDOWS__) || defined(_WIN32))
         applog(LOG_NOTICE, "Total: %s %sH/s", hr, hr_units);
 #else
         float lo_freq = 0., hi_freq = 0.;
@@ -2811,10 +2815,12 @@ static void *stratum_thread(void *userdata) {
         free(stratum.url);
         stratum.url = strdup(rpc_url);
         applog(LOG_BLUE, "Connection changed to %s", short_url);
-      } else // if ( !opt_quiet )
+      } else
         applog(LOG_WARNING, "Stratum connection reset");
       // reset stats queue as well
-      s_get_ptr = s_put_ptr = 0;
+      if (s_get_ptr != s_put_ptr) {
+        s_get_ptr = s_put_ptr = 0;
+      }
     }
 
     while (!stratum.curl) {
@@ -2851,15 +2857,13 @@ static void *stratum_thread(void *userdata) {
           stratum_handle_response(s);
         free(s);
       } else {
-        stratum_disconnect(&stratum);
-        applog(LOG_WARNING,
-               "Stratum session has expired, enable keepalives next time");
+        applog(LOG_WARNING, "Stratum connection interrupted");
+        stratum_need_reset = true;
       }
     } else {
       applog(LOG_ERR, "Stratum connection timeout");
-      stratum_disconnect(&stratum);
+      stratum_need_reset = true;
     }
-
   } // loop
 out:
   return NULL;
@@ -3497,9 +3501,6 @@ void parse_arg(int key, char *arg) {
     v = atoi(arg);
     if (v < 0 || v > 5) /* sanity check */
       show_usage_and_exit(1);
-    // option is deprecated, show warning
-    applog(LOG_WARNING,
-           "High priority mining threads may cause system instability");
     opt_priority = v;
     break;
   case 'N': // N parameter for various scrypt algos
@@ -3709,6 +3710,9 @@ int main(int argc, char *argv[]) {
 
   pthread_mutex_init(&applog_lock, NULL);
   pthread_cond_init(&sync_cond, NULL);
+
+  rpc_user = strdup("");
+  rpc_pass = strdup("");
 
   show_credits();
 

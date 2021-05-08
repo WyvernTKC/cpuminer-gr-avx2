@@ -1757,10 +1757,12 @@ bool stratum_authorize(struct stratum_ctx *sctx, const char *user,
         // we receive a standard method if extranonce is ignored
         if (!stratum_handle_method(sctx, sret))
           applog(LOG_WARNING, "Stratum answer id is not correct!");
+      } else {
+        res_val = json_object_get(extra, "result");
+        if (opt_debug && (!res_val || json_is_false(res_val))) {
+          applog(LOG_DEBUG, "Method extranonce.subscribe is not supported");
+        }
       }
-      res_val = json_object_get(extra, "result");
-      if (opt_debug && (!res_val || json_is_false(res_val)))
-        applog(LOG_DEBUG, "Method extranonce.subscribe is not supported");
       json_decref(extra);
     }
     free(sret);
