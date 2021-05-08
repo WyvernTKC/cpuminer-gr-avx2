@@ -1485,10 +1485,9 @@ static void selectGRAlgo(unsigned char nibble, bool *selectedAlgos,
 
 static void getGRAlgoString(void *mem, unsigned int size,
                             uint8_t *selectedAlgoOutput, int algoCount) {
-  int i;
+  size_t i;
   unsigned char *p = (unsigned char *)mem;
   unsigned int len = size / 2;
-  unsigned char j = 0;
   bool selectedAlgo[algoCount];
   for (int z = 0; z < algoCount; z++) {
     selectedAlgo[z] = false;
@@ -1609,67 +1608,6 @@ start:
         applog2(LOG_INFO, "Miner TTF @ %.2f %sh/s %s, Net TTF @ %.2f %sh/s %s",
                 miner_hr, miner_hr_units, miner_ttf, net_hr, net_hr_units,
                 net_ttf);
-
-        double hashrate = 0.;
-        pthread_mutex_lock(&stats_lock);
-        for (int i = 0; i < opt_n_threads; i++) {
-          hashrate += thr_hashrates[i];
-        }
-        if ((hashrate < global_min_hr) && (hashrate > 0)) {
-          global_min_hr = hashrate;
-        }
-        if (hashrate > global_max_hr) {
-          global_max_hr = hashrate;
-        }
-        if (hashrate > 0) {
-          hr_count++;
-          global_avg_hr =
-              (global_avg_hr * (hr_count - 1) + hashrate) / hr_count;
-        }
-        pthread_mutex_unlock(&stats_lock);
-        char hr[16];
-        char nhr[16];
-        char xhr[16];
-        char ahr[16];
-        char hr_units[2] = {0, 0};
-        scale_hash_for_display(&hashrate, hr_units);
-        sprintf(hr, "%.2f", hashrate);
-        sprintf(xhr, "%.2f", global_max_hr);
-        sprintf(nhr, "%.2f", global_min_hr);
-        sprintf(ahr, "%.2f", global_avg_hr);
-        applog(LOG_NOTICE, "Hash: %s%sh/s Min: %s Avg: %s Max: %s", hr,
-               hr_units, nhr, ahr, xhr);
-
-        uint32_t endiandata[20];
-        swab32_array(endiandata, work->data, 20);
-        uint8_t selectedCNAlgoOutput[6] = {0};
-        getGRAlgoString(&endiandata[4], 64, selectedCNAlgoOutput, 6);
-        char block_CN[400];
-        memset(block_CN, 0, 400);
-        for (int i = 0; i < 6; i++) {
-          const uint8_t algo = selectedCNAlgoOutput[i];
-          switch (algo) {
-          case 0:
-            strcat(block_CN, "Dark ");
-            break;
-          case 1:
-            strcat(block_CN, "DarkLite ");
-            break;
-          case 2:
-            strcat(block_CN, "Fast ");
-            break;
-          case 3:
-            strcat(block_CN, "Lite ");
-            break;
-          case 4:
-            strcat(block_CN, "Turtle ");
-            break;
-          case 5:
-            strcat(block_CN, "TurtleLite ");
-            break;
-          }
-        }
-        applog(LOG_BLUE, "New Block Cryptonight Algos %s", block_CN);
       }
     } // work->height > last_block_height
     else if (memcmp(&work->data[1], &g_work.data[1], 32))
@@ -2096,6 +2034,65 @@ static void stratum_gen_work(struct stratum_ctx *sctx, struct work *g_work) {
   // Update data and calculate new estimates.
   if ((stratum_diff != sctx->job.diff) ||
       (last_block_height != sctx->block_height)) {
+    double hashrate = 0.;
+    pthread_mutex_lock(&stats_lock);
+    for (int i = 0; i < opt_n_threads; i++) {
+      hashrate += thr_hashrates[i];
+    }
+    if ((hashrate < global_min_hr) && (hashrate > 0)) {
+      global_min_hr = hashrate;
+    }
+    if (hashrate > global_max_hr) {
+      global_max_hr = hashrate;
+    }
+    if (hashrate > 0) {
+      hr_count++;
+      global_avg_hr = (global_avg_hr * (hr_count - 1) + hashrate) / hr_count;
+    }
+    pthread_mutex_unlock(&stats_lock);
+    char uhr[16];
+    char nhr[16];
+    char xhr[16];
+    char ahr[16];
+    char hr_units[2] = {0, 0};
+    scale_hash_for_display(&hashrate, hr_units);
+    sprintf(uhr, "%.2f", hashrate);
+    sprintf(xhr, "%.2f", global_max_hr);
+    sprintf(nhr, "%.2f", global_min_hr);
+    sprintf(ahr, "%.2f", global_avg_hr);
+    applog(LOG_NOTICE, "Hash: %s%sh/s Min: %s Avg: %s Max: %s", uhr, hr_units,
+           nhr, ahr, xhr);
+
+    uint32_t endiandata[20];
+    swab32_array(endiandata, g_work->data, 20);
+    uint8_t selectedCNAlgoOutput[6] = {0};
+    getGRAlgoString(&endiandata[4], 64, selectedCNAlgoOutput, 6);
+    char block_CN[400];
+    memset(block_CN, 0, 400);
+    for (int i = 0; i < 3; i++) {
+      const uint8_t algo = selectedCNAlgoOutput[i];
+      switch (algo) {
+      case 0:
+        strcat(block_CN, "Dark ");
+        break;
+      case 1:
+        strcat(block_CN, "DarkLite ");
+        break;
+      case 2:
+        strcat(block_CN, "Fast ");
+        break;
+      case 3:
+        strcat(block_CN, "Lite ");
+        break;
+      case 4:
+        strcat(block_CN, "Turtle ");
+        break;
+      case 5:
+        strcat(block_CN, "TurtleLite ");
+        break;
+      }
+    }
+    applog(LOG_BLUE, "New Block Cryptonight Algos %s", block_CN);
     static bool multipool = false;
     if (stratum.block_height < last_block_height)
       multipool = true;
