@@ -158,6 +158,12 @@ aes_round(const __m128i *key, __m128i *x0, __m128i *x1, __m128i *x2,
 }
 #endif
 
+// Size is number of 64B words. // Must be multiple of 8.
+// 256 -> 16 KiB
+#define PREFETCH_SIZE 256
+#define PREFETCH_TYPE_R _MM_HINT_T0
+#define PREFETCH_TYPE_W _MM_HINT_ET0
+
 static inline void explode_scratchpad(const __m128i *input, __m128i *output,
                                       const size_t memory) {
   __m128i xin0, xin1, xin2, xin3, xin4, xin5, xin6, xin7;
@@ -174,7 +180,17 @@ static inline void explode_scratchpad(const __m128i *input, __m128i *output,
   xin6 = _mm_load_si128(input + 10);
   xin7 = _mm_load_si128(input + 11);
 
-  for (size_t i = 0; i < memory / sizeof(__m128i); i += 8) {
+  size_t i;
+  // Prefetch first X KiB of output into L2 cache.
+  for (i = 0; i < PREFETCH_SIZE; i += 4) {
+    _mm_prefetch(output + i, _MM_HINT_ET0);
+  }
+
+  for (i = 0; i < (memory / sizeof(__m128i)) - PREFETCH_SIZE; i += 8) {
+    // Prefetch next 2 cache lines shifted X KiB in advance.
+    _mm_prefetch(output + PREFETCH_SIZE, PREFETCH_TYPE_W);
+    _mm_prefetch(output + PREFETCH_SIZE + 4, PREFETCH_TYPE_W);
+
     aes_round(&k0, &xin0, &xin1, &xin2, &xin3, &xin4, &xin5, &xin6, &xin7);
     aes_round(&k1, &xin0, &xin1, &xin2, &xin3, &xin4, &xin5, &xin6, &xin7);
     aes_round(&k2, &xin0, &xin1, &xin2, &xin3, &xin4, &xin5, &xin6, &xin7);
@@ -186,17 +202,37 @@ static inline void explode_scratchpad(const __m128i *input, __m128i *output,
     aes_round(&k8, &xin0, &xin1, &xin2, &xin3, &xin4, &xin5, &xin6, &xin7);
     aes_round(&k9, &xin0, &xin1, &xin2, &xin3, &xin4, &xin5, &xin6, &xin7);
 
-    _mm_store_si128(output + 0, xin0);
-    _mm_store_si128(output + 1, xin1);
-    _mm_store_si128(output + 2, xin2);
-    _mm_store_si128(output + 3, xin3);
+    _mm_store_si128(output++, xin0);
+    _mm_store_si128(output++, xin1);
+    _mm_store_si128(output++, xin2);
+    _mm_store_si128(output++, xin3);
+    _mm_store_si128(output++, xin4);
+    _mm_store_si128(output++, xin5);
+    _mm_store_si128(output++, xin6);
+    _mm_store_si128(output++, xin7);
+  }
 
-    _mm_store_si128(output + 4, xin4);
-    _mm_store_si128(output + 5, xin5);
-    _mm_store_si128(output + 6, xin6);
-    _mm_store_si128(output + 7, xin7);
+  // Last X KiB should be already prefetched.
+  for (; i < memory / sizeof(__m128i); i += 8) {
+    aes_round(&k0, &xin0, &xin1, &xin2, &xin3, &xin4, &xin5, &xin6, &xin7);
+    aes_round(&k1, &xin0, &xin1, &xin2, &xin3, &xin4, &xin5, &xin6, &xin7);
+    aes_round(&k2, &xin0, &xin1, &xin2, &xin3, &xin4, &xin5, &xin6, &xin7);
+    aes_round(&k3, &xin0, &xin1, &xin2, &xin3, &xin4, &xin5, &xin6, &xin7);
+    aes_round(&k4, &xin0, &xin1, &xin2, &xin3, &xin4, &xin5, &xin6, &xin7);
+    aes_round(&k5, &xin0, &xin1, &xin2, &xin3, &xin4, &xin5, &xin6, &xin7);
+    aes_round(&k6, &xin0, &xin1, &xin2, &xin3, &xin4, &xin5, &xin6, &xin7);
+    aes_round(&k7, &xin0, &xin1, &xin2, &xin3, &xin4, &xin5, &xin6, &xin7);
+    aes_round(&k8, &xin0, &xin1, &xin2, &xin3, &xin4, &xin5, &xin6, &xin7);
+    aes_round(&k9, &xin0, &xin1, &xin2, &xin3, &xin4, &xin5, &xin6, &xin7);
 
-    output += 8;
+    _mm_store_si128(output++, xin0);
+    _mm_store_si128(output++, xin1);
+    _mm_store_si128(output++, xin2);
+    _mm_store_si128(output++, xin3);
+    _mm_store_si128(output++, xin4);
+    _mm_store_si128(output++, xin5);
+    _mm_store_si128(output++, xin6);
+    _mm_store_si128(output++, xin7);
   }
 }
 
@@ -216,18 +252,58 @@ static inline void implode_scratchpad(const __m128i *input, __m128i *output,
   xout6 = _mm_load_si128(output + 10);
   xout7 = _mm_load_si128(output + 11);
 
-  for (size_t i = 0; i < memory / sizeof(__m128i);) {
-    xout0 = _mm_xor_si128(_mm_load_si128(input + 0), xout0);
-    xout1 = _mm_xor_si128(_mm_load_si128(input + 1), xout1);
-    xout2 = _mm_xor_si128(_mm_load_si128(input + 2), xout2);
-    xout3 = _mm_xor_si128(_mm_load_si128(input + 3), xout3);
-    xout4 = _mm_xor_si128(_mm_load_si128(input + 4), xout4);
-    xout5 = _mm_xor_si128(_mm_load_si128(input + 5), xout5);
-    xout6 = _mm_xor_si128(_mm_load_si128(input + 6), xout6);
-    xout7 = _mm_xor_si128(_mm_load_si128(input + 7), xout7);
+  size_t i;
+  // Prefetch first X KiB of input into L2 cache.
+  for (i = 0; i < PREFETCH_SIZE; i += 4) {
+    _mm_prefetch(input + i, PREFETCH_TYPE_R);
+  }
 
-    input += 8;
-    i += 8;
+  for (i = 0; i < (memory / sizeof(__m128i)) - PREFETCH_SIZE; i += 8) {
+    // Prefetch next 2 cache lines shifted X KiB in advance.
+    _mm_prefetch(input + PREFETCH_SIZE, PREFETCH_TYPE_R);
+    _mm_prefetch(input + PREFETCH_SIZE + 4, PREFETCH_TYPE_R);
+
+    xout0 = _mm_xor_si128(_mm_load_si128(input++), xout0);
+    xout1 = _mm_xor_si128(_mm_load_si128(input++), xout1);
+    xout2 = _mm_xor_si128(_mm_load_si128(input++), xout2);
+    xout3 = _mm_xor_si128(_mm_load_si128(input++), xout3);
+    xout4 = _mm_xor_si128(_mm_load_si128(input++), xout4);
+    xout5 = _mm_xor_si128(_mm_load_si128(input++), xout5);
+    xout6 = _mm_xor_si128(_mm_load_si128(input++), xout6);
+    xout7 = _mm_xor_si128(_mm_load_si128(input++), xout7);
+
+    aes_round(&k0, &xout0, &xout1, &xout2, &xout3, &xout4, &xout5, &xout6,
+              &xout7);
+    aes_round(&k1, &xout0, &xout1, &xout2, &xout3, &xout4, &xout5, &xout6,
+              &xout7);
+    aes_round(&k2, &xout0, &xout1, &xout2, &xout3, &xout4, &xout5, &xout6,
+              &xout7);
+    aes_round(&k3, &xout0, &xout1, &xout2, &xout3, &xout4, &xout5, &xout6,
+              &xout7);
+    aes_round(&k4, &xout0, &xout1, &xout2, &xout3, &xout4, &xout5, &xout6,
+              &xout7);
+    aes_round(&k5, &xout0, &xout1, &xout2, &xout3, &xout4, &xout5, &xout6,
+              &xout7);
+    aes_round(&k6, &xout0, &xout1, &xout2, &xout3, &xout4, &xout5, &xout6,
+              &xout7);
+    aes_round(&k7, &xout0, &xout1, &xout2, &xout3, &xout4, &xout5, &xout6,
+              &xout7);
+    aes_round(&k8, &xout0, &xout1, &xout2, &xout3, &xout4, &xout5, &xout6,
+              &xout7);
+    aes_round(&k9, &xout0, &xout1, &xout2, &xout3, &xout4, &xout5, &xout6,
+              &xout7);
+  }
+
+  // Last X KiB should be already prefetched.
+  for (; i < memory / sizeof(__m128i); i += 8) {
+    xout0 = _mm_xor_si128(_mm_load_si128(input++), xout0);
+    xout1 = _mm_xor_si128(_mm_load_si128(input++), xout1);
+    xout2 = _mm_xor_si128(_mm_load_si128(input++), xout2);
+    xout3 = _mm_xor_si128(_mm_load_si128(input++), xout3);
+    xout4 = _mm_xor_si128(_mm_load_si128(input++), xout4);
+    xout5 = _mm_xor_si128(_mm_load_si128(input++), xout5);
+    xout6 = _mm_xor_si128(_mm_load_si128(input++), xout6);
+    xout7 = _mm_xor_si128(_mm_load_si128(input++), xout7);
 
     aes_round(&k0, &xout0, &xout1, &xout2, &xout3, &xout4, &xout5, &xout6,
               &xout7);
@@ -291,7 +367,6 @@ cryptonight_hash(const void *input, void *output, const uint32_t memory,
 #else
     const __m128i ax0 = _mm_set_epi64x((int64_t)(ah0), (int64_t)(al0));
     cx = soft_aesenc(&cx, &ax0);
-    // cx = soft_aesenc(&cx, &ax0);
 #endif
 
     // Post AES

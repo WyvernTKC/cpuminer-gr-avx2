@@ -151,10 +151,13 @@ bool opt_verify = false;
 // Use defines to keep compatibility with v1.1.1
 #if defined(GR_4WAY_HEAVY)
 __thread uint8_t cn_config[6] = {1, 1, 1, 1, 1, 1};
+uint8_t cn_config_global[6] = {1, 1, 1, 1, 1, 1};
 #elif defined(GR_4WAY_MEDIUM)
 __thread uint8_t cn_config[6] = {0, 1, 1, 1, 0, 0};
+uint8_t cn_config_global[6] = {0, 1, 1, 1, 0, 0};
 #else
 __thread uint8_t cn_config[6] = {0, 0, 0, 0, 0, 0};
+uint8_t cn_config_global[6] = {0, 0, 0, 0, 0, 0};
 #endif
 
 bool opt_tune = false;
@@ -2143,6 +2146,7 @@ static void stratum_gen_work(struct stratum_ctx *sctx, struct work *g_work) {
 }
 
 static void *miner_thread(void *userdata) {
+  memcpy(cn_config, cn_config_global, 6);
   struct work work __attribute__((aligned(64)));
   struct thr_info *mythr = (struct thr_info *)userdata;
   int thr_id = mythr->id;
@@ -3550,15 +3554,15 @@ void parse_arg(int key, char *arg) {
   case 1101: // cn-config
     // arg - light / medium / heavy
     if (strcmp(arg, "light") == 0) {
-      memset(cn_config, 0, 6);
+      memset(cn_config_global, 0, 6);
       return;
     } else if (strcmp(arg, "medium") == 0) {
-      memset(cn_config, 1, 6);
-      cn_config[4] = 0; // Lite
-      cn_config[5] = 0; // Fast
+      memset(cn_config_global, 1, 6);
+      cn_config_global[4] = 0; // Lite
+      cn_config_global[5] = 0; // Fast
       return;
     } else if (strcmp(arg, "heavy") == 0) {
-      memset(cn_config, 1, 6);
+      memset(cn_config_global, 1, 6);
       return;
     }
     // arg - list like 1,1,0,0,1,1
@@ -3570,7 +3574,7 @@ void parse_arg(int key, char *arg) {
       if (v != 0 && v != 1) {
         show_usage_and_exit(1);
       }
-      cn_config[count++] = v;
+      cn_config_global[count++] = v;
       cn = strtok(NULL, ",");
     }
     if (count != 6) {

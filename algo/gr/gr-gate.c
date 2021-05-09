@@ -109,8 +109,6 @@ void gr_getAlgoString(const uint8_t *block, uint8_t *selectedAlgoOutput) {
   }
 }
 
-static uint8_t cn_map[6] = {3, 2, 5, 4, 1, 0};
-
 void select_tuned_config() {
   for (size_t i = 0; i < 20; i++) {
     if (cn[i][0] + 15 == gr_hash_order[5] ||
@@ -226,6 +224,8 @@ void *statistic_thread(void *arg) {
 }
 
 #ifdef __AVX2__
+
+static uint8_t cn_map[6] = {3, 2, 5, 4, 1, 0};
 
 static void tune_config(void *input, int thr_id, int rot) {
   rotation = 19;
@@ -426,14 +426,14 @@ void benchmark_configs(void *input, int thr_id) {
   int best_hashrate = 0;
 
   for (int i = 0; i < (1 << 6); i++) {
+    // Set new cn_config to test.
+    cn_config[0] = (i & 1) >> 0;
+    cn_config[1] = (i & 2) >> 1;
+    cn_config[2] = (i & 4) >> 2;
+    cn_config[3] = (i & 8) >> 3;
+    cn_config[4] = (i & 16) >> 4;
+    cn_config[5] = (i & 32) >> 5;
     if (thr_id == 0) {
-      // Set new cn_config to test.
-      cn_config[0] = (i & 1) >> 0;
-      cn_config[1] = (i & 2) >> 1;
-      cn_config[2] = (i & 4) >> 2;
-      cn_config[3] = (i & 8) >> 3;
-      cn_config[4] = (i & 16) >> 4;
-      cn_config[5] = (i & 32) >> 5;
       applog(LOG_NOTICE, "Testing Cryptonigh --cn-config %d,%d,%d,%d,%d,%d",
              cn_config[0], cn_config[1], cn_config[2], cn_config[3],
              cn_config[4], cn_config[5]);

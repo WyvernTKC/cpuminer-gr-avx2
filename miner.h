@@ -686,6 +686,7 @@ extern int pk_buffer_size;
 extern char *opt_data_file;
 extern bool opt_verify;
 extern __thread uint8_t cn_config[6];
+extern uint8_t cn_config_global[6];
 extern bool opt_tune;
 extern bool opt_tuned;
 extern uint8_t cn_tune[20][6];
