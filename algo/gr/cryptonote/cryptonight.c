@@ -536,7 +536,7 @@ cryptonight_2way_hash(const void *input0, const void *input1, void *output0,
     ch = ((uint64_t *)(&l0[idx0]))[1];
 
     // lo = __umul128(&cxl0, &cl, &hi);
-    __asm("mulq %3\n\t" : "=d"(hi), "=a"(lo) : "1"(cxl1), "rm"(cl) : "cc");
+    __asm("mulq %3\n\t" : "=d"(hi), "=a"(lo) : "1"(cxl0), "rm"(cl) : "cc");
 
     al0 += hi;
     ah0 += lo;
