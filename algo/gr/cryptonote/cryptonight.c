@@ -159,8 +159,8 @@ aes_round(const __m128i *key, __m128i *x0, __m128i *x1, __m128i *x2,
 #endif
 
 // Size is number of 64B words. // Must be multiple of 8.
-// 256 -> 16 KiB
-#define PREFETCH_SIZE 256
+// 128 -> 8 KiB per thread needed.
+#define PREFETCH_SIZE 128
 #define PREFETCH_TYPE_R _MM_HINT_T0
 #define PREFETCH_TYPE_W _MM_HINT_ET0
 
@@ -370,8 +370,6 @@ cryptonight_hash(const void *input, void *output, const uint32_t memory,
     const __m128i ax0 = _mm_set_epi64x((int64_t)ah0, (int64_t)al0);
     cx0 = soft_aesenc(&cx0, &ax0);
 #endif
-    const uint64_t cxl0 = (uint64_t)(_mm_cvtsi128_si64(cx0));
-    //_mm_prefetch(&l0[cxl0 & mask], _MM_HINT_ET0);
 
     // Post AES
     __m128i tmp = _mm_xor_si128(bx0, cx0);
@@ -388,6 +386,7 @@ cryptonight_hash(const void *input, void *output, const uint32_t memory,
 
     ((uint64_t *)(&l0[idx0]))[1] = vh;
 
+    const uint64_t cxl0 = (uint64_t)(_mm_cvtsi128_si64(cx0));
     idx0 = cxl0 & mask;
 
     uint64_t hi, lo, cl, ch;

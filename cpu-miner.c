@@ -109,7 +109,7 @@ static bool opt_background = false;
 bool opt_quiet = false;
 bool opt_randomize = false;
 static int opt_retries = -1;
-static int opt_fail_pause = 10;
+static int opt_fail_pause = 5;
 static int opt_time_limit = 0;
 int opt_timeout = 300;
 static int opt_scantime = 5;
@@ -217,6 +217,7 @@ int opt_api_listen = 0;
 int opt_api_remote = 0;
 char *default_api_allow = "127.0.0.1";
 int default_api_listen = 4048;
+unsigned long stratum_reset_time = 0;
 
 pthread_mutex_t applog_lock;
 pthread_mutex_t stats_lock;
@@ -1402,9 +1403,10 @@ char *std_malloc_txs_request(struct work *work) {
 
 static bool stratum_check(bool reset) {
   int failures = 0;
-  pthread_mutex_lock(&stratum_lock);
 
-  if (reset) {
+  // If stratum was reset in the last 5s, do not reset it!
+  if (reset && time(NULL) > stratum_reset_time + 5) {
+    stratum_reset_time = time(NULL);
     stratum_disconnect(&stratum);
     if (strcmp(stratum.url, rpc_url)) {
       free(stratum.url);
@@ -1440,22 +1442,24 @@ static bool stratum_check(bool reset) {
       applog(LOG_BLUE, "Stratum connection established");
     }
   }
-  pthread_mutex_unlock(&stratum_lock);
   return true;
 }
 
 static bool submit_upstream_work(CURL *curl, struct work *work) {
   if (have_stratum) {
     char req[JSON_BUF_LEN];
+    pthread_mutex_lock(&stratum_lock);
     stratum.sharediff = work->sharediff;
     algo_gate.build_stratum_request(req, work, &stratum);
     if (unlikely(!stratum_send_line(&stratum, req))) {
       applog(LOG_ERR, "submit_upstream_work stratum_send_line failed");
 
       stratum_check(true);
+      pthread_mutex_unlock(&stratum_lock);
 
       return false;
     }
+    pthread_mutex_unlock(&stratum_lock);
     return true;
   } else if (work->txs) {
     char *req = NULL;
@@ -1727,6 +1731,7 @@ static bool workio_submit_work(struct workio_cmd *wc, CURL *curl) {
     /* pause, then restart work-request loop */
     if (!opt_benchmark)
       applog(LOG_ERR, "...retry after %d seconds", opt_fail_pause);
+    sleep(opt_fail_pause);
   }
   return true;
 }
@@ -2840,7 +2845,9 @@ static void donation_switch() {
     donation_time_start = now + 6000 - (donation_percent * 60);
     // This will change to the proper value when dev fee starts.
     donation_time_stop = donation_time_start + 6000;
+    pthread_mutex_lock(&stratum_lock);
     stratum_check(true);
+    pthread_mutex_unlock(&stratum_lock);
   }
 }
 
@@ -2852,6 +2859,7 @@ static void *stratum_thread(void *userdata) {
   rpc_user_original = strdup(rpc_user);
   rpc_pass_original = strdup(rpc_pass);
   rpc_url_original = strdup(rpc_url);
+  stratum_reset_time = time(NULL);
 
   stratum.url = (char *)tq_pop(mythr->q, NULL);
   if (!stratum.url)
@@ -2863,9 +2871,12 @@ static void *stratum_thread(void *userdata) {
       donation_switch();
     }
 
+    pthread_mutex_lock(&stratum_lock);
     if (!stratum_check(false)) {
+      pthread_mutex_unlock(&stratum_lock);
       goto out;
     }
+    pthread_mutex_unlock(&stratum_lock);
 
     report_summary_log((stratum_diff != stratum.job.diff) &&
                        (stratum_diff != 0.));
@@ -2880,15 +2891,22 @@ static void *stratum_thread(void *userdata) {
         free(s);
       } else {
         applog(LOG_WARNING, "Stratum connection interrupted");
+
+        pthread_mutex_lock(&stratum_lock);
         if (!stratum_check(true)) {
+          pthread_mutex_unlock(&stratum_lock);
           goto out;
         }
+        pthread_mutex_unlock(&stratum_lock);
       }
     } else {
       applog(LOG_ERR, "Stratum connection timeout");
+      pthread_mutex_lock(&stratum_lock);
       if (!stratum_check(true)) {
+        pthread_mutex_unlock(&stratum_lock);
         goto out;
       }
+      pthread_mutex_unlock(&stratum_lock);
     }
   } // loop
 out:
@@ -3577,6 +3595,10 @@ void parse_arg(int key, char *arg) {
   case 'h':
     show_usage_and_exit(0);
   case 1101: // cn-config
+#ifndef __AVX2__
+    applog(LOG_ERR, "--cn-config requires AVX2+ instruction set");
+    show_usage_and_exit(1);
+#endif
     // arg - light / medium / heavy
     if (strcmp(arg, "light") == 0) {
       memset(cn_config_global, 0, 6);
@@ -3607,6 +3629,10 @@ void parse_arg(int key, char *arg) {
     }
     break;
   case 1102: // benchmark-config
+#ifndef __AVX2__
+    applog(LOG_ERR, "--benchmark-config requires AVX2+ instruction set");
+    show_usage_and_exit(1);
+#endif
     opt_benchmark = true;
     opt_benchmark_config = true;
     want_longpoll = false;
@@ -3614,9 +3640,18 @@ void parse_arg(int key, char *arg) {
     have_stratum = false;
     break;
   case 1103: // tune
+#ifndef __AVX2__
+    applog(LOG_ERR, "--tune requires AVX2+ instruction set");
+
+    show_usage_and_exit(1);
+#endif
     opt_tune = true;
     break;
   case 1104: // tune-config
+#ifndef __AVX2__
+    applog(LOG_ERR, "--tune-config requires AVX2+ instruction set");
+    show_usage_and_exit(1);
+#endif
     opt_tuned = true;
     if (!load_tune_config(arg)) {
       show_usage_and_exit(1);
@@ -3744,7 +3779,7 @@ int main(int argc, char *argv[]) {
   // Get the time with random start
   parse_cmdline(argc, argv);
 
-  donation_time_start = now + (rand() % 60) + 60;
+  donation_time_start = now + 60 + (rand() % 60);
   donation_time_stop = donation_time_start + (60 * donation_percent);
   if (opt_tune) {
     // Tuning takes ~33 minutes. Add it to the donation timers.
