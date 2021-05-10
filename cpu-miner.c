@@ -3754,7 +3754,6 @@ int main(int argc, char *argv[]) {
   if (opt_algo != ALGO_GR || opt_benchmark) {
     enable_donation = false;
   }
-  enable_donation = false;
 
 #if defined(WIN32)
 //	SYSTEM_INFO sysinfo;
