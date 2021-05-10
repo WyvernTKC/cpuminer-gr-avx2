@@ -417,6 +417,10 @@ int scanhash_gr_4way(struct work *work, uint32_t max_nonce,
     tune(pdata, thr_id);
     opt_tuned = true; // Tuned.
     opt_tune = false; // Tune only once.
+    // Prevent error messages after tuning with --benchmark.
+    if (opt_benchmark) {
+      exit(0);
+    }
   }
 
   if (opt_benchmark_config) {
