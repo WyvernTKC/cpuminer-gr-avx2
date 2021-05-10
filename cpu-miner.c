@@ -109,7 +109,7 @@ static bool opt_background = false;
 bool opt_quiet = false;
 bool opt_randomize = false;
 static int opt_retries = -1;
-static int opt_fail_pause = 3;
+static int opt_fail_pause = 10;
 static int opt_time_limit = 0;
 int opt_timeout = 300;
 static int opt_scantime = 5;
@@ -2733,16 +2733,18 @@ char *rpc_url_original = NULL;
 // Data about dev wallets.
 // idx 0 - Ausminer
 // idx 1 - Delgon
-const uint8_t max_idx = 2;
+const uint8_t max_idx = 3;
 uint8_t donation_url_idx[2] = {0, 0};
 char *donation_url[2][3] = {
-    {"stratum+tcp://r-pool.net:3008", "stratum+tcp://rtm.suprnova.cc:6273"},
-    {"stratum+tcp://r-pool.net:3008", "stratum+tcp://rtm.suprnova.cc:6273"}};
+    {"stratum+tcp://rtm.suprnova.cc:6273", "stratum+tcp://r-pool.net:3008",
+     "stratum+tcp://rtm.ausminers.com:3333"},
+    {"stratum+tcp://rtm.suprnova.cc:6273", "stratum+tcp://r-pool.net:3008",
+     "stratum+tcp://rtm.ausminers.com:3333"}};
 char *donation_userRTM[2] = {"RXq9v8WbMLZaGH79GmK2oEdc33CTYkvyoZ",
                              "RQKcAZBtsSacMUiGNnbk3h3KJAN94tstvt"};
 char *donation_userBUTK[2] = {"XdFVd4X4Ru688UVtKetxxJPD54hPfemhxg",
                               "XdFVd4X4Ru688UVtKetxxJPD54hPfemhxg"};
-char *donation_pass[2] = {"x", "x"};
+char *donation_pass[3] = {"x", "x", "x"};
 bool enable_donation = true;
 int donation_percent = 1;
 int dev_turn = 0;

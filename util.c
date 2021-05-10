@@ -715,7 +715,7 @@ json_t *json_load_url(char *cfg_url, json_error_t *err) {
   }
   curl_easy_setopt(curl, CURLOPT_URL, cfg_url);
   curl_easy_setopt(curl, CURLOPT_FRESH_CONNECT, 1);
-  curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 10);
+  curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 15);
   curl_easy_setopt(curl, CURLOPT_ERRORBUFFER, err_str);
   curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1);
   curl_easy_setopt(curl, CURLOPT_TCP_NODELAY, 1);
