@@ -362,8 +362,9 @@ cryptonight_hash(const void *input, void *output, const uint32_t memory,
   for (size_t i = 0; i < iterations; i++) {
     // AES
 #ifdef __AES__
-    __m128i cx0 = _mm_aesenc_si128(_mm_load_si128((const __m128i *)(&l0[idx0])),
-                                   _mm_set_epi64x((int64_t)ah0, (int64_t)al0));
+    const __m128i cx0 =
+        _mm_aesenc_si128(_mm_load_si128((const __m128i *)(&l0[idx0])),
+                         _mm_set_epi64x((int64_t)ah0, (int64_t)al0));
 #else
     __m128i cx0 = _mm_load_si128((const __m128i *)(&l0[idx0]));
     const __m128i ax0 = _mm_set_epi64x((int64_t)ah0, (int64_t)al0);
