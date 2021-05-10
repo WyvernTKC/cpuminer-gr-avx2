@@ -24,28 +24,10 @@ void cryptonight_turtle_hash(const void *input, void *output);
 void cryptonight_turtlelite_hash(const void *input, void *output);
 
 #if defined(__AVX2__)
-#include "crypto/hash-ops.h"
-
-#pragma pack(push, 1)
-union cn_slow_hash_state {
-  union hash_state hs;
-  struct {
-    uint8_t k[64];
-    uint8_t init[INIT_SIZE_BYTE];
-  };
-};
-#pragma pack(pop)
-
-#pragma pack(push, 1)
-struct cryptonight_ctx {
-  union cn_slow_hash_state state;
-  uint8_t text[INIT_SIZE_BYTE];
-};
-#pragma pack(pop)
 
 void cryptonight_2way_hash(const void *input0, const void *input1,
                            void *output0, void *output1, const uint32_t memory,
-                           const uint32_t iter_div, const uint32_t cn_aes_init);
+                           const uint32_t iterations, const uint32_t mask);
 
 // Helper functions for different types of Cryptonight variants.
 void cryptonight_dark_2way_hash(const void *input0, const void *input1,

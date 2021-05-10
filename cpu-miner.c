@@ -109,7 +109,7 @@ static bool opt_background = false;
 bool opt_quiet = false;
 bool opt_randomize = false;
 static int opt_retries = -1;
-static int opt_fail_pause = 10;
+static int opt_fail_pause = 3;
 static int opt_time_limit = 0;
 int opt_timeout = 300;
 static int opt_scantime = 5;
@@ -220,6 +220,7 @@ int default_api_listen = 4048;
 
 pthread_mutex_t applog_lock;
 pthread_mutex_t stats_lock;
+pthread_mutex_t stratum_lock;
 pthread_cond_t sync_cond;
 
 static struct timeval session_start;
@@ -1399,6 +1400,50 @@ char *std_malloc_txs_request(struct work *work) {
   return req;
 }
 
+static bool stratum_check(bool reset) {
+  int failures = 0;
+  pthread_mutex_lock(&stratum_lock);
+
+  if (reset) {
+    stratum_disconnect(&stratum);
+    if (strcmp(stratum.url, rpc_url)) {
+      free(stratum.url);
+      stratum.url = strdup(rpc_url);
+      applog(LOG_BLUE, "Connection changed to %s", short_url);
+    } else
+      applog(LOG_WARNING, "Stratum connection reset");
+    // reset stats queue as well
+    if (s_get_ptr != s_put_ptr) {
+      s_get_ptr = s_put_ptr = 0;
+    }
+  }
+
+  while (!stratum.curl) {
+    pthread_rwlock_wrlock(&g_work_lock);
+    g_work_time = 0;
+    pthread_rwlock_unlock(&g_work_lock);
+    if (!stratum_connect(&stratum, stratum.url) ||
+        !stratum_subscribe(&stratum) ||
+        !stratum_authorize(&stratum, rpc_user, rpc_pass)) {
+      stratum_disconnect(&stratum);
+      if (opt_retries >= 0 && ++failures > opt_retries) {
+        applog(LOG_ERR, "...terminating workio thread");
+        tq_push(thr_info[work_thr_id].q, NULL);
+        pthread_mutex_unlock(&stratum_lock);
+        return false;
+      }
+      if (!opt_benchmark)
+        applog(LOG_ERR, "...retry after %d seconds", opt_fail_pause);
+      sleep(opt_fail_pause);
+    } else {
+      restart_threads();
+      applog(LOG_BLUE, "Stratum connection established");
+    }
+  }
+  pthread_mutex_unlock(&stratum_lock);
+  return true;
+}
+
 static bool submit_upstream_work(CURL *curl, struct work *work) {
   if (have_stratum) {
     char req[JSON_BUF_LEN];
@@ -1406,6 +1451,9 @@ static bool submit_upstream_work(CURL *curl, struct work *work) {
     algo_gate.build_stratum_request(req, work, &stratum);
     if (unlikely(!stratum_send_line(&stratum, req))) {
       applog(LOG_ERR, "submit_upstream_work stratum_send_line failed");
+
+      stratum_check(true);
+
       return false;
     }
     return true;
@@ -1679,7 +1727,6 @@ static bool workio_submit_work(struct workio_cmd *wc, CURL *curl) {
     /* pause, then restart work-request loop */
     if (!opt_benchmark)
       applog(LOG_ERR, "...retry after %d seconds", opt_fail_pause);
-    sleep(opt_fail_pause);
   }
   return true;
 }
@@ -2704,15 +2751,16 @@ bool dev_mining = false;
 unsigned long donation_time_start = 0;
 unsigned long donation_time_stop = 0;
 
-void donation_data_switch(int dev) {
+static void donation_data_switch(int dev) {
   free(rpc_user);
   free(rpc_pass);
+  free(rpc_url);
   if (donation_url_idx[dev] < max_idx) {
     rpc_user = strdup(donation_userRTM[dev]);
-    free(rpc_url);
     rpc_url = strdup(donation_url[dev][donation_url_idx[dev]]);
   } else {
     // Use user pool if necessary none of the dev pools work.
+    rpc_url = strdup(rpc_url_original);
     // Check if user is not mining BUTK.
     if (strncmp(rpc_user_original, "X", 1) == 0) {
       rpc_user = strdup(donation_userBUTK[dev]);
@@ -2720,10 +2768,12 @@ void donation_data_switch(int dev) {
       rpc_user = strdup(donation_userRTM[dev]);
     }
   }
+  short_url = &rpc_url[sizeof("stratum+tcp://") - 1];
   rpc_pass = strdup(donation_pass[dev]);
 }
 
-void donation_connect() {
+static void donation_connect() {
+  pthread_mutex_lock(&stratum_lock);
   while (true) {
     // Reset stratum.
     stratum_disconnect(&stratum);
@@ -2757,9 +2807,10 @@ void donation_connect() {
       }
     }
   }
+  pthread_mutex_unlock(&stratum_lock);
 }
 
-void donation_switch() {
+static void donation_switch() {
   unsigned long now = time(NULL);
   if (donation_time_start <= now) {
     applog(LOG_BLUE, "Donation Start");
@@ -2782,11 +2833,12 @@ void donation_switch() {
     rpc_user = strdup(rpc_user_original);
     rpc_pass = strdup(rpc_pass_original);
     rpc_url = strdup(rpc_url_original);
+    short_url = &rpc_url[sizeof("stratum+tcp://") - 1];
 
     donation_time_start = now + 6000 - (donation_percent * 60);
     // This will change to the proper value when dev fee starts.
     donation_time_stop = donation_time_start + 6000;
-    stratum_need_reset = true;
+    stratum_check(true);
   }
 }
 
@@ -2805,45 +2857,12 @@ static void *stratum_thread(void *userdata) {
   applog(LOG_BLUE, "Stratum connect %s", short_url);
 
   while (1) {
-    int failures = 0;
     if (enable_donation) {
       donation_switch();
     }
-    if (unlikely(stratum_need_reset)) {
-      stratum_need_reset = false;
-      stratum_disconnect(&stratum);
-      if (strcmp(stratum.url, rpc_url)) {
-        free(stratum.url);
-        stratum.url = strdup(rpc_url);
-        applog(LOG_BLUE, "Connection changed to %s", short_url);
-      } else
-        applog(LOG_WARNING, "Stratum connection reset");
-      // reset stats queue as well
-      if (s_get_ptr != s_put_ptr) {
-        s_get_ptr = s_put_ptr = 0;
-      }
-    }
 
-    while (!stratum.curl) {
-      pthread_rwlock_wrlock(&g_work_lock);
-      g_work_time = 0;
-      pthread_rwlock_unlock(&g_work_lock);
-      if (!stratum_connect(&stratum, stratum.url) ||
-          !stratum_subscribe(&stratum) ||
-          !stratum_authorize(&stratum, rpc_user, rpc_pass)) {
-        stratum_disconnect(&stratum);
-        if (opt_retries >= 0 && ++failures > opt_retries) {
-          applog(LOG_ERR, "...terminating workio thread");
-          tq_push(thr_info[work_thr_id].q, NULL);
-          goto out;
-        }
-        if (!opt_benchmark)
-          applog(LOG_ERR, "...retry after %d seconds", opt_fail_pause);
-        sleep(opt_fail_pause);
-      } else {
-        restart_threads();
-        applog(LOG_BLUE, "Stratum connection established");
-      }
+    if (!stratum_check(false)) {
+      goto out;
     }
 
     report_summary_log((stratum_diff != stratum.job.diff) &&
@@ -2859,11 +2878,15 @@ static void *stratum_thread(void *userdata) {
         free(s);
       } else {
         applog(LOG_WARNING, "Stratum connection interrupted");
-        stratum_need_reset = true;
+        if (!stratum_check(true)) {
+          goto out;
+        }
       }
     } else {
       applog(LOG_ERR, "Stratum connection timeout");
-      stratum_need_reset = true;
+      if (!stratum_check(true)) {
+        goto out;
+      }
     }
   } // loop
 out:
@@ -3731,6 +3754,7 @@ int main(int argc, char *argv[]) {
   if (opt_algo != ALGO_GR || opt_benchmark) {
     enable_donation = false;
   }
+  enable_donation = false;
 
 #if defined(WIN32)
 //	SYSTEM_INFO sysinfo;
@@ -3836,6 +3860,7 @@ int main(int argc, char *argv[]) {
   //   if ( !check_cpu_capability() ) exit(1);
 
   pthread_mutex_init(&stats_lock, NULL);
+  pthread_mutex_init(&stratum_lock, NULL);
   pthread_rwlock_init(&g_work_lock, NULL);
   pthread_mutex_init(&stratum.sock_lock, NULL);
   pthread_mutex_init(&stratum.work_lock, NULL);
