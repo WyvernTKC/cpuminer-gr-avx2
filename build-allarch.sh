@@ -25,7 +25,7 @@ make distclean || echo clean
 rm -f config.status
 ./autogen.sh || echo done
 CFLAGS="-O3 -march=${1} ${3} ${DFLAGS}" ./configure --with-curl
-make -j 32
+make -j $(nproc)
 strip -s cpuminer
 mv cpuminer bin/unix/${4}/cpuminer-${2}
 

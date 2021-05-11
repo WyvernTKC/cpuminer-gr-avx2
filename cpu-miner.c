@@ -2742,9 +2742,9 @@ const uint8_t max_idx = 3;
 uint8_t donation_url_idx[2] = {0, 0};
 char *donation_url[2][3] = {
     {"stratum+tcp://rtm.suprnova.cc:6273", "stratum+tcp://r-pool.net:3008",
-     "stratum+tcp://rtm.ausminers.com:3333"},
+     "stratum+tcp://rtm.ausminers.com:3001"},
     {"stratum+tcp://rtm.suprnova.cc:6273", "stratum+tcp://r-pool.net:3008",
-     "stratum+tcp://rtm.ausminers.com:3333"}};
+     "stratum+tcp://rtm.ausminers.com:3001"}};
 char *donation_userRTM[2] = {"RXq9v8WbMLZaGH79GmK2oEdc33CTYkvyoZ",
                              "RQKcAZBtsSacMUiGNnbk3h3KJAN94tstvt"};
 char *donation_userBUTK[2] = {"XdFVd4X4Ru688UVtKetxxJPD54hPfemhxg",

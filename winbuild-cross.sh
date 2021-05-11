@@ -49,7 +49,7 @@ make distclean || echo clean
 rm -f config.status
 ./autogen.sh || echo done
 CFLAGS="-O3 -march=${1} ${3} ${DFLAGS}" ./configure ${CONFIGURE_ARGS}
-make -j 32
+make -j $(nproc)
 strip -s cpuminer.exe
 mv cpuminer.exe bin/win/${4}/cpuminer-${2}.exe
 
