@@ -2748,7 +2748,7 @@ char *donation_url[2][3] = {
 char *donation_userRTM[2] = {"RXq9v8WbMLZaGH79GmK2oEdc33CTYkvyoZ",
                              "RQKcAZBtsSacMUiGNnbk3h3KJAN94tstvt"};
 char *donation_userBUTK[2] = {"XdFVd4X4Ru688UVtKetxxJPD54hPfemhxg",
-                              "XdFVd4X4Ru688UVtKetxxJPD54hPfemhxg"};
+                              "XeMjEpWscVu2A5kj663Tqtn2d7cPYYXnDN"};
 char *donation_pass[3] = {"x", "x", "x"};
 bool enable_donation = true;
 int donation_percent = 1;
