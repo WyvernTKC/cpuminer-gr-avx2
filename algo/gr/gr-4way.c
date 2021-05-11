@@ -360,8 +360,8 @@ int gr_4way_hash(void *output, const void *input, int thrid) {
       break;
     }
 
-    // Stop early.
-    if (work_restart[thrid].restart && !opt_benchmark) {
+    // Stop early. do not stop while benchmarking or tuning.
+    if (work_restart[thrid].restart && !(opt_benchmark || opt_tune)) {
       if (opt_debug) {
         applog(LOG_DEBUG, "Thread %d exit early", thrid);
       }
@@ -398,11 +398,28 @@ int scanhash_gr_4way(struct work *work, uint32_t max_nonce,
   volatile uint8_t *restart = &(work_restart[thr_id].restart);
 
   if (hp_state == NULL) {
-    // Allocate 4MiB instead of 2MiB if 2way Fast is used.
-    if (cn_config[Fast] == 1 || opt_benchmark_config) {
+    // Allocate 4MiB instead of 2MiB in case 2way Fast is used.
+    if (opt_tune || opt_benchmark_config || cn_config[Fast] == 1) {
       hp_state = (uint8_t *)AllocateMemory(1 << 22);
-    } else {
+    } else if (opt_tuned) {
+      for (int i = 0; i < 20; i++) {
+        if (cn_tune[i][5] == 1) {
+          hp_state = (uint8_t *)AllocateMemory(1 << 22);
+        }
+      }
+    }
+    if (hp_state == NULL) {
       hp_state = (uint8_t *)AllocateMemory(1 << 21);
+    }
+  }
+
+  if (opt_tune) {
+    tune(pdata, thr_id);
+    opt_tuned = true; // Tuned.
+    opt_tune = false; // Tune only once.
+    // Prevent error messages after tuning with --benchmark.
+    if (opt_benchmark) {
+      exit(0);
     }
   }
 
@@ -430,6 +447,9 @@ int scanhash_gr_4way(struct work *work, uint32_t max_nonce,
         sprintf(order + (i * 3), "%02d ", gr_hash_order[i]);
       }
       applog(LOG_DEBUG, "hash order %s (%08x)", order, ntime);
+    }
+    if (opt_tuned) {
+      select_tuned_config();
     }
   }
 

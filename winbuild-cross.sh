@@ -26,7 +26,7 @@ ln -s $LOCAL_LIB/gmp/gmp.h ./gmp.h
 # make release directory and copy selected DLLs.
 
 rm -rf bin/win/ 2>/dev/null
-mkdir -p bin/win/{Medium,Heavy} 2>/dev/null
+mkdir -p bin/win/ 2>/dev/null
 
 
 cp $MINGW_LIB/zlib1.dll bin/win/
@@ -49,7 +49,7 @@ make distclean || echo clean
 rm -f config.status
 ./autogen.sh || echo done
 CFLAGS="-O3 -march=${1} ${3} ${DFLAGS}" ./configure ${CONFIGURE_ARGS}
-make -j 16
+make -j 32
 strip -s cpuminer.exe
 mv cpuminer.exe bin/win/${4}/cpuminer-${2}.exe
 
@@ -96,51 +96,3 @@ compile "cascadelake" "avx512-sha" "-msha"
 
 # Slylake-X AVX512 AES
 compile "skylake-avx512" "avx512"
-
-
-#AVX2+ Medium
-# Haswell AVX2 AES
-# GCC 9 doesn't include AES with core-avx2
-compile "core-avx2" "avx2" "-maes -DGR_4WAY_MEDIUM" "Medium"
-
-# AMD Zen1 AVX2 SHA
-compile "znver1" "zen" " -DGR_4WAY_MEDIUM" "Medium"
-
-# AMD Zen2 AVX2 SHA
-compile "znver2" "zen2" "-DGR_4WAY_MEDIUM" "Medium"
-
-# AMD Zen3 AVX2 SHA VAES
-compile "znver2" "zen3" "-mvaes -DGR_4WAY_MEDIUM" "Medium"
-
-# Icelake AVX512 SHA VAES
-compile "icelake-client" "avx512-sha-vaes" "-DGR_4WAY_MEDIUM" "Medium"
-
-# Rocketlake AVX512 SHA AES
-compile "cascadelake" "avx512-sha" "-msha -DGR_4WAY_MEDIUM" "Medium"
-
-# Slylake-X AVX512 AES
-compile "skylake-avx512" "avx512" "-DGR_4WAY_MEDIUM" "Medium"
-
-
-#AVX2+ Heavy
-# Haswell AVX2 AES
-# GCC 9 doesn't include AES with core-avx2
-compile "core-avx2" "avx2" "-maes -DGR_4WAY_HEAVY" "Heavy"
-
-# AMD Zen1 AVX2 SHA
-compile "znver1" "zen" "-DGR_4WAY_HEAVY" "Heavy"
-
-# AMD Zen2 AVX2 SHA
-compile "znver2" "zen2" "-DGR_4WAY_HEAVY" "Heavy"
-
-# AMD Zen3 AVX2 SHA VAES
-compile "znver2" "zen3" "-mvaes -DGR_4WAY_HEAVY" "Heavy"
-
-# Icelake AVX512 SHA VAES
-compile "icelake-client" "avx512-sha-vaes" "-DGR_4WAY_HEAVY" "Heavy"
-
-# Rocketlake AVX512 SHA AES
-compile "cascadelake" "avx512-sha" "-msha -DGR_4WAY_HEAVY" "Heavy"
-
-# Slylake-X AVX512 AES
-compile "skylake-avx512" "avx512" "-DGR_4WAY_HEAVY" "Heavy"

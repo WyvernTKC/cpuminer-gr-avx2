@@ -13,8 +13,8 @@ rm -f config.status
 ./autogen.sh || echo done
 
 #CFLAGS="-O3 -march=native -Wall" ./configure --with-curl --with-crypto=$HOME/usr
-CFLAGS="-O3 -march=native -Wall" ./configure --with-curl
+CFLAGS="-O3 -march=native -mtune=native -Wall" ./configure --with-curl
 
-make -j 8
+make -j 32
 
 strip -s cpuminer

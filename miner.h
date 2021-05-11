@@ -685,7 +685,11 @@ extern const int pk_buffer_size_max;
 extern int pk_buffer_size;
 extern char *opt_data_file;
 extern bool opt_verify;
-extern uint8_t cn_config[6];
+extern __thread uint8_t cn_config[6];
+extern uint8_t cn_config_global[6];
+extern bool opt_tune;
+extern bool opt_tuned;
+extern uint8_t cn_tune[20][6];
 
 static char const usage[] = "\
 Usage: cpuminer [OPTIONS]\n\
@@ -846,6 +850,8 @@ Options:\n\
                           [LIST] - customm, list of ',' separated 6 values, 0 - SSE2,  1 - 2way\n"
 #endif
                             "\
+      --tune            Tune miner before mining. Takes 30 minutes. tune_config file is created and can be used.\n\
+      --tune-config=FILE  Point to the already created tune config, created by --tune\n\
   -h, --help            display this help text and exit\n\
 ";
 
@@ -918,6 +924,8 @@ static struct option const options[] = {
 #ifdef __AVX2__
     {"cn-config", 1, NULL, 1101},
 #endif
+    {"tune", 0, NULL, 1103},
+    {"tune-config", 1, NULL, 1104},
     {0, 0, 0, 0}};
 
 #endif /* __MINER_H__ */

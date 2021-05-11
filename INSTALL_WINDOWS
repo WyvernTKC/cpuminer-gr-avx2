@@ -64,8 +64,11 @@ $ make
 Make may fail with an ld error, just ensure libcrypto-1_1-x64.dll is created.
 
 curl:
+Download from git, do not use archives in release.
 
-$ ./configure --with-winssl --with-winidn --host=x86_64-w64-mingw32
+# sudo apt-get install autoconf automake libtool perl
+$ autoreconf -fi
+$ ./configure --with-winssl --with-winidn --with-schannel --host=x86_64-w64-mingw32
 $ make
 
 gmp:

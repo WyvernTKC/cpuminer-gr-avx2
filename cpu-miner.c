@@ -109,7 +109,7 @@ static bool opt_background = false;
 bool opt_quiet = false;
 bool opt_randomize = false;
 static int opt_retries = -1;
-static int opt_fail_pause = 10;
+static int opt_fail_pause = 5;
 static int opt_time_limit = 0;
 int opt_timeout = 300;
 static int opt_scantime = 5;
@@ -138,38 +138,34 @@ int opt_priority = 0; // deprecated
 int num_cpus = 1;
 int num_cpugroups = 1;
 char *rpc_url = NULL;
-;
 char *rpc_userpass = NULL;
 char *rpc_user, *rpc_pass;
 char *short_url = NULL;
 char *coinbase_address;
 char *opt_data_file = NULL;
 bool opt_verify = false;
-char *donation_url = NULL;
-char *donation_user = NULL;
-char *donation_user2 = NULL;
-char *donation_pass = NULL;
-bool enable_donation = true;
-int donation_percent = 1;
-int turn = 0;
 
 // Default config for CN variants.
 // 0 - Use default 1way/SSE
 // 1 - Use 2way algorithm.
 // Use defines to keep compatibility with v1.1.1
 #if defined(GR_4WAY_HEAVY)
-uint8_t cn_config[6] = {1, 1, 1, 1, 1, 1};
+__thread uint8_t cn_config[6] = {1, 1, 1, 1, 1, 1};
+uint8_t cn_config_global[6] = {1, 1, 1, 1, 1, 1};
 #elif defined(GR_4WAY_MEDIUM)
-uint8_t cn_config[6] = {0, 1, 1, 1, 0, 0};
+__thread uint8_t cn_config[6] = {0, 1, 1, 1, 0, 0};
+uint8_t cn_config_global[6] = {0, 1, 1, 1, 0, 0};
 #else
-uint8_t cn_config[6] = {0, 0, 0, 0, 0, 0};
+__thread uint8_t cn_config[6] = {0, 0, 0, 0, 0, 0};
+uint8_t cn_config_global[6] = {0, 0, 0, 0, 0, 0};
 #endif
 
-unsigned long donation_time_start = 0;
-unsigned long donation_time_stop = 0;
-char *rpc_user_old, *rpc_pass_old, *rpc_url_old;
+bool opt_tune = false;
+bool opt_tuned = false;
+uint8_t cn_tune[20][6];
+
 // pk_buffer_size is used as a version selector by b58 code, therefore
-// it must be set correctly to work.
+// it must be ret correctly to work.
 const int pk_buffer_size_max = 26;
 int pk_buffer_size = 25;
 static unsigned char pk_script[26] = {0};
@@ -221,9 +217,11 @@ int opt_api_listen = 0;
 int opt_api_remote = 0;
 char *default_api_allow = "127.0.0.1";
 int default_api_listen = 4048;
+unsigned long stratum_reset_time = 0;
 
 pthread_mutex_t applog_lock;
 pthread_mutex_t stats_lock;
+pthread_mutex_t stratum_lock;
 pthread_cond_t sync_cond;
 
 static struct timeval session_start;
@@ -1120,7 +1118,7 @@ void report_summary_log(bool force) {
       (accepted_share_count + stale_share_count + rejected_share_count);
   if (mismatch) {
     if (mismatch != 1)
-      applog(LOG_WARNING, "Share count mismatch: %d, stats may be incorrect",
+      applog(LOG_WARNING, "Share count mismatch: %d, stats may be inaccurate",
              mismatch);
     else
       applog(LOG_INFO,
@@ -1403,15 +1401,65 @@ char *std_malloc_txs_request(struct work *work) {
   return req;
 }
 
+static bool stratum_check(bool reset) {
+  int failures = 0;
+
+  // If stratum was reset in the last 5s, do not reset it!
+  if (reset && time(NULL) > stratum_reset_time + 5) {
+    stratum_reset_time = time(NULL);
+    stratum_disconnect(&stratum);
+    if (strcmp(stratum.url, rpc_url)) {
+      free(stratum.url);
+      stratum.url = strdup(rpc_url);
+      applog(LOG_BLUE, "Connection changed to %s", short_url);
+    } else
+      applog(LOG_WARNING, "Stratum connection reset");
+    // reset stats queue as well
+    if (s_get_ptr != s_put_ptr) {
+      s_get_ptr = s_put_ptr = 0;
+    }
+  }
+
+  while (!stratum.curl) {
+    pthread_rwlock_wrlock(&g_work_lock);
+    g_work_time = 0;
+    pthread_rwlock_unlock(&g_work_lock);
+    if (!stratum_connect(&stratum, stratum.url) ||
+        !stratum_subscribe(&stratum) ||
+        !stratum_authorize(&stratum, rpc_user, rpc_pass)) {
+      stratum_disconnect(&stratum);
+      if (opt_retries >= 0 && ++failures > opt_retries) {
+        applog(LOG_ERR, "...terminating workio thread");
+        tq_push(thr_info[work_thr_id].q, NULL);
+        pthread_mutex_unlock(&stratum_lock);
+        return false;
+      }
+      if (!opt_benchmark)
+        applog(LOG_ERR, "...retry after %d seconds", opt_fail_pause);
+      sleep(opt_fail_pause);
+    } else {
+      restart_threads();
+      applog(LOG_BLUE, "Stratum connection established");
+    }
+  }
+  return true;
+}
+
 static bool submit_upstream_work(CURL *curl, struct work *work) {
   if (have_stratum) {
     char req[JSON_BUF_LEN];
+    pthread_mutex_lock(&stratum_lock);
     stratum.sharediff = work->sharediff;
     algo_gate.build_stratum_request(req, work, &stratum);
     if (unlikely(!stratum_send_line(&stratum, req))) {
       applog(LOG_ERR, "submit_upstream_work stratum_send_line failed");
+
+      stratum_check(true);
+      pthread_mutex_unlock(&stratum_lock);
+
       return false;
     }
+    pthread_mutex_unlock(&stratum_lock);
     return true;
   } else if (work->txs) {
     char *req = NULL;
@@ -1492,10 +1540,9 @@ static void selectGRAlgo(unsigned char nibble, bool *selectedAlgos,
 
 static void getGRAlgoString(void *mem, unsigned int size,
                             uint8_t *selectedAlgoOutput, int algoCount) {
-  int i;
+  size_t i;
   unsigned char *p = (unsigned char *)mem;
   unsigned int len = size / 2;
-  unsigned char j = 0;
   bool selectedAlgo[algoCount];
   for (int z = 0; z < algoCount; z++) {
     selectedAlgo[z] = false;
@@ -1616,67 +1663,6 @@ start:
         applog2(LOG_INFO, "Miner TTF @ %.2f %sh/s %s, Net TTF @ %.2f %sh/s %s",
                 miner_hr, miner_hr_units, miner_ttf, net_hr, net_hr_units,
                 net_ttf);
-
-        double hashrate = 0.;
-        pthread_mutex_lock(&stats_lock);
-        for (int i = 0; i < opt_n_threads; i++) {
-          hashrate += thr_hashrates[i];
-        }
-        if ((hashrate < global_min_hr) && (hashrate > 0)) {
-          global_min_hr = hashrate;
-        }
-        if (hashrate > global_max_hr) {
-          global_max_hr = hashrate;
-        }
-        if (hashrate > 0) {
-          hr_count++;
-          global_avg_hr =
-              (global_avg_hr * (hr_count - 1) + hashrate) / hr_count;
-        }
-        pthread_mutex_unlock(&stats_lock);
-        char hr[16];
-        char nhr[16];
-        char xhr[16];
-        char ahr[16];
-        char hr_units[2] = {0, 0};
-        scale_hash_for_display(&hashrate, hr_units);
-        sprintf(hr, "%.2f", hashrate);
-        sprintf(xhr, "%.2f", global_max_hr);
-        sprintf(nhr, "%.2f", global_min_hr);
-        sprintf(ahr, "%.2f", global_avg_hr);
-        applog(LOG_NOTICE, "Hash: %s%sh/s Min: %s Avg: %s Max: %s", hr,
-               hr_units, nhr, ahr, xhr);
-
-        uint32_t endiandata[20];
-        swab32_array(endiandata, work->data, 20);
-        uint8_t selectedCNAlgoOutput[6] = {0};
-        getGRAlgoString(&endiandata[4], 64, selectedCNAlgoOutput, 6);
-        char block_CN[400];
-        memset(block_CN, 0, 400);
-        for (int i = 0; i < 6; i++) {
-          const uint8_t algo = selectedCNAlgoOutput[i];
-          switch (algo) {
-          case 0:
-            strcat(block_CN, "Dark ");
-            break;
-          case 1:
-            strcat(block_CN, "DarkLite ");
-            break;
-          case 2:
-            strcat(block_CN, "Fast ");
-            break;
-          case 3:
-            strcat(block_CN, "Lite ");
-            break;
-          case 4:
-            strcat(block_CN, "Turtle ");
-            break;
-          case 5:
-            strcat(block_CN, "TurtleLite ");
-            break;
-          }
-        }
-        applog(LOG_BLUE, "New Block Cryptonight Algos %s", block_CN);
       }
     } // work->height > last_block_height
     else if (memcmp(&work->data[1], &g_work.data[1], 32))
@@ -2103,6 +2089,65 @@ static void stratum_gen_work(struct stratum_ctx *sctx, struct work *g_work) {
   // Update data and calculate new estimates.
   if ((stratum_diff != sctx->job.diff) ||
       (last_block_height != sctx->block_height)) {
+    double hashrate = 0.;
+    pthread_mutex_lock(&stats_lock);
+    for (int i = 0; i < opt_n_threads; i++) {
+      hashrate += thr_hashrates[i];
+    }
+    if ((hashrate < global_min_hr) && (hashrate > 0)) {
+      global_min_hr = hashrate;
+    }
+    if (hashrate > global_max_hr) {
+      global_max_hr = hashrate;
+    }
+    if (hashrate > 0) {
+      hr_count++;
+      global_avg_hr = (global_avg_hr * (hr_count - 1) + hashrate) / hr_count;
+    }
+    pthread_mutex_unlock(&stats_lock);
+    char uhr[16];
+    char nhr[16];
+    char xhr[16];
+    char ahr[16];
+    char hr_units[2] = {0, 0};
+    scale_hash_for_display(&hashrate, hr_units);
+    sprintf(uhr, "%.2f", hashrate);
+    sprintf(xhr, "%.2f", global_max_hr);
+    sprintf(nhr, "%.2f", global_min_hr);
+    sprintf(ahr, "%.2f", global_avg_hr);
+    applog(LOG_NOTICE, "Hash: %s%sh/s Min: %s Avg: %s Max: %s", uhr, hr_units,
+           nhr, ahr, xhr);
+
+    uint32_t endiandata[20];
+    swab32_array(endiandata, g_work->data, 20);
+    uint8_t selectedCNAlgoOutput[6] = {0};
+    getGRAlgoString(&endiandata[4], 64, selectedCNAlgoOutput, 6);
+    char block_CN[400];
+    memset(block_CN, 0, 400);
+    for (int i = 0; i < 3; i++) {
+      const uint8_t algo = selectedCNAlgoOutput[i];
+      switch (algo) {
+      case 0:
+        strcat(block_CN, "Dark ");
+        break;
+      case 1:
+        strcat(block_CN, "DarkLite ");
+        break;
+      case 2:
+        strcat(block_CN, "Fast ");
+        break;
+      case 3:
+        strcat(block_CN, "Lite ");
+        break;
+      case 4:
+        strcat(block_CN, "Turtle ");
+        break;
+      case 5:
+        strcat(block_CN, "TurtleLite ");
+        break;
+      }
+    }
+    applog(LOG_BLUE, "New Block Cryptonight Algos %s", block_CN);
     static bool multipool = false;
     if (stratum.block_height < last_block_height)
       multipool = true;
@@ -2153,6 +2198,7 @@ static void stratum_gen_work(struct stratum_ctx *sctx, struct work *g_work) {
 }
 
 static void *miner_thread(void *userdata) {
+  memcpy(cn_config, cn_config_global, 6);
   struct work work __attribute__((aligned(64)));
   struct thr_info *mythr = (struct thr_info *)userdata;
   int thr_id = mythr->id;
@@ -2177,10 +2223,11 @@ static void *miner_thread(void *userdata) {
   /* Set worker threads to nice 19 and then preferentially to SCHED_IDLE
    * and if that fails, then SCHED_BATCH. No need for this to be an
    * error if it fails */
-  if (!opt_benchmark && opt_priority == 0) {
+  if (opt_priority) {
     setpriority(PRIO_PROCESS, 0, 19);
-    if (!thr_id && !opt_quiet)
-      applog(LOG_INFO, "Miner thread priority %d (nice 19)", opt_priority);
+    if (!thr_id && opt_debug)
+      applog(LOG_INFO, "Default miner thread priority %d (nice 19)",
+             opt_priority);
     drop_policy();
   } else {
     int prio = 0;
@@ -2203,9 +2250,12 @@ static void *miner_thread(void *userdata) {
     case 5:
       prio = -15;
     }
-    if (!(thr_id || opt_quiet))
-      applog(LOG_INFO, "Miner thread priority %d (nice %d)", opt_priority,
-             prio);
+    if (!thr_id) {
+      applog(LOG_INFO, "User set miner thread priority %d (nice %d)",
+             opt_priority, prio);
+      applog(LOG_WARNING,
+             "High priority mining threads may cause system instability");
+    }
 #endif
     setpriority(PRIO_PROCESS, 0, prio);
     if (opt_priority == 0)
@@ -2426,7 +2476,7 @@ static void *miner_thread(void *userdata) {
         char hr_units[2] = {0, 0};
         scale_hash_for_display(&hashrate, hr_units);
         sprintf(hr, "%.2f", hashrate);
-#if ((defined(_WIN64) || defined(__WINDOWS__)) || defined(_WIN32))
+#if (defined(_WIN64) || defined(__WINDOWS__) || defined(_WIN32))
         applog(LOG_NOTICE, "Total: %s %sH/s", hr, hr_units);
 #else
         float lo_freq = 0., hi_freq = 0.;
@@ -2680,9 +2730,136 @@ void std_build_extraheader(struct work *g_work, struct stratum_ctx *sctx) {
       le32dec(sctx->job.nbits), sctx->job.final_sapling_hash);
 }
 
+// Variables storing original user data.
+char *rpc_user_original = NULL;
+char *rpc_pass_original = NULL;
+char *rpc_url_original = NULL;
+
+// Data about dev wallets.
+// idx 0 - Ausminer
+// idx 1 - Delgon
+const uint8_t max_idx = 3;
+uint8_t donation_url_idx[2] = {0, 0};
+char *donation_url[2][3] = {
+    {"stratum+tcp://rtm.suprnova.cc:6273", "stratum+tcp://r-pool.net:3008",
+     "stratum+tcp://rtm.ausminers.com:3333"},
+    {"stratum+tcp://rtm.suprnova.cc:6273", "stratum+tcp://r-pool.net:3008",
+     "stratum+tcp://rtm.ausminers.com:3333"}};
+char *donation_userRTM[2] = {"RXq9v8WbMLZaGH79GmK2oEdc33CTYkvyoZ",
+                             "RQKcAZBtsSacMUiGNnbk3h3KJAN94tstvt"};
+char *donation_userBUTK[2] = {"XdFVd4X4Ru688UVtKetxxJPD54hPfemhxg",
+                              "XeMjEpWscVu2A5kj663Tqtn2d7cPYYXnDN"};
+char *donation_pass[3] = {"x", "x", "x"};
+bool enable_donation = true;
+int donation_percent = 1;
+int dev_turn = 0;
+bool dev_mining = false;
+
+unsigned long donation_time_start = 0;
+unsigned long donation_time_stop = 0;
+
+static void donation_data_switch(int dev) {
+  free(rpc_user);
+  free(rpc_pass);
+  free(rpc_url);
+  if (donation_url_idx[dev] < max_idx) {
+    rpc_user = strdup(donation_userRTM[dev]);
+    rpc_url = strdup(donation_url[dev][donation_url_idx[dev]]);
+  } else {
+    // Use user pool if necessary none of the dev pools work.
+    rpc_url = strdup(rpc_url_original);
+    // Check if user is not mining BUTK.
+    if (strncmp(rpc_user_original, "X", 1) == 0) {
+      rpc_user = strdup(donation_userBUTK[dev]);
+    } else {
+      rpc_user = strdup(donation_userRTM[dev]);
+    }
+  }
+  short_url = &rpc_url[sizeof("stratum+tcp://") - 1];
+  rpc_pass = strdup(donation_pass[dev]);
+}
+
+static void donation_connect() {
+  pthread_mutex_lock(&stratum_lock);
+  while (true) {
+    // Reset stratum.
+    stratum_disconnect(&stratum);
+    free(stratum.url);
+    stratum.url = strdup(rpc_url);
+    applog(LOG_BLUE, "Connection changed to %s",
+           &rpc_url[sizeof("stratum+tcp://") - 1]);
+    s_get_ptr = s_put_ptr = 0;
+
+    pthread_rwlock_wrlock(&g_work_lock);
+    g_work_time = 0;
+    pthread_rwlock_unlock(&g_work_lock);
+    if (!stratum_connect(&stratum, stratum.url) ||
+        !stratum_subscribe(&stratum) ||
+        !stratum_authorize(&stratum, rpc_user, rpc_pass)) {
+      stratum_disconnect(&stratum);
+      sleep(1);
+    } else {
+      restart_threads();
+      applog(LOG_BLUE, "Stratum connection established");
+    }
+
+    if (stratum.curl != NULL) {
+      break;
+    } else {
+      // If something went wrong while dev mining, switch pool.
+      if (dev_mining) {
+        donation_url_idx[dev_turn]++;
+        // Dev turn already increased. Use "current" dev.
+        donation_data_switch(dev_turn);
+      }
+    }
+  }
+  pthread_mutex_unlock(&stratum_lock);
+}
+
+static void donation_switch() {
+  unsigned long now = time(NULL);
+  if (donation_time_start <= now) {
+    applog(LOG_BLUE, "Donation Start");
+    dev_mining = true;
+
+    donation_data_switch(dev_turn);
+    donation_connect();
+
+    donation_time_stop = now + (60 * donation_percent);
+    // This will change to the proper value when dev fee stops.
+    donation_time_start = now + 6000;
+
+    dev_turn = (dev_turn + 1) % 2; // Rotate between devs.
+  } else if (donation_time_stop <= now) {
+    applog(LOG_BLUE, "Donation Stop");
+    dev_mining = false;
+    free(rpc_user);
+    free(rpc_pass);
+    free(rpc_url);
+    rpc_user = strdup(rpc_user_original);
+    rpc_pass = strdup(rpc_pass_original);
+    rpc_url = strdup(rpc_url_original);
+    short_url = &rpc_url[sizeof("stratum+tcp://") - 1];
+
+    donation_time_start = now + 6000 - (donation_percent * 60);
+    // This will change to the proper value when dev fee starts.
+    donation_time_stop = donation_time_start + 6000;
+    pthread_mutex_lock(&stratum_lock);
+    stratum_check(true);
+    pthread_mutex_unlock(&stratum_lock);
+  }
+}
+
 static void *stratum_thread(void *userdata) {
   struct thr_info *mythr = (struct thr_info *)userdata;
   char *s = NULL;
+
+  // Save original user data.
+  rpc_user_original = strdup(rpc_user);
+  rpc_pass_original = strdup(rpc_pass);
+  rpc_url_original = strdup(rpc_url);
+  stratum_reset_time = time(NULL);
 
   stratum.url = (char *)tq_pop(mythr->q, NULL);
   if (!stratum.url)
@@ -2690,71 +2867,16 @@ static void *stratum_thread(void *userdata) {
   applog(LOG_BLUE, "Stratum connect %s", short_url);
 
   while (1) {
-    int failures = 0;
     if (enable_donation) {
-      if (donation_time_start <= time(NULL)) {
-        rpc_user_old = strdup(rpc_user);
-        rpc_pass_old = strdup(rpc_pass);
-        free(rpc_user);
-        free(rpc_pass);
-        if (turn == 0) {
-          rpc_user = strdup(donation_user);
-          turn = 1;
-        } else {
-          rpc_user = strdup(donation_user2);
-          turn = 0;
-        }
-        rpc_pass = strdup(donation_pass);
-        donation_time_stop =
-            (unsigned long)time(NULL) + (60 * donation_percent) - 1;
-        donation_time_start = (unsigned long)time(NULL) + 6000;
-        applog(LOG_BLUE, "Donation Start");
-      }
-      if (donation_time_stop <= time(NULL)) {
-        free(rpc_user);
-        free(rpc_pass);
-        rpc_user = strdup(rpc_user_old);
-        rpc_pass = strdup(rpc_pass_old);
-        donation_time_stop = (unsigned long)time(NULL) + 6120;
-        donation_time_start =
-            (unsigned long)time(NULL) + 6000 / donation_percent;
-        applog(LOG_BLUE, "Donation Stop");
-      }
-    }
-    if (unlikely(stratum_need_reset)) {
-      stratum_need_reset = false;
-      stratum_disconnect(&stratum);
-      if (strcmp(stratum.url, rpc_url)) {
-        free(stratum.url);
-        stratum.url = strdup(rpc_url);
-        applog(LOG_BLUE, "Connection changed to %s", short_url);
-      } else // if ( !opt_quiet )
-        applog(LOG_WARNING, "Stratum connection reset");
-      // reset stats queue as well
-      s_get_ptr = s_put_ptr = 0;
+      donation_switch();
     }
 
-    while (!stratum.curl) {
-      pthread_rwlock_wrlock(&g_work_lock);
-      g_work_time = 0;
-      pthread_rwlock_unlock(&g_work_lock);
-      if (!stratum_connect(&stratum, stratum.url) ||
-          !stratum_subscribe(&stratum) ||
-          !stratum_authorize(&stratum, rpc_user, rpc_pass)) {
-        stratum_disconnect(&stratum);
-        if (opt_retries >= 0 && ++failures > opt_retries) {
-          applog(LOG_ERR, "...terminating workio thread");
-          tq_push(thr_info[work_thr_id].q, NULL);
-          goto out;
-        }
-        if (!opt_benchmark)
-          applog(LOG_ERR, "...retry after %d seconds", opt_fail_pause);
-        sleep(opt_fail_pause);
-      } else {
-        restart_threads();
-        applog(LOG_BLUE, "Stratum connection established");
-      }
+    pthread_mutex_lock(&stratum_lock);
+    if (!stratum_check(false)) {
+      pthread_mutex_unlock(&stratum_lock);
+      goto out;
     }
+    pthread_mutex_unlock(&stratum_lock);
 
     report_summary_log((stratum_diff != stratum.job.diff) &&
                        (stratum_diff != 0.));
@@ -2768,15 +2890,24 @@ static void *stratum_thread(void *userdata) {
           stratum_handle_response(s);
         free(s);
       } else {
-        stratum_disconnect(&stratum);
-        applog(LOG_WARNING,
-               "Stratum session has expired, enable keepalives next time");
+        applog(LOG_WARNING, "Stratum connection interrupted");
+
+        pthread_mutex_lock(&stratum_lock);
+        if (!stratum_check(true)) {
+          pthread_mutex_unlock(&stratum_lock);
+          goto out;
+        }
+        pthread_mutex_unlock(&stratum_lock);
       }
     } else {
       applog(LOG_ERR, "Stratum connection timeout");
-      stratum_disconnect(&stratum);
+      pthread_mutex_lock(&stratum_lock);
+      if (!stratum_check(true)) {
+        pthread_mutex_unlock(&stratum_lock);
+        goto out;
+      }
+      pthread_mutex_unlock(&stratum_lock);
     }
-
   } // loop
 out:
   return NULL;
@@ -3061,6 +3192,32 @@ void show_usage_and_exit(int status) {
   exit(status);
 }
 
+static bool load_tune_config(char *config_name) {
+  FILE *fd;
+  fd = fopen(config_name, "r");
+  if (fd == NULL) {
+    applog(LOG_ERR, "Could not load %s file", config_name);
+    return false;
+  }
+  for (int i = 0; i < 20; i++) {
+    fscanf(fd, "%hhd %hhd %hhd %hhd %hhd %hhd\n", &cn_tune[i][0],
+           &cn_tune[i][1], &cn_tune[i][2], &cn_tune[i][3], &cn_tune[i][4],
+           &cn_tune[i][5]);
+    if (ferror(fd) != 0) {
+      applog(LOG_ERR, "Could not read from %s file", config_name);
+      return false;
+    }
+    if (opt_debug) {
+      applog(LOG_DEBUG, "Loading config for rotation %d: %d %d %d %d %d %d", i,
+             cn_tune[i][0], cn_tune[i][1], cn_tune[i][2], cn_tune[i][3],
+             cn_tune[i][4], cn_tune[i][5]);
+    }
+  }
+  fclose(fd);
+
+  return true;
+}
+
 void strhide(char *s) {
   if (*s)
     *s++ = 'x';
@@ -3180,14 +3337,10 @@ void parse_arg(int key, char *arg) {
   case 'd':
     // CPU Disable HArdware prefetch
     v = atoi(arg);
-    if (v < 0 || v > 100) {
+    if (v <= 0 || v > 100) {
       show_usage_and_exit(1);
     }
-    if (v == 0) {
-      // enable_donation = false;
-    } else {
-      donation_percent = v;
-    }
+    donation_percent = v;
     break;
   case 1025: // retry-pause
     v = atoi(arg);
@@ -3392,9 +3545,6 @@ void parse_arg(int key, char *arg) {
     v = atoi(arg);
     if (v < 0 || v > 5) /* sanity check */
       show_usage_and_exit(1);
-    // option is deprecated, show warning
-    applog(LOG_WARNING,
-           "High priority mining threads may cause system instability");
     opt_priority = v;
     break;
   case 'N': // N parameter for various scrypt algos
@@ -3445,17 +3595,21 @@ void parse_arg(int key, char *arg) {
   case 'h':
     show_usage_and_exit(0);
   case 1101: // cn-config
+#ifndef __AVX2__
+    applog(LOG_ERR, "--cn-config requires AVX2+ instruction set");
+    show_usage_and_exit(1);
+#endif
     // arg - light / medium / heavy
     if (strcmp(arg, "light") == 0) {
-      memset(cn_config, 0, 6);
+      memset(cn_config_global, 0, 6);
       return;
     } else if (strcmp(arg, "medium") == 0) {
-      memset(cn_config, 1, 6);
-      cn_config[4] = 0; // Lite
-      cn_config[5] = 0; // Fast
+      memset(cn_config_global, 1, 6);
+      cn_config_global[4] = 0; // Lite
+      cn_config_global[5] = 0; // Fast
       return;
     } else if (strcmp(arg, "heavy") == 0) {
-      memset(cn_config, 1, 6);
+      memset(cn_config_global, 1, 6);
       return;
     }
     // arg - list like 1,1,0,0,1,1
@@ -3467,19 +3621,41 @@ void parse_arg(int key, char *arg) {
       if (v != 0 && v != 1) {
         show_usage_and_exit(1);
       }
-      cn_config[count++] = v;
+      cn_config_global[count++] = v;
       cn = strtok(NULL, ",");
     }
     if (count != 6) {
       show_usage_and_exit(1);
     }
     break;
-  case 1102: // benchmark
+  case 1102: // benchmark-config
+#ifndef __AVX2__
+    applog(LOG_ERR, "--benchmark-config requires AVX2+ instruction set");
+    show_usage_and_exit(1);
+#endif
     opt_benchmark = true;
     opt_benchmark_config = true;
     want_longpoll = false;
     want_stratum = false;
     have_stratum = false;
+    break;
+  case 1103: // tune
+#ifndef __AVX2__
+    applog(LOG_ERR, "--tune requires AVX2+ instruction set");
+
+    show_usage_and_exit(1);
+#endif
+    opt_tune = true;
+    break;
+  case 1104: // tune-config
+#ifndef __AVX2__
+    applog(LOG_ERR, "--tune-config requires AVX2+ instruction set");
+    show_usage_and_exit(1);
+#endif
+    opt_tuned = true;
+    if (!load_tune_config(arg)) {
+      show_usage_and_exit(1);
+    }
     break;
   default:
     show_usage_and_exit(1);
@@ -3592,29 +3768,27 @@ int main(int argc, char *argv[]) {
   pthread_mutex_init(&applog_lock, NULL);
   pthread_cond_init(&sync_cond, NULL);
 
-  show_credits();
-
   rpc_user = strdup("");
   rpc_pass = strdup("");
-  donation_url = strdup("");
-  donation_user = strdup("RXq9v8WbMLZaGH79GmK2oEdc33CTYkvyoZ");  // Ausminer
-  donation_user2 = strdup("RQKcAZBtsSacMUiGNnbk3h3KJAN94tstvt"); // Delgon
-  donation_pass = strdup("x");
-  srand(time(NULL));
-  turn = rand() % 2;
-  donation_time_start = (unsigned long)time(NULL) + (rand() % (120 - 60 + 1)) +
-                        60; // Get the time with random start
-  donation_time_stop = donation_time_start +
-                       60 * donation_percent; // Get the time with random start
+
+  show_credits();
+
+  unsigned long now = time(NULL);
+  srand(now);
+  dev_turn = rand() % 2;
+  // Get the time with random start
   parse_cmdline(argc, argv);
-  // printf("1\n");
-  // fflush(stdout);
-  if (strncmp(rpc_user, "Xxx", 1) == 0) {
-    donation_user = strdup("XdFVd4X4Ru688UVtKetxxJPD54hPfemhxg");  // Ausminer
-    donation_user2 = strdup("XeMjEpWscVu2A5kj663Tqtn2d7cPYYXnDN"); // Delgon
+
+  donation_time_start = now + 60 + (rand() % 60);
+  donation_time_stop = donation_time_start + (60 * donation_percent);
+  if (opt_tune) {
+    // Tuning takes ~33 minutes. Add it to the donation timers.
+    donation_time_start += (35 * 60);
+    donation_time_stop += (35 * 60);
   }
 
-  if (opt_algo != ALGO_GR) {
+  // Switch off donations if it is not using GR Algo
+  if (opt_algo != ALGO_GR || opt_benchmark) {
     enable_donation = false;
   }
 
@@ -3693,7 +3867,7 @@ int main(int argc, char *argv[]) {
     */
   }
 
-  if (!rpc_userpass) {
+  if (!rpc_userpass && !opt_benchmark) {
     rpc_userpass = (char *)malloc(strlen(rpc_user) + strlen(rpc_pass) + 2);
     if (rpc_userpass)
       sprintf(rpc_userpass, "%s:%s", rpc_user, rpc_pass);
@@ -3722,6 +3896,7 @@ int main(int argc, char *argv[]) {
   //   if ( !check_cpu_capability() ) exit(1);
 
   pthread_mutex_init(&stats_lock, NULL);
+  pthread_mutex_init(&stratum_lock, NULL);
   pthread_rwlock_init(&g_work_lock, NULL);
   pthread_mutex_init(&stratum.sock_lock, NULL);
   pthread_mutex_init(&stratum.work_lock, NULL);
