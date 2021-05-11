@@ -228,6 +228,7 @@ void *statistic_thread(void *arg) {
 static uint8_t cn_map[6] = {3, 2, 5, 4, 1, 0};
 
 static void tune_config(void *input, int thr_id, int rot) {
+  srand(time(NULL) + thr_id);
   rotation = 19;
   long sleep_time = 12500000;
   pthread_t pthr;
@@ -240,6 +241,8 @@ static void tune_config(void *input, int thr_id, int rot) {
   __m256i *noncev = (__m256i *)vdata + 9; // aligned
   mm256_bswap32_intrlv80_4x64(vdata, input);
   uint32_t n = 10000 * thr_id;
+  *noncev = mm256_intrlv_blend_32(
+      _mm256_set_epi32(n + 3, 0, n + 2, 0, n + 1, 0, n, 0), *noncev);
 
   // Use CN rotation.
   edata[1] = rand();
@@ -252,10 +255,9 @@ static void tune_config(void *input, int thr_id, int rot) {
   sync_bench();
   sync_bench();
   while (true) {
-    *noncev = mm256_intrlv_blend_32(
-        _mm256_set_epi32(n + 3, 0, n + 2, 0, n + 1, 0, n, 0), *noncev);
     gr_4way_hash(hash, vdata, thr_id);
-
+    *noncev = _mm256_add_epi32(*noncev, m256_const1_64(0x0000000400000000));
+    n += 4;
     pthread_mutex_lock(&stats_lock);
     bench_hashes += 4;
     pthread_mutex_unlock(&stats_lock);
@@ -307,21 +309,28 @@ void tune(void *input, int thr_id) {
       tune_config(input, thr_id, i);
       sync_conf();
       if (thr_id == 0) {
-        if (best_hashrate < bench_hashrate) {
-          if (opt_debug) {
-            applog(LOG_DEBUG, "%d -> %d | %d -> %d | %d -> %d", cn[i][0],
-                   (config & 1) >> 0, cn[i][1], (config & 2) >> 1, cn[i][2],
-                   (config & 4) >> 2);
+        // TODO
+        // Do not set the improvement if Fast variant is included.
+        // Possible bug/inaccuracy in benchmarking with it set as 1.
+        // Can be reproduced with 5000 series Ryzens.
+        if (cn_map[cn[i][0]] != 5 && cn_map[cn[i][1]] != 5 &&
+            cn_map[cn[i][2]] != 5) {
+          if (best_hashrate < bench_hashrate) {
+            if (opt_debug) {
+              applog(LOG_DEBUG, "%d -> %d | %d -> %d | %d -> %d", cn[i][0],
+                     (config & 1) >> 0, cn[i][1], (config & 2) >> 1, cn[i][2],
+                     (config & 4) >> 2);
+            }
+            cn_tune[i][cn_map[cn[i][0]]] = (config & 1) >> 0;
+            cn_tune[i][cn_map[cn[i][1]]] = (config & 2) >> 1;
+            cn_tune[i][cn_map[cn[i][2]]] = (config & 4) >> 2;
+            if (opt_debug) {
+              applog(LOG_DEBUG, "Config for rotation %d: %d %d %d %d %d %d", i,
+                     cn_tune[i][0], cn_tune[i][1], cn_tune[i][2], cn_tune[i][3],
+                     cn_tune[i][4], cn_tune[i][5]);
+            }
+            best_hashrate = bench_hashrate;
           }
-          cn_tune[i][cn_map[cn[i][0]]] = (config & 1) >> 0;
-          cn_tune[i][cn_map[cn[i][1]]] = (config & 2) >> 1;
-          cn_tune[i][cn_map[cn[i][2]]] = (config & 4) >> 2;
-          if (opt_debug) {
-            applog(LOG_DEBUG, "Config for rotation %d: %d %d %d %d %d %d", i,
-                   cn_tune[i][0], cn_tune[i][1], cn_tune[i][2], cn_tune[i][3],
-                   cn_tune[i][4], cn_tune[i][5]);
-          }
-          best_hashrate = bench_hashrate;
         }
         bench_hashrate = 0;
         bench_time = 0;
@@ -353,6 +362,7 @@ void tune(void *input, int thr_id) {
 #endif // __AVX2__ // GR_4WAY
 
 void benchmark(void *input, int thr_id, long sleep_time) {
+  srand(time(NULL) + thr_id);
   pthread_t pthr;
   if (thr_id == 0) {
     pthread_create(&pthr, NULL, &statistic_thread,
@@ -366,6 +376,8 @@ void benchmark(void *input, int thr_id, long sleep_time) {
   __m256i *noncev = (__m256i *)vdata + 9; // aligned
   mm256_bswap32_intrlv80_4x64(vdata, input);
   uint32_t n = 10000 * thr_id;
+  *noncev = mm256_intrlv_blend_32(
+      _mm256_set_epi32(n + 3, 0, n + 2, 0, n + 1, 0, n, 0), *noncev);
 #else
   uint32_t hash[8] __attribute__((aligned(64)));
   mm128_bswap32_80(edata, input);
@@ -402,9 +414,9 @@ void benchmark(void *input, int thr_id, long sleep_time) {
     // Make sure nonces are increased for each hash. Same hashes will result
     // in better data locality on CN algos leading to better/innaccurate
     // results.
-    *noncev = mm256_intrlv_blend_32(
-        _mm256_set_epi32(n + 3, 0, n + 2, 0, n + 1, 0, n, 0), *noncev);
     gr_4way_hash(hash, vdata, thr_id);
+    *noncev = _mm256_add_epi32(*noncev, m256_const1_64(0x0000000400000000));
+    n += 4;
 #else
     // Increase nonce.
     edata[19]++;
