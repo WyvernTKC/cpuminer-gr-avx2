@@ -148,17 +148,8 @@ bool opt_verify = false;
 // Default config for CN variants.
 // 0 - Use default 1way/SSE
 // 1 - Use 2way algorithm.
-// Use defines to keep compatibility with v1.1.1
-#if defined(GR_4WAY_HEAVY)
-__thread uint8_t cn_config[6] = {1, 1, 1, 1, 1, 1};
-uint8_t cn_config_global[6] = {1, 1, 1, 1, 1, 1};
-#elif defined(GR_4WAY_MEDIUM)
-__thread uint8_t cn_config[6] = {0, 1, 1, 1, 0, 0};
-uint8_t cn_config_global[6] = {0, 1, 1, 1, 0, 0};
-#else
 __thread uint8_t cn_config[6] = {0, 0, 0, 0, 0, 0};
 uint8_t cn_config_global[6] = {0, 0, 0, 0, 0, 0};
-#endif
 
 bool opt_tune = false;
 bool opt_tuned = false;
@@ -3200,10 +3191,12 @@ static bool load_tune_config(char *config_name) {
     return false;
   }
   for (int i = 0; i < 20; i++) {
-    fscanf(fd, "%hhd %hhd %hhd %hhd %hhd %hhd\n", &cn_tune[i][0],
-           &cn_tune[i][1], &cn_tune[i][2], &cn_tune[i][3], &cn_tune[i][4],
-           &cn_tune[i][5]);
-    if (ferror(fd) != 0) {
+    size_t read = fscanf(fd,
+                         "%" SCNu8 " %" SCNu8 " %" SCNu8 " %" SCNu8 " %" SCNu8
+                         " %" SCNu8 "\n",
+                         &cn_tune[i][0], &cn_tune[i][1], &cn_tune[i][2],
+                         &cn_tune[i][3], &cn_tune[i][4], &cn_tune[i][5]);
+    if (ferror(fd) != 0 || read != 6) {
       applog(LOG_ERR, "Could not read from %s file", config_name);
       return false;
     }
@@ -4002,8 +3995,7 @@ int main(int argc, char *argv[]) {
 #endif
 
   // Prepare and check Large Pages. At least 4MiB per thread.
-  huge_pages = InitHugePages(opt_n_threads * 2);
-  if (!huge_pages) {
+  if (!InitHugePages(opt_n_threads * 4)) {
     applog(LOG_ERR, "Could not prepare Huge Pages.");
   } else {
     applog(LOG_BLUE, "Huge Pages set up successfuly.");

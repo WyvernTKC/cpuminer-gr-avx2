@@ -1,5 +1,6 @@
 #include "gr-gate.h"
-#include <unistd.h> // usleep
+#include "virtual_memory.h" // Memory allocation.
+#include <unistd.h>         // usleep
 
 // Only 3 CN algos are selected from available 6.
 __thread uint8_t gr_hash_order[GR_HASH_FUNC_COUNT - 3 + 1];
@@ -107,6 +108,40 @@ void gr_getAlgoString(const uint8_t *block, uint8_t *selectedAlgoOutput) {
     }
     selectedAlgoOutput[i] = core_algos[selectedCoreCount++];
   }
+}
+
+// Mapping of gr_harh_order CN to cn-config - lightest to heaviest order.
+// Config:  Turtlelite, Turtle, Darklite, Dark, Lite, Fast.
+// Gr_Hash: Dark, Darklite, Fast, Lite, Turtle, Turtlelite
+static uint8_t cn_map[6] = {3, 2, 5, 4, 1, 0};
+
+static size_t GetMaxCnSize() {
+  // Memory requirements for each CN variant
+  size_t cn_req[6] = {262144, 262144, 524288, 524288, 1048576, 2097152};
+  // Check tune/config if given variant uses 2way that requires 2x memory.
+  // cn_config should contain only 0 values in non GR_4WAY.
+  for (int i = 0; i < 6; i++) {
+    cn_req[i] *= (cn_config[i] + 1);
+  }
+
+  size_t order[3] = {cn_map[gr_hash_order[5] - 15],
+                     cn_map[gr_hash_order[11] - 15],
+                     cn_map[gr_hash_order[17] - 15]};
+  size_t max =
+      cn_req[order[0]] > cn_req[order[1]] ? cn_req[order[0]] : cn_req[order[1]];
+  max = max > cn_req[order[2]] ? max : cn_req[order[2]];
+
+  return max;
+}
+
+void AllocateNeededMemory() {
+  size_t size = GetMaxCnSize();
+  if (opt_debug) {
+    applog(LOG_DEBUG, "Current Cryptonight variants require: %lu memory", size);
+  }
+
+  // Purges previous memory allocation and creates new one.
+  PrepareMemory((void **)&hp_state, size);
 }
 
 void select_tuned_config() {
@@ -223,9 +258,7 @@ void *statistic_thread(void *arg) {
   }
 }
 
-#ifdef __AVX2__
-
-static uint8_t cn_map[6] = {3, 2, 5, 4, 1, 0};
+#if defined(GR_4WAY)
 
 static void tune_config(void *input, int thr_id, int rot) {
   srand(time(NULL) + thr_id);
@@ -251,6 +284,10 @@ static void tune_config(void *input, int thr_id, int rot) {
   gr_hash_order[5] = cn[rot][0] + 15;
   gr_hash_order[11] = cn[rot][1] + 15;
   gr_hash_order[17] = cn[rot][2] + 15;
+
+  // Purge memory for test.
+  AllocateNeededMemory();
+
   // Set desired CN config.
   sync_bench();
   sync_bench();
@@ -309,28 +346,21 @@ void tune(void *input, int thr_id) {
       tune_config(input, thr_id, i);
       sync_conf();
       if (thr_id == 0) {
-        // TODO
-        // Do not set the improvement if Fast variant is included.
-        // Possible bug/inaccuracy in benchmarking with it set as 1.
-        // Can be reproduced with 5000 series Ryzens.
-        if (cn_map[cn[i][0]] != 5 && cn_map[cn[i][1]] != 5 &&
-            cn_map[cn[i][2]] != 5) {
-          if (best_hashrate < bench_hashrate) {
-            if (opt_debug) {
-              applog(LOG_DEBUG, "%d -> %d | %d -> %d | %d -> %d", cn[i][0],
-                     (config & 1) >> 0, cn[i][1], (config & 2) >> 1, cn[i][2],
-                     (config & 4) >> 2);
-            }
-            cn_tune[i][cn_map[cn[i][0]]] = (config & 1) >> 0;
-            cn_tune[i][cn_map[cn[i][1]]] = (config & 2) >> 1;
-            cn_tune[i][cn_map[cn[i][2]]] = (config & 4) >> 2;
-            if (opt_debug) {
-              applog(LOG_DEBUG, "Config for rotation %d: %d %d %d %d %d %d", i,
-                     cn_tune[i][0], cn_tune[i][1], cn_tune[i][2], cn_tune[i][3],
-                     cn_tune[i][4], cn_tune[i][5]);
-            }
-            best_hashrate = bench_hashrate;
+        if (best_hashrate < bench_hashrate) {
+          if (opt_debug) {
+            applog(LOG_DEBUG, "%d -> %d | %d -> %d | %d -> %d", cn[i][0],
+                   (config & 1) >> 0, cn[i][1], (config & 2) >> 1, cn[i][2],
+                   (config & 4) >> 2);
           }
+          cn_tune[i][cn_map[cn[i][0]]] = (config & 1) >> 0;
+          cn_tune[i][cn_map[cn[i][1]]] = (config & 2) >> 1;
+          cn_tune[i][cn_map[cn[i][2]]] = (config & 4) >> 2;
+          if (opt_debug) {
+            applog(LOG_DEBUG, "Config for rotation %d: %d %d %d %d %d %d", i,
+                   cn_tune[i][0], cn_tune[i][1], cn_tune[i][2], cn_tune[i][3],
+                   cn_tune[i][4], cn_tune[i][5]);
+          }
+          best_hashrate = bench_hashrate;
         }
         bench_hashrate = 0;
         bench_time = 0;
@@ -402,6 +432,9 @@ void benchmark(void *input, int thr_id, long sleep_time) {
       if (opt_tuned) {
         select_tuned_config();
       }
+
+      // Purge memory for test.
+      AllocateNeededMemory();
 
       sync_bench(); // Rotation change sync.
       if (rotation == 0) {

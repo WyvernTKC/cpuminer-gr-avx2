@@ -1,5 +1,4 @@
 #include "gr-gate.h"
-#include "virtual_memory.h"
 
 int gr_hash(void *output, const void *input, int thrid) {
   uint64_t hash[8] __attribute__((aligned(64)));
@@ -135,10 +134,6 @@ int scanhash_gr(struct work *work, uint32_t max_nonce, uint64_t *hashes_done,
   uint32_t nonce = first_nonce;
   volatile uint8_t *restart = &(work_restart[thr_id].restart);
 
-  if (hp_state == NULL) {
-    hp_state = (uint8_t *)AllocateMemory(1 << 21);
-  }
-
   if (opt_benchmark_config) {
     benchmark_configs(pdata, thr_id);
   }
@@ -164,6 +159,10 @@ int scanhash_gr(struct work *work, uint32_t max_nonce, uint64_t *hashes_done,
       applog(LOG_DEBUG, "hash order %s (%08x)", order, ntime);
     }
   }
+
+  // Allocates hp_state for Cryptonight algorithms.
+  // Needs to be run AFTER gr_hash_order is set!
+  AllocateNeededMemory();
 
   do {
     edata[19] = nonce;

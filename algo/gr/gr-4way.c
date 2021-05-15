@@ -1,5 +1,4 @@
 #include "gr-gate.h"
-#include "virtual_memory.h"
 
 #if defined(GR_4WAY)
 
@@ -397,22 +396,6 @@ int scanhash_gr_4way(struct work *work, uint32_t max_nonce,
   __m256i *noncev = (__m256i *)vdata + 9; // aligned
   volatile uint8_t *restart = &(work_restart[thr_id].restart);
 
-  if (hp_state == NULL) {
-    // Allocate 4MiB instead of 2MiB in case 2way Fast is used.
-    if (opt_tune || opt_benchmark_config || cn_config[Fast] == 1) {
-      hp_state = (uint8_t *)AllocateMemory(1 << 22);
-    } else if (opt_tuned) {
-      for (int i = 0; i < 20; i++) {
-        if (cn_tune[i][5] == 1) {
-          hp_state = (uint8_t *)AllocateMemory(1 << 22);
-        }
-      }
-    }
-    if (hp_state == NULL) {
-      hp_state = (uint8_t *)AllocateMemory(1 << 21);
-    }
-  }
-
   if (opt_tune) {
     tune(pdata, thr_id);
     opt_tuned = true; // Tuned.
@@ -452,6 +435,10 @@ int scanhash_gr_4way(struct work *work, uint32_t max_nonce,
       select_tuned_config();
     }
   }
+
+  // Allocates hp_state for Cryptonight algorithms.
+  // Needs to be run AFTER gr_hash_order is set!
+  AllocateNeededMemory();
 
   *noncev = mm256_intrlv_blend_32(
       _mm256_set_epi32(n + 3, 0, n + 2, 0, n + 1, 0, n, 0), *noncev);

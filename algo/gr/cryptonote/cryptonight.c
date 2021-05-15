@@ -41,13 +41,6 @@ static void do_skein_hash(const void *input, size_t len, void *output) {
 static void (*const extra_hashes[4])(const void *, size_t, void *) = {
     do_blake_hash, do_groestl_hash, do_jh_hash, do_skein_hash};
 
-static __attribute__((always_inline)) uint64_t
-__umul128(const uint64_t *a, const uint64_t *b, uint64_t *hi) {
-  unsigned __int128 r = (unsigned __int128)(*a) * (unsigned __int128)(*b);
-  *hi = r >> 64;
-  return (uint64_t)r;
-}
-
 // This will shift and xor tmp1 into itself as 4 32-bit vals such as
 // sl_xor(a1 a2 a3 a4) = a1 (a2^a1) (a3^a2^a1) (a4^a3^a2^a1)
 static inline __m128i sl_xor(__m128i tmp1) {
@@ -393,7 +386,6 @@ cryptonight_hash(const void *input, void *output, const uint32_t memory,
     cl = ((uint64_t *)(&l0[idx0]))[0];
     ch = ((uint64_t *)(&l0[idx0]))[1];
 
-    // lo = __umul128(&cxl0, &cl, &hi);
     __asm("mulq %3\n\t" : "=d"(hi), "=a"(lo) : "1"(cxl0), "rm"(cl) : "cc");
 
     al0 += hi;
@@ -535,7 +527,6 @@ cryptonight_2way_hash(const void *input0, const void *input1, void *output0,
     cl = ((uint64_t *)(&l0[idx0]))[0];
     ch = ((uint64_t *)(&l0[idx0]))[1];
 
-    // lo = __umul128(&cxl0, &cl, &hi);
     __asm("mulq %3\n\t" : "=d"(hi), "=a"(lo) : "1"(cxl0), "rm"(cl) : "cc");
 
     al0 += hi;
@@ -553,7 +544,6 @@ cryptonight_2way_hash(const void *input0, const void *input1, void *output0,
     cl = ((uint64_t *)(&l1[idx1]))[0];
     ch = ((uint64_t *)(&l1[idx1]))[1];
 
-    // lo = __umul128(&cxl1, &cl, &hi);
     __asm("mulq %3\n\t" : "=d"(hi), "=a"(lo) : "1"(cxl1), "rm"(cl) : "cc");
 
     al1 += hi;

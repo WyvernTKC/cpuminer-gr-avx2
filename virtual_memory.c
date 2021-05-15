@@ -2,6 +2,10 @@
 #include "miner.h" // applog
 #include "stdio.h"
 
+static bool huge_pages = false;
+__thread bool allocated_hp = false;
+__thread size_t currently_allocated = 0;
+
 #ifdef __MINGW32__
 // Windows
 #define UNICODE
@@ -146,7 +150,10 @@ static BOOL TrySetLockPagesPrivilege() {
   return ObtainLockPagesPrivilege() && SetLockPagesPrivilege();
 }
 
-bool InitHugePages(size_t threads) { return TrySetLockPagesPrivilege(); }
+bool InitHugePages(size_t threads) {
+  huge_pages = TrySetLockPagesPrivilege();
+  return huge_pages
+}
 
 void *AllocateLargePagesMemory(size_t size) {
   const size_t min = GetLargePageMinimum();
@@ -160,6 +167,12 @@ void *AllocateLargePagesMemory(size_t size) {
   return mem;
 }
 
+void DeallocateLargePagesMemory(void **memory) {
+  VirtualFree(*memory, currently_allocated, MEM_RELEASE);
+  *memory = NULL;
+  allocated_hp = false;
+}
+
 #else
 // Linux
 #include <sys/mman.h>
@@ -171,9 +184,9 @@ static inline int read_hp(const char *path) {
   }
 
   uint64_t value = 0;
-  fscanf(fd, "%lu", &value);
+  size_t read = fscanf(fd, "%lu", &value);
   fclose(fd);
-  if (ferror(fd) != 0) {
+  if (ferror(fd) != 0 || read != 1) {
     return -2;
   }
   return (int)value;
@@ -200,20 +213,25 @@ bool InitHugePages(size_t threads) {
                           "hugepages-2048kB/free_hugepages";
   int available_pages = read_hp(free_path);
   if (available_pages < 0) {
-    return false;
+    huge_pages = false;
+    return huge_pages;
   }
   if (available_pages >= (int)threads) {
-    return true;
+    huge_pages = true;
+    return huge_pages;
   }
   const char *nr_path = "/sys/devices/system/node/node0/hugepages/"
                         "hugepages-2048kB/nr_hugepages";
   int set_pages = read_hp(nr_path);
   set_pages = set_pages < 0 ? 0 : set_pages;
-  return write_hp(nr_path, (size_t)set_pages + threads - available_pages);
+  huge_pages = write_hp(nr_path, (size_t)set_pages + threads - available_pages);
+  return huge_pages;
 }
 
 #define MAP_HUGE_2MB (21 << MAP_HUGE_SHIFT)
 void *AllocateLargePagesMemory(size_t size) {
+  // Needs to be multiple of Large Pages (2 MiB).
+  size = ((size / 2097152) * 2097152) + 2097152;
 #if defined(__FreeBSD__)
   void *mem =
       mmap(0, size, PROT_READ | PROT_WRITE,
@@ -245,6 +263,17 @@ void *AllocateLargePagesMemory(size_t size) {
   return mem == MAP_FAILED ? NULL : mem;
 }
 
+void DeallocateLargePagesMemory(void **memory) {
+  // Needs to be multiple of Large Pages (2 MiB).
+  size_t size = ((currently_allocated / 2097152) * 2097152) + 2097152;
+  int status = munmap(*memory, size);
+  if (status != 0) {
+    applog(LOG_ERR, "Could not properly deallocate memory!");
+  }
+  *memory = NULL;
+  allocated_hp = false;
+}
+
 #endif // __MINGW32__
 
 void *AllocateMemory(size_t size) {
@@ -254,10 +283,30 @@ void *AllocateMemory(size_t size) {
       applog(LOG_NOTICE, "Using malloc as allocation method");
     }
     mem = malloc(size);
+    allocated_hp = false;
+    if (mem == NULL) {
+      applog(LOG_ERR, "Could not allocate any memory for thread");
+      exit(1);
+    }
+  } else {
+    allocated_hp = true;
   }
-  if (mem == NULL) {
-    applog(LOG_ERR, "Could not allocate any memory for thread");
-    exit(1);
-  }
+  currently_allocated = size;
   return mem;
+}
+
+void DeallocateMemory(void **memory) {
+  if (allocated_hp) {
+    DeallocateLargePagesMemory(memory);
+  } else if (*memory != NULL) {
+    // No special method of allocation was used.
+    free(*memory);
+  }
+}
+
+void PrepareMemory(void **memory, size_t size) {
+  if (*memory != NULL) {
+    DeallocateMemory(memory);
+  }
+  *memory = (void *)AllocateMemory(size);
 }
