@@ -18,6 +18,14 @@
 #include "soft_aes.h"
 #endif
 
+// Replacement macro for architectures without SSE4.2
+#ifndef __SSE42__
+#define _mm_extract_epi64(a, b)                                                \
+  b == 1 ? _mm_cvtsi128_si64(_mm_castps_si128(                                 \
+               _mm_movehl_ps(_mm_castsi128_ps(a), _mm_castsi128_ps(a))))       \
+         : _mm_cvtsi128_si64(a);
+#endif // __SSE42__
+
 extern __thread uint8_t *hp_state;
 
 static void do_blake_hash(const void *input, size_t len, void *output) {
@@ -151,9 +159,9 @@ aes_round(const __m128i *key, __m128i *x0, __m128i *x1, __m128i *x2,
 }
 #endif
 
-// Size is number of 64B words. // Must be multiple of 8.
-// 128 -> 8 KiB per thread needed.
-#define PREFETCH_SIZE 128
+// Size in L1 prefetch. 4KiB per thread.
+#define PREFETCH_SIZE_B 4096
+#define PREFETCH_SIZE PREFETCH_SIZE_B / 64
 #define PREFETCH_TYPE_R _MM_HINT_T0
 #define PREFETCH_TYPE_W _MM_HINT_ET0
 
@@ -174,9 +182,9 @@ static inline void explode_scratchpad(const __m128i *input, __m128i *output,
   xin7 = _mm_load_si128(input + 11);
 
   size_t i;
-  // Prefetch first X KiB of output into L2 cache.
+  // Prefetch first X KiB of output into L1 cache.
   for (i = 0; i < PREFETCH_SIZE; i += 4) {
-    _mm_prefetch(output + i, _MM_HINT_ET0);
+    _mm_prefetch(output + i, PREFETCH_TYPE_W);
   }
 
   for (i = 0; i < (memory / sizeof(__m128i)) - PREFETCH_SIZE; i += 8) {
@@ -246,7 +254,7 @@ static inline void implode_scratchpad(const __m128i *input, __m128i *output,
   xout7 = _mm_load_si128(output + 11);
 
   size_t i;
-  // Prefetch first X KiB of input into L2 cache.
+  // Prefetch first X KiB of input into L1 cache.
   for (i = 0; i < PREFETCH_SIZE; i += 4) {
     _mm_prefetch(input + i, PREFETCH_TYPE_R);
   }
@@ -365,26 +373,23 @@ cryptonight_hash(const void *input, void *output, const uint32_t memory,
 #endif
 
     // Post AES
-    __m128i tmp = _mm_xor_si128(bx0, cx0);
+    const __m128i tmp = _mm_xor_si128(bx0, cx0);
     ((uint64_t *)(&l0[idx0]))[0] = _mm_cvtsi128_si64(tmp);
 
-    tmp = _mm_castps_si128(
-        _mm_movehl_ps(_mm_castsi128_ps(tmp), _mm_castsi128_ps(tmp)));
-    uint64_t vh = _mm_cvtsi128_si64(tmp);
+    const uint64_t vh = _mm_extract_epi64(tmp, 1);
 
     const uint8_t x = (uint8_t)(vh >> 24);
     static const uint16_t table = 0x7531;
     const uint8_t index = (((x >> (3)) & 6) | (x & 1)) << 1;
-    vh ^= ((table >> index) & 0x3) << 28;
 
-    ((uint64_t *)(&l0[idx0]))[1] = vh;
+    ((uint64_t *)(&l0[idx0]))[1] = vh ^ (((table >> index) & 0x3) << 28);
 
     const uint64_t cxl0 = (uint64_t)(_mm_cvtsi128_si64(cx0));
     idx0 = cxl0 & mask;
 
-    uint64_t hi, lo, cl, ch;
-    cl = ((uint64_t *)(&l0[idx0]))[0];
-    ch = ((uint64_t *)(&l0[idx0]))[1];
+    register uint64_t hi, lo;
+    const uint64_t cl = ((const uint64_t *)(&l0[idx0]))[0];
+    const uint64_t ch = ((const uint64_t *)(&l0[idx0]))[1];
 
     __asm("mulq %3\n\t" : "=d"(hi), "=a"(lo) : "1"(cxl0), "rm"(cl) : "cc");
 
@@ -440,14 +445,6 @@ void cryptonight_turtlelite_hash(const void *input, void *output) {
 
 #ifdef __AVX2__ // GR_4WAY
 
-// GCC 7.5 Does not have _mm256_set_mi128i
-#ifdef __GNUC__
-#if __GNUC__ < 8
-#define _mm256_set_m128i(a, b)                                                 \
-  _mm256_insertf128_si256(_mm256_castsi128_si256(b), a, 1)
-#endif // __GNUC__ < 8
-#endif // __GNUC__
-
 // Requires 2x memory allocated in hp_state.
 __attribute__((always_inline)) void
 cryptonight_2way_hash(const void *input0, const void *input1, void *output0,
@@ -499,35 +496,29 @@ cryptonight_2way_hash(const void *input0, const void *input1, void *output0,
     _mm_prefetch(&l1[cxl1 & mask], _MM_HINT_ET0);
 
     // Post AES
-    __m128i tmp = _mm_xor_si128(bx0, cx0);
-    ((uint64_t *)(&l0[idx0]))[0] = _mm_cvtsi128_si64(tmp);
-    tmp = _mm_castps_si128(
-        _mm_movehl_ps(_mm_castsi128_ps(tmp), _mm_castsi128_ps(tmp)));
-    uint64_t vh = _mm_cvtsi128_si64(tmp);
-    const uint8_t x0 = (uint8_t)(vh >> 24);
+    const __m128i tmp0 = _mm_xor_si128(bx0, cx0);
+    ((uint64_t *)(&l0[idx0]))[0] = _mm_cvtsi128_si64(tmp0);
+    const uint64_t vh0 = _mm_extract_epi64(tmp0, 1);
+    const uint8_t x0 = (uint8_t)(vh0 >> 24);
     static const uint16_t table = 0x7531;
     const uint8_t index0 = (((x0 >> (3)) & 6) | (x0 & 1)) << 1;
-    vh ^= ((table >> index0) & 0x3) << 28;
-    ((uint64_t *)(&l0[idx0]))[1] = vh;
+    ((uint64_t *)(&l0[idx0]))[1] = vh0 ^ (((table >> index0) & 0x3) << 28);
 
-    tmp = _mm_xor_si128(bx1, cx1);
-    ((uint64_t *)(&l1[idx1]))[0] = _mm_cvtsi128_si64(tmp);
-    tmp = _mm_castps_si128(
-        _mm_movehl_ps(_mm_castsi128_ps(tmp), _mm_castsi128_ps(tmp)));
-    vh = _mm_cvtsi128_si64(tmp);
-    const uint8_t x1 = (uint8_t)(vh >> 24);
+    const __m128i tmp1 = _mm_xor_si128(bx1, cx1);
+    ((uint64_t *)(&l1[idx1]))[0] = _mm_cvtsi128_si64(tmp1);
+    const uint64_t vh1 = _mm_extract_epi64(tmp1, 1);
+    const uint8_t x1 = (uint8_t)(vh1 >> 24);
     const uint8_t index1 = (((x1 >> (3)) & 6) | (x1 & 1)) << 1;
-    vh ^= ((table >> index1) & 0x3) << 28;
-    ((uint64_t *)(&l1[idx1]))[1] = vh;
+    ((uint64_t *)(&l1[idx1]))[1] = vh1 ^ (((table >> index1) & 0x3) << 28);
 
     idx0 = cxl0 & mask;
     idx1 = cxl1 & mask;
 
-    uint64_t hi, lo, cl, ch;
-    cl = ((uint64_t *)(&l0[idx0]))[0];
-    ch = ((uint64_t *)(&l0[idx0]))[1];
+    register uint64_t hi, lo;
+    const uint64_t cl0 = ((const uint64_t *)(&l0[idx0]))[0];
+    const uint64_t ch0 = ((const uint64_t *)(&l0[idx0]))[1];
 
-    __asm("mulq %3\n\t" : "=d"(hi), "=a"(lo) : "1"(cxl0), "rm"(cl) : "cc");
+    __asm("mulq %3\n\t" : "=d"(hi), "=a"(lo) : "1"(cxl0), "rm"(cl0) : "cc");
 
     al0 += hi;
     ah0 += lo;
@@ -535,16 +526,16 @@ cryptonight_2way_hash(const void *input0, const void *input1, void *output0,
     ((uint64_t *)(&l0[idx0]))[0] = al0;
     ((uint64_t *)(&l0[idx0]))[1] = ah0 ^ tweak1_2_0;
 
-    al0 ^= cl;
+    al0 ^= cl0;
     idx0 = al0 & mask;
     _mm_prefetch(&l0[idx0], _MM_HINT_ET0);
 
-    ah0 ^= ch;
+    ah0 ^= ch0;
 
-    cl = ((uint64_t *)(&l1[idx1]))[0];
-    ch = ((uint64_t *)(&l1[idx1]))[1];
+    const uint64_t cl1 = ((const uint64_t *)(&l1[idx1]))[0];
+    const uint64_t ch1 = ((const uint64_t *)(&l1[idx1]))[1];
 
-    __asm("mulq %3\n\t" : "=d"(hi), "=a"(lo) : "1"(cxl1), "rm"(cl) : "cc");
+    __asm("mulq %3\n\t" : "=d"(hi), "=a"(lo) : "1"(cxl1), "rm"(cl1) : "cc");
 
     al1 += hi;
     ah1 += lo;
@@ -552,11 +543,11 @@ cryptonight_2way_hash(const void *input0, const void *input1, void *output0,
     ((uint64_t *)(&l1[idx1]))[0] = al1;
     ((uint64_t *)(&l1[idx1]))[1] = ah1 ^ tweak1_2_1;
 
-    al1 ^= cl;
+    al1 ^= cl1;
     idx1 = al1 & mask;
     _mm_prefetch(&l1[idx1], _MM_HINT_ET0);
 
-    ah1 ^= ch;
+    ah1 ^= ch1;
 
     bx0 = cx0;
     bx1 = cx1;

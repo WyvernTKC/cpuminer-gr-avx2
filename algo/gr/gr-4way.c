@@ -432,7 +432,7 @@ int scanhash_gr_4way(struct work *work, uint32_t max_nonce,
       applog(LOG_DEBUG, "hash order %s (%08x)", order, ntime);
     }
     if (opt_tuned) {
-      select_tuned_config();
+      select_tuned_config(thr_id);
     }
   }
 
@@ -448,8 +448,8 @@ int scanhash_gr_4way(struct work *work, uint32_t max_nonce,
       for (int i = 0; i < 4; i++) {
         if (unlikely(valid_hash(hash + (i << 3), ptarget))) {
           if (opt_debug) {
-            applog(LOG_BLUE, "Solution: %u %.10lf", bswap_32(n + i),
-                   hash_to_diff(hash + (i << 3)));
+            applog(LOG_BLUE, "Solution found. Nonce: %u | Diff: %.10lf",
+                   bswap_32(n + i), hash_to_diff(hash + (i << 3)));
           }
           pdata[19] = bswap_32(n + i);
           submit_solution(work, hash + (i << 3), mythr);

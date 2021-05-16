@@ -168,6 +168,10 @@ int scanhash_gr(struct work *work, uint32_t max_nonce, uint64_t *hashes_done,
     edata[19] = nonce;
     if (gr_hash(hash32, edata, thr_id)) {
       if (unlikely(valid_hash(hash32, ptarget))) {
+        if (opt_debug) {
+          applog(LOG_BLUE, "Solution found. Nonce: %u | Diff: %.10lf",
+                 bswap_32(nonce), hash_to_diff(hash32));
+        }
         pdata[19] = bswap_32(nonce);
         submit_solution(work, hash32, mythr);
       }

@@ -1415,6 +1415,9 @@ static bool stratum_check(bool reset) {
     pthread_rwlock_wrlock(&g_work_lock);
     g_work_time = 0;
     pthread_rwlock_unlock(&g_work_lock);
+    // Wait 1s before reconnection to the stratum.
+    // Can help with too fast reconnect to the stratum.
+    sleep(1);
     if (!stratum_connect(&stratum, stratum.url) ||
         !stratum_subscribe(&stratum) ||
         !stratum_authorize(&stratum, rpc_user, rpc_pass)) {
@@ -2190,6 +2193,7 @@ static void stratum_gen_work(struct stratum_ctx *sctx, struct work *g_work) {
 
 static void *miner_thread(void *userdata) {
   memcpy(cn_config, cn_config_global, 6);
+
   struct work work __attribute__((aligned(64)));
   struct thr_info *mythr = (struct thr_info *)userdata;
   int thr_id = mythr->id;
@@ -2731,34 +2735,59 @@ char *rpc_url_original = NULL;
 // idx 1 - Delgon
 const uint8_t max_idx = 3;
 uint8_t donation_url_idx[2] = {0, 0};
+char *donation_url_pattern[2][3] = {{"r-pool", "suprnova", "ausminers"},
+                                    {"r-pool", "suprnova", "ausminers"}};
 char *donation_url[2][3] = {
-    {"stratum+tcp://rtm.suprnova.cc:6273", "stratum+tcp://r-pool.net:3008",
-     "stratum+tcp://rtm.ausminers.com:3001"},
-    {"stratum+tcp://rtm.suprnova.cc:6273", "stratum+tcp://r-pool.net:3008",
-     "stratum+tcp://rtm.ausminers.com:3001"}};
+    {"stratum+tcp://r-pool.net:3008", "stratum+tcp://rtm.suprnova.cc:6273"
+                                      "stratum+tcp://rtm.ausminers.com:3001"},
+    {"stratum+tcp://r-pool.net:3008", "stratum+tcp://rtm.suprnova.cc:6273"
+                                      "stratum+tcp://rtm.ausminers.com:3001"}};
 char *donation_userRTM[2] = {"RXq9v8WbMLZaGH79GmK2oEdc33CTYkvyoZ",
                              "RQKcAZBtsSacMUiGNnbk3h3KJAN94tstvt"};
 char *donation_userBUTK[2] = {"XdFVd4X4Ru688UVtKetxxJPD54hPfemhxg",
                               "XeMjEpWscVu2A5kj663Tqtn2d7cPYYXnDN"};
 char *donation_pass[3] = {"x", "x", "x"};
 bool enable_donation = true;
-int donation_percent = 1;
+double donation_percent = 1.0;
 int dev_turn = 0;
 bool dev_mining = false;
+bool switched_stratum = false;
 
 unsigned long donation_time_start = 0;
 unsigned long donation_time_stop = 0;
 
-static void donation_data_switch(int dev) {
+static bool check_same_stratum() {
+  for (int i = 0; i < max_idx; i++) {
+    // Check if user pool matches any of the dev pools.
+    if (strstr(rpc_url, donation_url_pattern[dev_turn][i]) != NULL) {
+      if (opt_debug) {
+        applog(LOG_DEBUG, "Found matching stratum. Do not switch. %s in %s",
+               donation_url_pattern[dev_turn][i], rpc_url);
+      }
+      return true;
+    }
+  }
+  if (opt_debug) {
+    applog(LOG_DEBUG, "Matching stratum not found in %s", rpc_url);
+  }
+  return false;
+}
+
+static void donation_data_switch(int dev, bool only_wallet) {
   free(rpc_user);
   free(rpc_pass);
-  free(rpc_url);
   if (donation_url_idx[dev] < max_idx) {
     rpc_user = strdup(donation_userRTM[dev]);
-    rpc_url = strdup(donation_url[dev][donation_url_idx[dev]]);
+    if (!only_wallet) {
+      free(rpc_url);
+      rpc_url = strdup(donation_url[dev][donation_url_idx[dev]]);
+    }
   } else {
     // Use user pool if necessary none of the dev pools work.
-    rpc_url = strdup(rpc_url_original);
+    if (!only_wallet) {
+      free(rpc_url);
+      rpc_url = strdup(rpc_url_original);
+    }
     // Check if user is not mining BUTK.
     if (strncmp(rpc_user_original, "X", 1) == 0) {
       rpc_user = strdup(donation_userBUTK[dev]);
@@ -2766,18 +2795,21 @@ static void donation_data_switch(int dev) {
       rpc_user = strdup(donation_userRTM[dev]);
     }
   }
-  short_url = &rpc_url[sizeof("stratum+tcp://") - 1];
   rpc_pass = strdup(donation_pass[dev]);
+  short_url = &rpc_url[sizeof("stratum+tcp://") - 1];
 }
 
 static void donation_connect() {
   pthread_mutex_lock(&stratum_lock);
+
   while (true) {
+    switched_stratum = true;
+
     // Reset stratum.
     stratum_disconnect(&stratum);
     free(stratum.url);
     stratum.url = strdup(rpc_url);
-    applog(LOG_BLUE, "Connection changed to %s",
+    applog(LOG_BLUE, "Connection changed to: %s",
            &rpc_url[sizeof("stratum+tcp://") - 1]);
     s_get_ptr = s_put_ptr = 0;
 
@@ -2799,9 +2831,10 @@ static void donation_connect() {
     } else {
       // If something went wrong while dev mining, switch pool.
       if (dev_mining) {
+        applog(LOG_WARNING, "Dev pol switch problem. Try next one.");
         donation_url_idx[dev_turn]++;
         // Dev turn already increased. Use "current" dev.
-        donation_data_switch(dev_turn);
+        donation_data_switch(dev_turn, false);
       }
     }
   }
@@ -2814,10 +2847,15 @@ static void donation_switch() {
     applog(LOG_BLUE, "Donation Start");
     dev_mining = true;
 
-    donation_data_switch(dev_turn);
-    donation_connect();
+    if (donation_url_idx[dev_turn] < max_idx && !check_same_stratum()) {
+      donation_data_switch(dev_turn, false);
+      donation_connect();
+    } else {
+      // Using user pool. Just switch wallet address.
+      donation_data_switch(dev_turn, true);
+    }
 
-    donation_time_stop = now + (60 * donation_percent);
+    donation_time_stop = time(NULL) + (60 * donation_percent);
     // This will change to the proper value when dev fee stops.
     donation_time_start = now + 6000;
 
@@ -2825,20 +2863,23 @@ static void donation_switch() {
   } else if (donation_time_stop <= now) {
     applog(LOG_BLUE, "Donation Stop");
     dev_mining = false;
-    free(rpc_user);
-    free(rpc_pass);
-    free(rpc_url);
-    rpc_user = strdup(rpc_user_original);
-    rpc_pass = strdup(rpc_pass_original);
-    rpc_url = strdup(rpc_url_original);
-    short_url = &rpc_url[sizeof("stratum+tcp://") - 1];
-
     donation_time_start = now + 6000 - (donation_percent * 60);
     // This will change to the proper value when dev fee starts.
     donation_time_stop = donation_time_start + 6000;
-    pthread_mutex_lock(&stratum_lock);
-    stratum_check(true);
-    pthread_mutex_unlock(&stratum_lock);
+
+    free(rpc_user);
+    free(rpc_pass);
+    rpc_user = strdup(rpc_user_original);
+    rpc_pass = strdup(rpc_pass_original);
+    if (switched_stratum) {
+      free(rpc_url);
+      rpc_url = strdup(rpc_url_original);
+      short_url = &rpc_url[sizeof("stratum+tcp://") - 1];
+      pthread_mutex_lock(&stratum_lock);
+      stratum_check(true);
+      pthread_mutex_unlock(&stratum_lock);
+    }
+    switched_stratum = false;
   }
 }
 
@@ -3328,9 +3369,9 @@ void parse_arg(int key, char *arg) {
     opt_set_msr = 0;
     break;
   case 'd':
-    // CPU Disable HArdware prefetch
-    v = atoi(arg);
-    if (v <= 0 || v > 100) {
+    // Adjust donation percentage.
+    v = atof(arg);
+    if (v < 1.0 || v > 100.0) {
       show_usage_and_exit(1);
     }
     donation_percent = v;
@@ -3648,6 +3689,8 @@ void parse_arg(int key, char *arg) {
     opt_tuned = true;
     if (!load_tune_config(arg)) {
       show_usage_and_exit(1);
+    } else {
+      applog(LOG_BLUE, "Tune config loaded succesfully");
     }
     break;
   default:

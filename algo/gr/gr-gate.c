@@ -136,15 +136,12 @@ static size_t GetMaxCnSize() {
 
 void AllocateNeededMemory() {
   size_t size = GetMaxCnSize();
-  if (opt_debug) {
-    applog(LOG_DEBUG, "Current Cryptonight variants require: %lu memory", size);
-  }
 
   // Purges previous memory allocation and creates new one.
   PrepareMemory((void **)&hp_state, size);
 }
 
-void select_tuned_config() {
+void select_tuned_config(int thr_id) {
   for (size_t i = 0; i < 20; i++) {
     if (cn[i][0] + 15 == gr_hash_order[5] ||
         cn[i][0] + 15 == gr_hash_order[11] ||
@@ -156,7 +153,7 @@ void select_tuned_config() {
             cn[i][2] + 15 == gr_hash_order[11] ||
             cn[i][2] + 15 == gr_hash_order[17]) {
           memcpy(cn_config, &cn_tune[i], 6);
-          if (opt_debug) {
+          if (opt_debug && !thr_id) {
             applog(LOG_BLUE, "config %d: %d %d %d %d %d %d", i, cn_config[0],
                    cn_config[1], cn_config[2], cn_config[3], cn_config[4],
                    cn_config[5]);
@@ -166,9 +163,11 @@ void select_tuned_config() {
       }
     }
   }
-  // Should not get to this point.
-  applog(LOG_ERR, "Could not find any config? %d %d %d", gr_hash_order[5],
-         gr_hash_order[11], gr_hash_order[17]);
+  if (!thr_id) {
+    // Should not get to this point.
+    applog(LOG_ERR, "Could not find any config? %d %d %d", gr_hash_order[5],
+           gr_hash_order[11], gr_hash_order[17]);
+  }
   return;
 }
 
@@ -430,7 +429,7 @@ void benchmark(void *input, int thr_id, long sleep_time) {
       gr_hash_order[11] = cn[rotation][1] + 15;
       gr_hash_order[17] = cn[rotation][2] + 15;
       if (opt_tuned) {
-        select_tuned_config();
+        select_tuned_config(thr_id);
       }
 
       // Purge memory for test.
@@ -478,7 +477,7 @@ void benchmark_configs(void *input, int thr_id) {
     cn_config[3] = (i & 8) >> 3;
     cn_config[4] = (i & 16) >> 4;
     cn_config[5] = (i & 32) >> 5;
-    if (thr_id == 0) {
+    if (!thr_id) {
       applog(LOG_NOTICE, "Testing Cryptonigh --cn-config %d,%d,%d,%d,%d,%d",
              cn_config[0], cn_config[1], cn_config[2], cn_config[3],
              cn_config[4], cn_config[5]);
@@ -503,7 +502,7 @@ void benchmark_configs(void *input, int thr_id) {
     }
   }
   // Show best config.
-  if (thr_id == 0) {
+  if (!thr_id) {
     applog(LOG_NOTICE, "Best --cn-config %d,%d,%d,%d,%d,%d",
            (best_config & 1) >> 0, (best_config & 2) >> 1,
            (best_config & 4) >> 2, (best_config & 8) >> 3,

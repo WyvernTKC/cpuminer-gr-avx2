@@ -152,7 +152,7 @@ static BOOL TrySetLockPagesPrivilege() {
 
 bool InitHugePages(size_t threads) {
   huge_pages = TrySetLockPagesPrivilege();
-  return huge_pages
+  return huge_pages;
 }
 
 void *AllocateLargePagesMemory(size_t size) {
