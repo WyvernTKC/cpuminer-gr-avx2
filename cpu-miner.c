@@ -2757,6 +2757,11 @@ unsigned long donation_time_start = 0;
 unsigned long donation_time_stop = 0;
 
 static bool check_same_stratum() {
+  // If user's walleet is for BUTK then none of the dev stratum will match with
+  // user's stratum.
+  if (strncmp(rpc_user_original, "X", 1) == 0) {
+    return false;
+  }
   for (int i = 0; i < max_idx; i++) {
     // Check if user pool matches any of the dev pools.
     if (strstr(rpc_url, donation_url_pattern[dev_turn][i]) != NULL) {
