@@ -25,7 +25,7 @@ make distclean || echo clean
 rm -f config.status
 ./autogen.sh || echo done
 CFLAGS="-O3 -march=${1} ${3} ${DFLAGS}" ./configure --with-curl
-make -j 32
+make -j $(nproc)
 strip -s cpuminer
 mv cpuminer bin/unix/${4}/cpuminer-${2}
 
@@ -50,25 +50,28 @@ compile "westmere" "aes-sse42" "-maes"
 compile "corei7-avx" "avx" "-maes"
 
 
-#AVX2+ Light
+#AVX2+
 # Haswell AVX2 AES
 # GCC 9 doesn't include AES with core-avx2
 compile "core-avx2" "avx2" "-maes"
 
 # AMD Zen1 AVX2 SHA
-compile "znver1" "zen"
+compile "znver1" "zen" "-mtune=znver1"
 
 # AMD Zen2 AVX2 SHA
-compile "znver2" "zen2"
+compile "znver2" "zen2" "-mtune=znver2"
 
 # AMD Zen3 AVX2 SHA VAES
-compile "znver2" "zen3" "-mvaes"
+# GCC 10
+compile "znver3" "zen3" "-mtune=znver3"
+# GCC 9
+# compile "znver2" "zen3" "-mvaes -mtune=znver2"
 
 # Icelake AVX512 SHA VAES
-compile "icelake-client" "avx512-sha-vaes"
+compile "icelake-client" "avx512-sha-vaes" "-mtune=intel"
 
 # Rocketlake AVX512 SHA AES
-compile "cascadelake" "avx512-sha" "-msha"
+compile "cascadelake" "avx512-sha" "-msha -mtune=intel"
 
 # Slylake-X AVX512 AES
-compile "skylake-avx512" "avx512"
+compile "skylake-avx512" "avx512" "-mtune=intel"
