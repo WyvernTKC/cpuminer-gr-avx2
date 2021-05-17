@@ -168,7 +168,7 @@ void *AllocateLargePagesMemory(size_t size) {
 }
 
 void DeallocateLargePagesMemory(void **memory) {
-  VirtualFree(*memory, currently_allocated, MEM_RELEASE);
+  VirtualFree(*memory, 0, MEM_RELEASE);
   *memory = NULL;
   allocated_hp = false;
 }
