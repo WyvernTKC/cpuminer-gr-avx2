@@ -28,6 +28,11 @@
 #include <stdbool.h>
 #include <sys/time.h>
 
+#ifdef __MINGW32__
+#include <winsock2.h>
+#include <windows.h>
+#endif
+
 #include <curl/curl.h>
 #include <jansson.h>
 #include <pthread.h>
@@ -837,21 +842,14 @@ Options:\n\
   -c, --config=FILE     load a JSON-format configuration file\n\
       --data-file       path and name of data file\n\
       --verify          enable additional time consuming start up tests\n\
-  -V, --version         display version information and exit\n\
-  -y                    disable application of MSR mod on the system\n"
-#ifdef __AVX2__
+  -V, --version         display version information and exit\n"
+#ifdef __AES__
                             "\
-      --cn-config=[LIST]  list of which cryptonight variant should be calculated using 2way method.\n\
-                          Cryptonight variants: Turtlelite, Turtle, Darklite, Dark, Lite, Fast\n\
-                          Available options:\n\
-                          'light' - default, use only SSE. [0,0,0,0,0,0]\n\
-                          'medium' - use mix of SSE2 & 2way. [0,1,1,1,0,0]\n\
-                          'heavy' - use only 2way. [1,1,1,1,1,1]\n\
-                          [LIST] - customm, list of ',' separated 6 values, 0 - SSE2,  1 - 2way\n"
+  -y                    disable application of MSR mod on the system\n"
 #endif
                             "\
-      --tune            Tune miner before mining. Takes 30 minutes. tune_config file is created and can be used.\n\
-      --tune-config=FILE  Point to the already created tune config, created by --tune\n\
+      --no-tune         disable tuning of the miner before mining. Tuning takes 34 minutes.\n\
+      --tune-config=FILE  Point to the already created tune config. Default file created by the miner is tune_config\n\
   -h, --help            display this help text and exit\n\
 ";
 
@@ -921,10 +919,7 @@ static struct option const options[] = {
     {"data-file", 1, NULL, 1027},
     {"verify", 0, NULL, 1028},
     {"version", 0, NULL, 'V'},
-#ifdef __AVX2__
-    {"cn-config", 1, NULL, 1101},
-#endif
-    {"tune", 0, NULL, 1103},
+    {"no-tune", 0, NULL, 1103},
     {"tune-config", 1, NULL, 1104},
     {0, 0, 0, 0}};
 

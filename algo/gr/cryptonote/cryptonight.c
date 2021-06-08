@@ -41,13 +41,6 @@ static void do_skein_hash(const void *input, size_t len, void *output) {
 static void (*const extra_hashes[4])(const void *, size_t, void *) = {
     do_blake_hash, do_groestl_hash, do_jh_hash, do_skein_hash};
 
-static __attribute__((always_inline)) uint64_t
-__umul128(const uint64_t *a, const uint64_t *b, uint64_t *hi) {
-  unsigned __int128 r = (unsigned __int128)(*a) * (unsigned __int128)(*b);
-  *hi = r >> 64;
-  return (uint64_t)r;
-}
-
 // This will shift and xor tmp1 into itself as 4 32-bit vals such as
 // sl_xor(a1 a2 a3 a4) = a1 (a2^a1) (a3^a2^a1) (a4^a3^a2^a1)
 static inline __m128i sl_xor(__m128i tmp1) {
@@ -185,7 +178,7 @@ static inline void explode_scratchpad(const __m128i *state, __m128i *ls,
   __m128i k[10];
 
   aes_genkey(state, k);
-  const __m128i *restrict key = __builtin_assume_aligned(k, 16);
+  const __m128i *key = __builtin_assume_aligned(k, 16);
 
   memcpy(x, state + 4, 128);
 
@@ -217,7 +210,7 @@ static inline void implode_scratchpad(const __m128i *ls, __m128i *state,
   __m128i k[10];
 
   aes_genkey(state + 2, k);
-  const __m128i *restrict key = __builtin_assume_aligned(k, 16);
+  const __m128i *key = __builtin_assume_aligned(k, 16);
 
   memcpy(x, state + 4, 128);
 
@@ -229,17 +222,29 @@ static inline void implode_scratchpad(const __m128i *ls, __m128i *state,
   for (i = 0; i < memory - PREFETCH_SIZE_B; i += 128) {
     _mm_prefetch(ls + PREFETCH_SHIFT, PREFETCH_TYPE_R);
     _mm_prefetch(ls + PREFETCH_SHIFT + WPL, PREFETCH_TYPE_R);
-    for (size_t j = 0; j < 8; ++j) {
-      x[j] = _mm_xor_si128(_mm_load_si128(ls + j), x[j]);
-    }
+    x[0] = _mm_xor_si128(ls[0], x[0]);
+    x[1] = _mm_xor_si128(ls[1], x[1]);
+    x[2] = _mm_xor_si128(ls[2], x[2]);
+    x[3] = _mm_xor_si128(ls[3], x[3]);
+    x[4] = _mm_xor_si128(ls[4], x[4]);
+    x[5] = _mm_xor_si128(ls[5], x[5]);
+    x[6] = _mm_xor_si128(ls[6], x[6]);
+    x[7] = _mm_xor_si128(ls[7], x[7]);
+    ls += WPS;
 
     aes_batch(key, x);
   }
 
   for (; i < memory; i += 128) {
-    for (size_t j = 0; j < 8; ++j) {
-      x[j] = _mm_xor_si128(_mm_load_si128(ls + j), x[j]);
-    }
+    x[0] = _mm_xor_si128(ls[0], x[0]);
+    x[1] = _mm_xor_si128(ls[1], x[1]);
+    x[2] = _mm_xor_si128(ls[2], x[2]);
+    x[3] = _mm_xor_si128(ls[3], x[3]);
+    x[4] = _mm_xor_si128(ls[4], x[4]);
+    x[5] = _mm_xor_si128(ls[5], x[5]);
+    x[6] = _mm_xor_si128(ls[6], x[6]);
+    x[7] = _mm_xor_si128(ls[7], x[7]);
+    ls += WPS;
 
     aes_batch(key, x);
   }

@@ -1,10 +1,17 @@
 #include "virtual_memory.h"
 #include "miner.h" // applog
-#include "stdio.h"
+#include <math.h>  // ceil
+#include <stdio.h>
+#include <unistd.h> // usleep
 
 static bool huge_pages = false;
 __thread bool allocated_hp = false;
 __thread size_t currently_allocated = 0;
+
+// Large Page size should be a multiple of 2MiB.
+static inline size_t GetProperSize(size_t size) {
+  return (size_t)ceil((double)size / 2097152.) * 2097152;
+}
 
 #ifdef __MINGW32__
 // Windows
@@ -231,7 +238,6 @@ bool InitHugePages(size_t threads) {
 #define MAP_HUGE_2MB (21 << MAP_HUGE_SHIFT)
 void *AllocateLargePagesMemory(size_t size) {
   // Needs to be multiple of Large Pages (2 MiB).
-  size = ((size / 2097152) * 2097152) + 2097152;
 #if defined(__FreeBSD__)
   void *mem =
       mmap(0, size, PROT_READ | PROT_WRITE,
@@ -265,8 +271,7 @@ void *AllocateLargePagesMemory(size_t size) {
 
 void DeallocateLargePagesMemory(void **memory) {
   // Needs to be multiple of Large Pages (2 MiB).
-  size_t size = ((currently_allocated / 2097152) * 2097152) + 2097152;
-  int status = munmap(*memory, size);
+  int status = munmap(*memory, GetProperSize(currently_allocated));
   if (status != 0) {
     applog(LOG_ERR, "Could not properly deallocate memory!");
   }
@@ -298,6 +303,9 @@ void *AllocateMemory(size_t size) {
 void DeallocateMemory(void **memory) {
   if (allocated_hp) {
     DeallocateLargePagesMemory(memory);
+    // Wait a while (10ms) after deallocation. Should help with
+    // fast allocation afterwards.
+    usleep(10000);
   } else if (*memory != NULL) {
     // No special method of allocation was used.
     free(*memory);
@@ -305,8 +313,10 @@ void DeallocateMemory(void **memory) {
 }
 
 void PrepareMemory(void **memory, size_t size) {
-  if (*memory != NULL) {
-    DeallocateMemory(memory);
+  if (GetProperSize(currently_allocated) != GetProperSize(size)) {
+    if (*memory != NULL) {
+      DeallocateMemory(memory);
+    }
+    *memory = (void *)AllocateMemory(GetProperSize(size));
   }
-  *memory = (void *)AllocateMemory(size);
 }

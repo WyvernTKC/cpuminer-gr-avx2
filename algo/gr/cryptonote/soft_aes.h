@@ -95,7 +95,7 @@ const uint32_t saes_table[4][256] = {saes_data(saes_u0), saes_data(saes_u1),
                                      saes_data(saes_u2), saes_data(saes_u3)};
 __attribute__((aligned(16))) const uint8_t saes_sbox[256] = saes_data(saes_h0);
 
-static __attribute__((always_inline)) uint32_t sub_word(uint32_t key) {
+static __attribute__((always_inline)) inline uint32_t sub_word(uint32_t key) {
   return (saes_sbox[key >> 24] << 24) | (saes_sbox[(key >> 16) & 0xff] << 16) |
          (saes_sbox[(key >> 8) & 0xff] << 8) | saes_sbox[key & 0xff];
 }

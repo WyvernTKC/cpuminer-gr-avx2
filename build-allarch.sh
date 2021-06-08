@@ -31,6 +31,7 @@ mv cpuminer bin/unix/${4}/cpuminer-${2}
 
 }
 
+
 #Non-AES
 # Generic SSE2
 compile "x86-64" "sse2" "-msse"

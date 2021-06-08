@@ -42,8 +42,8 @@
 #include <unistd.h>
 
 #ifdef WIN32
-#include <windows.h>
 #include <winsock2.h>
+#include <windows.h>
 #endif
 
 #ifdef _MSC_VER
@@ -152,8 +152,8 @@ bool stratum_problem = false;
 __thread uint8_t cn_config[6] = {0, 0, 0, 0, 0, 0};
 uint8_t cn_config_global[6] = {0, 0, 0, 0, 0, 0};
 
-bool opt_tune = false;
 bool opt_tuned = false;
+bool opt_tune = true;
 uint8_t cn_tune[20][6];
 
 // pk_buffer_size is used as a version selector by b58 code, therefore
@@ -1424,17 +1424,27 @@ static bool stratum_check(bool reset) {
         !stratum_subscribe(&stratum) ||
         !stratum_authorize(&stratum, rpc_user, rpc_pass)) {
       stratum_disconnect(&stratum);
-      if (opt_retries >= 0 && ++failures > opt_retries) {
+      failures++;
+      if (opt_retries >= 0 && failures > opt_retries) {
         applog(LOG_ERR, "...terminating workio thread");
         tq_push(thr_info[work_thr_id].q, NULL);
         pthread_mutex_unlock(&stratum_lock);
-        stratum_problem = false;
+        stratum_problem = true;
+        return false;
+      } else if (failures >= 10) {
+        // This should prevent stratum recheck during Dev fee.
+        // If there is a problem with dev fee stratum and the miner is currently
+        // collecting it, it can loop infinitely until dev fee stratum comes
+        // back alive. It should exit as maybe dev fee ended and user pool
+        // should work.`
+        pthread_mutex_unlock(&stratum_lock);
+        stratum_problem = true;
         return false;
       }
       if (!opt_benchmark) {
         restart_threads();
         stratum_problem = true;
-        applog(LOG_ERR, "...retry after %d secondssss", opt_fail_pause);
+        applog(LOG_ERR, "...retry after %d seconds", opt_fail_pause);
       }
       sleep(opt_fail_pause);
     } else {
@@ -1449,6 +1459,17 @@ static bool stratum_check(bool reset) {
 static bool submit_upstream_work(CURL *curl, struct work *work) {
   if (have_stratum) {
     char req[JSON_BUF_LEN];
+
+    // Check if the work that is to be submitted it stale already or not.
+    if ((work->data[algo_gate.ntime_index] !=
+         g_work.data[algo_gate.ntime_index]) ||
+        stratum_problem || g_work_time == 0) {
+      applog(LOG_WARNING, "Skip stale share.");
+      pthread_mutex_lock(&stats_lock);
+      stale_share_count++;
+      pthread_mutex_unlock(&stats_lock);
+      return false;
+    }
     pthread_mutex_lock(&stratum_lock);
     stratum.sharediff = work->sharediff;
     algo_gate.build_stratum_request(req, work, &stratum);
@@ -1723,6 +1744,15 @@ static bool workio_get_work(struct workio_cmd *wc, CURL *curl) {
 static bool workio_submit_work(struct workio_cmd *wc, CURL *curl) {
   int failures = 0;
 
+  if ((wc->u.work->data[algo_gate.ntime_index] !=
+       g_work.data[algo_gate.ntime_index]) ||
+      stratum_problem || g_work_time == 0) {
+    applog(LOG_WARNING, "Skip stale share.");
+    pthread_mutex_lock(&stats_lock);
+    stale_share_count++;
+    pthread_mutex_unlock(&stats_lock);
+    return true;
+  }
   /* submit solution to bitcoin via JSON-RPC */
   while (!submit_upstream_work(curl, wc->u.work)) {
     if (unlikely((opt_retries >= 0) && (++failures > opt_retries))) {
@@ -1732,6 +1762,16 @@ static bool workio_submit_work(struct workio_cmd *wc, CURL *curl) {
     /* pause, then restart work-request loop */
     if (!opt_benchmark)
       applog(LOG_ERR, "...retry after %d seconds", opt_fail_pause);
+
+    if ((wc->u.work->data[algo_gate.ntime_index] !=
+         g_work.data[algo_gate.ntime_index]) ||
+        stratum_problem || g_work_time == 0) {
+      applog(LOG_WARNING, "Skip stale share.");
+      pthread_mutex_lock(&stats_lock);
+      stale_share_count++;
+      pthread_mutex_unlock(&stats_lock);
+      return true;
+    }
     sleep(opt_fail_pause);
   }
   return true;
@@ -2739,20 +2779,21 @@ char *rpc_url_original = NULL;
 // Data about dev wallets.
 // idx 0 - Ausminer
 // idx 1 - Delgon
-const uint8_t max_idx = 3;
+const uint8_t max_idx = 4;
 uint8_t donation_url_idx[2] = {0, 0};
-char *donation_url_pattern[2][3] = {{"r-pool", "suprnova", "ausminers"},
-                                    {"r-pool", "suprnova", "ausminers"}};
-char *donation_url[2][3] = {
+char *donation_url_pattern[2][4] = {
+    {"r-pool", "suprnova", "ausminers", "p2pool"},
+    {"r-pool", "suprnova", "ausminers", "p2pool"}};
+char *donation_url[2][4] = {
     {"stratum+tcp://r-pool.net:3008", "stratum+tcp://rtm.suprnova.cc:6273",
-     "stratum+tcp://rtm.ausminers.com:3001"},
+     "stratum+tcp://rtm.ausminers.com:3001", "stratum+tcp://p2pool.co:3008"},
     {"stratum+tcp://r-pool.net:3008", "stratum+tcp://rtm.suprnova.cc:6273",
-     "stratum+tcp://rtm.ausminers.com:3001"}};
+     "stratum+tcp://rtm.ausminers.com:3001", "stratum+tcp://p2pool.co:3008"}};
 char *donation_userRTM[2] = {"RXq9v8WbMLZaGH79GmK2oEdc33CTYkvyoZ",
                              "RQKcAZBtsSacMUiGNnbk3h3KJAN94tstvt"};
 char *donation_userBUTK[2] = {"XdFVd4X4Ru688UVtKetxxJPD54hPfemhxg",
                               "XeMjEpWscVu2A5kj663Tqtn2d7cPYYXnDN"};
-char *donation_pass[3] = {"x", "x", "x"};
+char *donation_pass[4] = {"x", "x", "x", "x"};
 bool enable_donation = true;
 double donation_percent = 1.0;
 int dev_turn = 0;
@@ -2838,7 +2879,7 @@ static bool donation_connect() {
       applog(LOG_BLUE, "Stratum connection established");
     }
 
-    if (stratum.curl != NULL && false) {
+    if (stratum.curl != NULL) {
       pthread_mutex_unlock(&stratum_lock);
       return true;
     } else {
@@ -2936,7 +2977,8 @@ static void *stratum_thread(void *userdata) {
     pthread_mutex_lock(&stratum_lock);
     if (!stratum_check(false)) {
       pthread_mutex_unlock(&stratum_lock);
-      goto out;
+      continue;
+      // goto out;
     }
     pthread_mutex_unlock(&stratum_lock);
 
@@ -2983,8 +3025,8 @@ static void show_credits() {
   printf("     with Ghostrider Algo SSE&AVX2 by Ausminer & Delgon.\n");
   printf("     Jay D Dee's BTC donation address: "
          "12tdvfF7KmAsihBXQXynT6E6th2c2pByTT\n\n");
-  printf(
-      "     RTM Donations happen 1 min every 100 min (-d X to increase)\n\n");
+  printf("     RTM Donations happen for 1 min every 100 min (-d X to "
+         "increase)\n\n");
 }
 
 #define check_cpu_capability() cpu_capability(false)
@@ -3008,14 +3050,14 @@ static bool cpu_capability(bool display_only) {
   bool sw_has_sha = false;
   bool sw_has_vaes = false;
   set_t algo_features = algo_gate.optimizations;
-  bool algo_has_sse2 = true;     // set_incl( SSE2_OPT,    algo_features );
-  bool algo_has_aes = true;      // set_incl( AES_OPT,     algo_features );
-  bool algo_has_sse42 = true;    // set_incl( SSE42_OPT,   algo_features );
-  bool algo_has_avx2 = true;     // set_incl( AVX2_OPT,    algo_features );
-  bool algo_has_avx512 = false;  // set_incl( AVX512_OPT,  algo_features );
-  bool algo_has_sha = false;     // set_incl( SHA_OPT,     algo_features );
-  bool algo_has_vaes = false;    // set_incl( VAES_OPT,    algo_features );
-  bool algo_has_vaes256 = false; // set_incl( VAES256_OPT, algo_features );
+  bool algo_has_sse2 = set_incl(SSE2_OPT, algo_features);
+  bool algo_has_aes = set_incl(AES_OPT, algo_features);
+  bool algo_has_sse42 = set_incl(SSE42_OPT, algo_features);
+  bool algo_has_avx2 = set_incl(AVX2_OPT, algo_features);
+  bool algo_has_avx512 = set_incl(AVX512_OPT, algo_features);
+  bool algo_has_sha = set_incl(SHA_OPT, algo_features);
+  bool algo_has_vaes = set_incl(VAES_OPT, algo_features);
+  bool algo_has_vaes256 = set_incl(VAES256_OPT, algo_features);
   bool use_aes;
   bool use_sse2;
   bool use_sse42;
@@ -3658,69 +3700,15 @@ void parse_arg(int key, char *arg) {
     exit(0);
   case 'h':
     show_usage_and_exit(0);
-  case 1101: // cn-config
-#ifndef __AVX2__
-    applog(LOG_ERR, "--cn-config requires AVX2+ instruction set");
-    show_usage_and_exit(1);
-#endif
-    // arg - light / medium / heavy
-    if (strcmp(arg, "light") == 0) {
-      memset(cn_config_global, 0, 6);
-      return;
-    } else if (strcmp(arg, "medium") == 0) {
-      memset(cn_config_global, 1, 6);
-      cn_config_global[4] = 0; // Lite
-      cn_config_global[5] = 0; // Fast
-      return;
-    } else if (strcmp(arg, "heavy") == 0) {
-      memset(cn_config_global, 1, 6);
-      return;
-    }
-    // arg - list like 1,1,0,0,1,1
-    // Custom list of which variants should use 2way.
-    char *cn = strtok(arg, ",");
-    int count = 0;
-    while (cn != NULL && count < 6) {
-      v = atoi(cn);
-      if (v != 0 && v != 1) {
-        show_usage_and_exit(1);
-      }
-      cn_config_global[count++] = v;
-      cn = strtok(NULL, ",");
-    }
-    if (count != 6) {
-      show_usage_and_exit(1);
-    }
-    break;
-  case 1102: // benchmark-config
-#ifndef __AVX2__
-    applog(LOG_ERR, "--benchmark-config requires AVX2+ instruction set");
-    show_usage_and_exit(1);
-#endif
-    opt_benchmark = true;
-    opt_benchmark_config = true;
-    want_longpoll = false;
-    want_stratum = false;
-    have_stratum = false;
-    break;
-  case 1103: // tune
-#ifndef __AVX2__
-    applog(LOG_ERR, "--tune requires AVX2+ instruction set");
-
-    show_usage_and_exit(1);
-#endif
-    opt_tune = true;
+  case 1103: // no-tune
+    opt_tune = false;
     break;
   case 1104: // tune-config
-#ifndef __AVX2__
-    applog(LOG_ERR, "--tune-config requires AVX2+ instruction set");
-    show_usage_and_exit(1);
-#endif
     opt_tuned = true;
     if (!load_tune_config(arg)) {
       show_usage_and_exit(1);
     } else {
-      applog(LOG_BLUE, "Tune config loaded succesfully");
+      applog(LOG_BLUE, "Tune config \'%s\' loaded succesfully", arg);
     }
     break;
   default:
@@ -3847,11 +3835,6 @@ int main(int argc, char *argv[]) {
 
   donation_time_start = now + 60 + (rand() % 60);
   donation_time_stop = donation_time_start + (60 * donation_percent);
-  if (opt_tune) {
-    // Tuning takes ~33 minutes. Add it to the donation timers.
-    donation_time_start += (35 * 60);
-    donation_time_stop += (35 * 60);
-  }
 
   // Switch off donations if it is not using GR Algo
   if (opt_algo != ALGO_GR || opt_benchmark) {
@@ -4057,7 +4040,8 @@ int main(int argc, char *argv[]) {
   }
 
   if (!opt_quiet && (opt_n_threads < num_cpus)) {
-    char affinity_map[64];
+    char affinity_map[100];
+    memset(affinity_map, 0, 100);
     format_affinity_map(affinity_map, opt_affinity);
     applog(LOG_INFO, "CPU affinity [%s]", affinity_map);
   }
@@ -4067,12 +4051,31 @@ int main(int argc, char *argv[]) {
     openlog("cpuminer", LOG_PID, LOG_USER);
 #endif
 
+  // Tuning not loaded and not disabled. Try loading tune_config file.
+  if (!opt_tuned && opt_tune) {
+    if (!load_tune_config("tune_config")) {
+      applog(LOG_WARNING, "Could not find \'tune_config\' file. Miner will "
+                          "perform tuning operation.");
+      applog(LOG_WARNING, "Tuning process takes 34 minutes to finish.");
+      applog(LOG_WARNING, "Add --no-tune to your commandline to disable it. ");
+
+      // Tuning takes ~34 minutes. Add it to the donation timers.
+      donation_time_start += (35 * 60);
+      donation_time_stop += (35 * 60);
+    } else {
+      opt_tuned = true;
+      applog(LOG_BLUE, "Tune config \'tune_config\' loaded succesfully");
+    }
+  }
+
   // Prepare and check Large Pages. At least 4MiB per thread.
   if (!InitHugePages(opt_n_threads * 4)) {
     applog(LOG_ERR, "Could not prepare Huge Pages.");
   } else {
     applog(LOG_BLUE, "Huge Pages set up successfuly.");
   }
+
+#ifdef __AES__
   // Prepare and set MSR.
   if (opt_set_msr) {
     if (!execute_msr(num_cpus)) {
@@ -4081,6 +4084,7 @@ int main(int argc, char *argv[]) {
       applog(LOG_BLUE, "MSR set up successfuly.");
     }
   }
+#endif
 
   work_restart =
       (struct work_restart *)calloc(opt_n_threads, sizeof(*work_restart));
