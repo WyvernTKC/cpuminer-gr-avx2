@@ -220,7 +220,7 @@ int gr_hash(void *output, const void *input0, const void *input1, int thrid) {
     }
 
     // Stop early.
-    if (work_restart[thrid].restart && !opt_benchmark) {
+    if (work_restart[thrid].restart && !(opt_benchmark || opt_tune)) {
       if (opt_debug) {
         applog(LOG_DEBUG, "Thread %d exit early", thrid);
       }
@@ -249,6 +249,7 @@ int scanhash_gr(struct work *work, uint32_t max_nonce, uint64_t *hashes_done,
   if (!opt_tuned && opt_tune) {
     tune(pdata, thr_id);
     opt_tuned = true; // Tuned.
+    opt_tune = false;
   }
 
   if (opt_benchmark) {

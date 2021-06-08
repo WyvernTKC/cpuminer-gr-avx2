@@ -342,6 +342,7 @@ int scanhash_gr_4way(struct work *work, uint32_t max_nonce,
   if (!opt_tuned && opt_tune) {
     tune(pdata, thr_id);
     opt_tuned = true; // Tuned.
+    opt_tune = false;
   }
 
   if (opt_benchmark) {
