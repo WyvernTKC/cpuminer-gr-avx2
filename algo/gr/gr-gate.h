@@ -24,6 +24,7 @@
 #include "algo/whirlpool/sph_whirlpool.h"
 #include "cryptonote/cryptonight.h"
 #include "simd-utils.h"
+#include <math.h>
 #include <stdint.h>
 #include <stdlib.h>
 
@@ -52,6 +53,9 @@
 #include "algo/echo/echo-hash-4way.h"
 #include "algo/groestl/groestl512-hash-4way.h"
 #endif
+
+#define CN_4WAY 2
+#define CN_2WAY 1
 
 #if defined(__AVX2__) && defined(__AES__)
 #define GR_4WAY 1

@@ -10,6 +10,7 @@
 #include "crypto/c_jh.h"
 #include "crypto/c_keccak.h"
 #include "crypto/c_skein.h"
+#include "crypto/hash-ops.h"
 #include "simd-utils.h"
 #include <immintrin.h>
 #include <stdio.h>
@@ -34,7 +35,7 @@ static void do_jh_hash(const void *input, size_t len, void *output) {
 }
 
 static void do_skein_hash(const void *input, size_t len, void *output) {
-  int r = c_skein_hash(8 * HASH_SIZE, input, 8 * len, (uint8_t *)output);
+  int r = skein_hash(8 * HASH_SIZE, input, 8 * len, (uint8_t *)output);
   assert(SKEIN_SUCCESS == r);
 }
 
@@ -115,25 +116,29 @@ static __attribute__((always_inline)) inline void aes_round(const __m128i *key,
 
 #else
 
-static __attribute__((noinline)) __m128i soft_aesenc(const __m128i in,
-                                                     const __m128i key) {
+static __attribute__((always_inline)) inline __m128i
+soft_aesenc(const __m128i in, const __m128i key) {
   // saes_table is implemented in "soft_aes.h"
-  const uint32_t x0 = ((const uint32_t *)(&in))[0];
-  const uint32_t x1 = ((const uint32_t *)(&in))[1];
-  const uint32_t x2 = ((const uint32_t *)(&in))[2];
-  const uint32_t x3 = ((const uint32_t *)(&in))[3];
+  const uint32_t x0 = ((uint32_t *)(&in))[0];
+  const uint32_t x1 = ((uint32_t *)(&in))[1];
+  const uint32_t x2 = ((uint32_t *)(&in))[2];
+  const uint32_t x3 = ((uint32_t *)(&in))[3];
 
-  const __m128i out = _mm_set_epi32(
-      (saes_table[0][x3 & 0xff] ^ saes_table[1][(x0 >> 8) & 0xff] ^
-       saes_table[2][(x1 >> 16) & 0xff] ^ saes_table[3][x2 >> 24]),
-      (saes_table[0][x2 & 0xff] ^ saes_table[1][(x3 >> 8) & 0xff] ^
-       saes_table[2][(x0 >> 16) & 0xff] ^ saes_table[3][x1 >> 24]),
-      (saes_table[0][x1 & 0xff] ^ saes_table[1][(x2 >> 8) & 0xff] ^
-       saes_table[2][(x3 >> 16) & 0xff] ^ saes_table[3][x0 >> 24]),
-      (saes_table[0][x0 & 0xff] ^ saes_table[1][(x1 >> 8) & 0xff] ^
-       saes_table[2][(x2 >> 16) & 0xff] ^ saes_table[3][x3 >> 24]));
-
-  return _mm_xor_si128(out, key);
+  return _mm_xor_si128(
+      _mm_set_epi32(
+          (saes_table[0][(uint8_t)x3] ^ saes_table[1][(uint8_t)(x0 >> 8)] ^
+           saes_table[2][(uint8_t)(x1 >> 16)] ^
+           saes_table[3][(uint8_t)(x2 >> 24)]),
+          (saes_table[0][(uint8_t)x2] ^ saes_table[1][(uint8_t)(x3 >> 8)] ^
+           saes_table[2][(uint8_t)(x0 >> 16)] ^
+           saes_table[3][(uint8_t)(x1 >> 24)]),
+          (saes_table[0][(uint8_t)x1] ^ saes_table[1][(uint8_t)(x2 >> 8)] ^
+           saes_table[2][(uint8_t)(x3 >> 16)] ^
+           saes_table[3][(uint8_t)(x0 >> 24)]),
+          (saes_table[0][(uint8_t)x0] ^ saes_table[1][(uint8_t)(x1 >> 8)] ^
+           saes_table[2][(uint8_t)(x2 >> 16)] ^
+           saes_table[3][(uint8_t)(x3 >> 24)])),
+      key);
 }
 
 static __attribute__((always_inline)) inline void aes_round(const __m128i *key,
@@ -153,7 +158,7 @@ static __attribute__((always_inline)) inline void aes_round(const __m128i *key,
 #define PREFETCH_TYPE_R _MM_HINT_T0
 #define PREFETCH_TYPE_W _MM_HINT_ET0
 
-// Prefetch data. 3072 (3KiB) should allocate ~50% of most CPUs L1 Cache.
+// Prefetch data. 4096 (4KiB) should allocate ~25% of most CPUs L1 Cache.
 #define PREFETCH_SIZE_B 4096
 #define PREFETCH_LINES 64  // (PREFETCH_SIZE_B / 64)
 #define WPL 4              // Words per cache line.
@@ -347,10 +352,9 @@ static inline void implode_scratchpad(const __m128i *ls, __m128i *state,
   extra_hashes[state##suffix[0] & 3](state##suffix, 200, output##suffix);      \
   memset(&((uint8_t *)output##suffix)[32], 0, 32);
 
-static inline void cryptonight_hash(const void *input0, void *output0,
-                                    const uint32_t memory,
-                                    const uint32_t iterations,
-                                    const uint32_t mask) {
+static __attribute__((always_inline)) inline void
+cryptonight_hash(const void *input0, void *output0, const uint32_t memory,
+                 const uint32_t iterations, const uint32_t mask) {
   CRYPTONIGHT_INIT(0);
 
   for (size_t i = 0; i < iterations; ++i) {
@@ -463,3 +467,99 @@ void cryptonight_turtlelite_2way_hash(const void *input0, const void *input1,
   cryptonight_2way_hash(input0, input1, output0, output1, 262144, 65536,
                         131056);
 }
+
+#ifdef __AVX2__
+
+// Requires 4x memory allocated in hp_state.
+static inline void cryptonight_4way_hash(const void *input0, const void *input1,
+                                         const void *input2, const void *input3,
+                                         void *output0, void *output1,
+                                         void *output2, void *output3,
+                                         const uint32_t memory,
+                                         const uint32_t iterations,
+                                         const uint32_t mask) {
+  CRYPTONIGHT_INIT(0);
+  CRYPTONIGHT_INIT(1);
+  CRYPTONIGHT_INIT(2);
+  CRYPTONIGHT_INIT(3);
+
+  for (size_t i = 0; i < iterations; ++i) {
+    // AES
+    AES_PF(0);
+    AES_PF(1);
+    AES_PF(2);
+    AES_PF(3);
+
+    TWEAK(0);
+    TWEAK(1);
+    TWEAK(2);
+    TWEAK(3);
+
+    POST_AES_PF(0);
+    POST_AES_PF(1);
+    POST_AES_PF(2);
+    POST_AES_PF(3);
+  }
+
+  CRYPTONIGHT_FINISH(0);
+  CRYPTONIGHT_FINISH(1);
+  CRYPTONIGHT_FINISH(2);
+  CRYPTONIGHT_FINISH(3);
+}
+
+// Variant      MEMORY            ITERATIONS      CN_AES_INIT
+// Dark         512KiB, 2^19      2^17            (MEMORY - 16)
+// Darklite     512KiB, 2^19      2^17            (MEMORY - 16) / 2
+// Fast         2MiB,   2^21      2^18            (MEMORY - 16)
+// Lite         1Mib,   2^20      2^18            (MEMORY - 16)
+// Turtle       256KiB, 2^18      2^16            (MEMORY - 16)
+// Turtlelite   256KiB, 2^18      2^16            (MEMORY - 16) / 2
+void cryptonight_dark_4way_hash(const void *input0, const void *input1,
+                                const void *input2, const void *input3,
+                                void *output0, void *output1, void *output2,
+                                void *output3) {
+  cryptonight_4way_hash(input0, input1, input2, input3, output0, output1,
+                        output2, output3, 524288, 131072, 524272);
+}
+
+void cryptonight_darklite_4way_hash(const void *input0, const void *input1,
+                                    const void *input2, const void *input3,
+                                    void *output0, void *output1, void *output2,
+                                    void *output3) {
+  cryptonight_4way_hash(input0, input1, input2, input3, output0, output1,
+                        output2, output3, 524288, 131072, 262128);
+}
+
+void cryptonight_fast_4way_hash(const void *input0, const void *input1,
+                                const void *input2, const void *input3,
+                                void *output0, void *output1, void *output2,
+                                void *output3) {
+  cryptonight_4way_hash(input0, input1, input2, input3, output0, output1,
+                        output2, output3, 2097152, 262144, 2097136);
+}
+
+void cryptonight_lite_4way_hash(const void *input0, const void *input1,
+                                const void *input2, const void *input3,
+                                void *output0, void *output1, void *output2,
+                                void *output3) {
+  cryptonight_4way_hash(input0, input1, input2, input3, output0, output1,
+                        output2, output3, 1048576, 262144, 1048560);
+}
+
+void cryptonight_turtle_4way_hash(const void *input0, const void *input1,
+                                  const void *input2, const void *input3,
+                                  void *output0, void *output1, void *output2,
+                                  void *output3) {
+  cryptonight_4way_hash(input0, input1, input2, input3, output0, output1,
+                        output2, output3, 262144, 65536, 262128);
+}
+
+void cryptonight_turtlelite_4way_hash(const void *input0, const void *input1,
+                                      const void *input2, const void *input3,
+                                      void *output0, void *output1,
+                                      void *output2, void *output3) {
+  cryptonight_4way_hash(input0, input1, input2, input3, output0, output1,
+                        output2, output3, 262144, 65536, 131056);
+}
+
+#endif // AVX2

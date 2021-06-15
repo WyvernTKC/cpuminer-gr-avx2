@@ -121,7 +121,13 @@ static size_t GetMaxCnSize() {
   // Check tune/config if given variant uses 2way that requires 2x memory.
   // cn_config should contain only 0 values in non GR_4WAY.
   for (int i = 0; i < 6; i++) {
-    cn_req[i] *= (cn_config[i] + 1);
+    if (cn_config[i] == CN_4WAY) {
+      cn_req[i] *= 4;
+    } else if (cn_config[i] == CN_2WAY) {
+      cn_req[i] *= 2;
+    } else {
+      cn_req[i] *= 1;
+    }
   }
 
   size_t order[3] = {cn_map[gr_hash_order[5] - 15],
@@ -182,22 +188,23 @@ static void print_stats(const char *prefix, bool same_line) {
   char hr_units[4] = {0};
 
   // lock is not necessary.
-  hashrate = bench_hashes / bench_time;
+  // Divide by n_threads as each of them added their own time.
+  hashrate = bench_hashes / bench_time * opt_n_threads;
   bench_hashrate = hashrate;
   // scale_hash_for_display(&hashrate, hr_units);
   if (same_line) {
     pthread_mutex_unlock(&applog_lock);
     printf("                      %s\t%.2lf %sH/s (%.2lfs)\t-> %.3lf %sH/s per "
            "thread.\r",
-           prefix, hashrate, hr_units, bench_time, hashrate / opt_n_threads,
-           hr_units);
+           prefix, hashrate, hr_units, bench_time / opt_n_threads,
+           hashrate / opt_n_threads, hr_units);
     fflush(stdout);
     pthread_mutex_unlock(&applog_lock);
 
   } else {
     applog(LOG_BLUE, "%s \t%.2lf %sH/s (%.2lfs)\t-> %.3lf %sH/s per thread.",
-           prefix, hashrate, hr_units, bench_time, hashrate / opt_n_threads,
-           hr_units);
+           prefix, hashrate, hr_units, bench_time / opt_n_threads,
+           hashrate / opt_n_threads, hr_units);
   }
 }
 
@@ -222,12 +229,9 @@ static void sync_bench() { sync_lock(opt_n_threads + 1); }
 // Detached thread for changing rotation every 1.5s.
 // Prints data every rotation.
 void *statistic_thread(void *arg) {
-  struct timeval start, end, diff;
-  double elapsed;
   sync_bench(); // Sync before benchmark starts.
   sync_bench(); // Rotation change sync.
   while (true) {
-    gettimeofday(&start, NULL);
     if (arg != NULL) {
       // Sleep for predefined time period.
       usleep(*((long *)arg));
@@ -241,10 +245,6 @@ void *statistic_thread(void *arg) {
     }
     // Change rotation.
     rotation = (rotation + 1) % 20;
-    gettimeofday(&end, NULL);
-    timeval_subtract(&diff, &end, &start);
-    elapsed = (double)diff.tv_sec + (double)diff.tv_usec / 1e6;
-    bench_time += elapsed;
     sync_bench(); // Rotation change sync.
     if (rotation == 0) {
       // Print permanently after full 20 rotations.
@@ -297,7 +297,9 @@ static void tune_config(void *input, int thr_id, int rot) {
   // Purge memory for test.
   AllocateNeededMemory();
 
-  // Set desired CN config.
+  struct timeval start, end, diff;
+  gettimeofday(&start, NULL);
+
   sync_bench();
   sync_bench();
   while (true) {
@@ -316,8 +318,12 @@ static void tune_config(void *input, int thr_id, int rot) {
     hashes_done += 2.0;
 #endif
     if (rotation == 0) {
+      gettimeofday(&end, NULL);
+      timeval_subtract(&diff, &end, &start);
+      double elapsed = (double)diff.tv_sec + (double)diff.tv_usec / 1e6;
       pthread_mutex_lock(&stats_lock);
       bench_hashes += hashes_done;
+      bench_time += elapsed;
       pthread_mutex_unlock(&stats_lock);
       sync_bench();
       sync_bench();
@@ -342,6 +348,37 @@ static bool save_config() {
   return true;
 }
 
+// Config is a table of 3 values from 0-2.
+static bool next_config(uint8_t *config) {
+#ifdef __AVX2__
+  static const int max_val = 2;
+#else
+  static const int max_val = 1;
+#endif
+
+  bool increment = true;
+  for (size_t i = 0; i < 3; ++i) {
+    if (increment) {
+      if (config[i] == max_val) {
+        config[i] = 0;
+        if (i == 2) {
+          return false;
+        }
+      } else {
+        config[i]++;
+        increment = false;
+      }
+    } else {
+      break;
+    }
+  }
+  return true;
+}
+
+// Used in tune to detect if the
+#define TURTLE(id) variant[id] == 0 || variant[id] == 1
+#define DARK(id) variant[id] == 2 || variant[id] == 3
+
 // Run tuning benchmarks and create tune_config in the end.
 void tune(void *input, int thr_id) {
   for (int i = 0; i < 20; i++) {
@@ -350,19 +387,48 @@ void tune(void *input, int thr_id) {
       memset(cn_tune[i], 0, 6);
       applog(LOG_NOTICE, "Testing rotation: %d", i);
     }
-    for (int config = 0; config < 8; config++) {
+
+    uint8_t config[3];
+    memset(config, 0, 3);
+    do {
       memset(cn_config, 0, 6);
-      cn_config[cn_map[cn[i][0]]] = (config & 1) >> 0;
-      cn_config[cn_map[cn[i][1]]] = (config & 2) >> 1;
-      cn_config[cn_map[cn[i][2]]] = (config & 4) >> 2;
+      uint8_t variant[3] = {cn_map[cn[i][0]], cn_map[cn[i][1]],
+                            cn_map[cn[i][2]]};
+      bool skip = false;
+
+      for (int j = 0; j < 3; ++j) {
+        if (config[j] == 2) {
+          if (!opt_tune_full) {
+            if (opt_tune_simple) {
+              if (!(TURTLE(j))) {
+                skip = true;
+              }
+            } else if (!(TURTLE(j) || DARK(j))) {
+              skip = true;
+            }
+          }
+        }
+      }
+
+      if (skip) {
+        continue;
+      }
+
+      if (thr_id == 0 && opt_debug) {
+        applog(LOG_BLUE, "Variants: %d %d %d", config[0], config[1], config[2]);
+      }
+
+      cn_config[variant[0]] = config[0];
+      cn_config[variant[1]] = config[1];
+      cn_config[variant[2]] = config[2];
       sync_conf();
       tune_config(input, thr_id, i);
       sync_conf();
       if (thr_id == 0) {
         if (best_hashrate < bench_hashrate) {
-          cn_tune[i][cn_map[cn[i][0]]] = (config & 1) >> 0;
-          cn_tune[i][cn_map[cn[i][1]]] = (config & 2) >> 1;
-          cn_tune[i][cn_map[cn[i][2]]] = (config & 4) >> 2;
+          cn_tune[i][variant[0]] = config[0];
+          cn_tune[i][variant[1]] = config[1];
+          cn_tune[i][variant[2]] = config[2];
 
           best_hashrate = bench_hashrate;
         }
@@ -372,7 +438,8 @@ void tune(void *input, int thr_id) {
       }
       // Right now config
       sync_conf();
-    }
+    } while (next_config(config));
+
     if (thr_id == 0) {
       applog(LOG_NOTICE, "Best config for rotation %d: %d %d %d %d %d %d", i,
              cn_tune[i][0], cn_tune[i][1], cn_tune[i][2], cn_tune[i][3],
@@ -425,16 +492,21 @@ void benchmark(void *input, int thr_id, long sleep_time) {
   uint8_t local_rotation = 255;
   double hashes_done = 0.0;
 
+  struct timeval start, end, diff;
+
   sync_bench(); // Sync before benchmark starts.
+  gettimeofday(&start, NULL);
   while (true) {
     if (likely(local_rotation != rotation)) {
+
+      gettimeofday(&end, NULL);
+      timeval_subtract(&diff, &end, &start);
+      double elapsed = (double)diff.tv_sec + (double)diff.tv_usec / 1e6;
       pthread_mutex_lock(&stats_lock);
-#if defined(GR_4WAY)
-      bench_hashes += hashes_done + 2.0;
-#else
-      bench_hashes += hashes_done + 1.0;
-#endif
+      bench_hashes += hashes_done;
+      bench_time += elapsed;
       pthread_mutex_unlock(&stats_lock);
+
       hashes_done = 0.0;
       // Change first part of the hash to get different core rotation.
       for (int i = 1; i < 5 + 1; ++i) {
@@ -461,12 +533,7 @@ void benchmark(void *input, int thr_id, long sleep_time) {
         }
       }
       local_rotation = rotation;
-    } else {
-#if defined(GR_4WAY)
-      hashes_done += 4.0;
-#else
-      hashes_done += 2.0;
-#endif
+      gettimeofday(&start, NULL);
     }
 #if defined(GR_4WAY)
     // Make sure nonces are increased for each hash. Same hashes will result
@@ -474,11 +541,13 @@ void benchmark(void *input, int thr_id, long sleep_time) {
     // results.
     gr_4way_hash(hash, vdata, thr_id);
     *noncev = _mm256_add_epi32(*noncev, m256_const1_64(0x0000000400000000));
+    hashes_done += 4.0;
 #else
     // Increase nonce.
     edata0[19] += 2;
     edata1[19] += 2;
     gr_hash(hash, edata0, edata1, thr_id);
+    hashes_done += 2.0;
 #endif
   }
 }

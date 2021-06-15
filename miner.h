@@ -29,8 +29,8 @@
 #include <sys/time.h>
 
 #ifdef __MINGW32__
-#include <winsock2.h>
 #include <windows.h>
+#include <winsock2.h>
 #endif
 
 #include <curl/curl.h>
@@ -339,6 +339,7 @@ extern void diff_to_hash(uint32_t *, const double);
 
 double hash_target_ratio(uint32_t *hash, uint32_t *target);
 void work_set_target_ratio(struct work *work, const void *hash);
+void workio_check_properties();
 
 struct thr_info {
   int id;
@@ -695,6 +696,20 @@ extern uint8_t cn_config_global[6];
 extern bool opt_tune;
 extern bool opt_tuned;
 extern uint8_t cn_tune[20][6];
+extern bool opt_tune_simple;
+extern bool opt_tune_full;
+extern bool enable_donation;
+extern double donation_percent;
+extern char *donation_userRTM[2];
+extern char *donation_userBUTK[2];
+extern bool enable_donation;
+extern bool dev_mining;
+extern bool stratum_problem;
+extern long donation_wait;
+extern bool switched_stratum;
+extern double donation_percent;
+extern long donation_time_start;
+extern long donation_time_stop;
 
 static char const usage[] = "\
 Usage: cpuminer [OPTIONS]\n\
@@ -847,8 +862,16 @@ Options:\n\
                             "\
   -y                    disable application of MSR mod on the system\n"
 #endif
+#ifdef __AVX2__
                             "\
-      --no-tune         disable tuning of the miner before mining. Tuning takes 34 minutes.\n\
+      --no-tune         disable tuning of the miner before mining. Tuning takes 80 minutes.\n\
+      --tune-simple     enable simple tuning. Tuning takes 54 minutes.\n\
+      --tune-full       enable full tuning. Include All 4way Cryptonight variants. Tuning takes 115 minutes.\n"
+#else
+                            "\
+      --no-tune         disable tuning of the miner before mining. Tuning takes 34 minutes.\n"
+#endif
+                            "\
       --tune-config=FILE  Point to the already created tune config. Default file created by the miner is tune_config\n\
   -h, --help            display this help text and exit\n\
 ";
@@ -920,6 +943,8 @@ static struct option const options[] = {
     {"verify", 0, NULL, 1028},
     {"version", 0, NULL, 'V'},
     {"no-tune", 0, NULL, 1103},
+    {"tune-simple", 0, NULL, 1105},
+    {"tune-full", 0, NULL, 1106},
     {"tune-config", 1, NULL, 1104},
     {0, 0, 0, 0}};
 

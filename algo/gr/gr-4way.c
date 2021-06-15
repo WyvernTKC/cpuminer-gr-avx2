@@ -7,7 +7,10 @@
     dintrlv_4x64_512(hash0, hash1, hash2, hash3, vhash);                       \
   }                                                                            \
                                                                                \
-  if (way) {                                                                   \
+  if (way == CN_4WAY) {                                                        \
+    cryptonight_##variant##_4way_hash(hash0, hash1, hash2, hash3, hash0,       \
+                                      hash1, hash2, hash3);                    \
+  } else if (way == CN_2WAY) {                                                 \
     cryptonight_##variant##_2way_hash(hash0, hash1, hash0, hash1);             \
     cryptonight_##variant##_2way_hash(hash2, hash3, hash2, hash3);             \
   } else {                                                                     \
@@ -343,6 +346,7 @@ int scanhash_gr_4way(struct work *work, uint32_t max_nonce,
     tune(pdata, thr_id);
     opt_tuned = true; // Tuned.
     opt_tune = false;
+    return 0;
   }
 
   if (opt_benchmark) {

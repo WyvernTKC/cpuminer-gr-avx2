@@ -1,7 +1,7 @@
 #include "gr-gate.h"
 
 #define CRYPTONIGHT_HASH(variant, way)                                         \
-  if (way) {                                                                   \
+  if (way == CN_2WAY) {                                                        \
     cryptonight_##variant##_2way_hash(hash0, hash1, hash0, hash1);             \
   } else {                                                                     \
     cryptonight_##variant##_hash(hash0, hash0);                                \
@@ -234,7 +234,6 @@ int gr_hash(void *output, const void *input0, const void *input1, int thrid) {
 
 int scanhash_gr(struct work *work, uint32_t max_nonce, uint64_t *hashes_done,
                 struct thr_info *mythr) {
-
   uint32_t hash[2 * 8] __attribute__((aligned(64)));
   uint32_t edata0[20] __attribute__((aligned(64)));
   uint32_t edata1[20] __attribute__((aligned(64)));
@@ -250,6 +249,7 @@ int scanhash_gr(struct work *work, uint32_t max_nonce, uint64_t *hashes_done,
     tune(pdata, thr_id);
     opt_tuned = true; // Tuned.
     opt_tune = false;
+    return 0;
   }
 
   if (opt_benchmark) {

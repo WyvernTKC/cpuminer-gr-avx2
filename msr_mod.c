@@ -5,7 +5,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
-#include <unistd.h> // open
+#include <unistd.h> // open, sleep
 
 #define VENDOR_ID (0)
 #define PROCESSOR_INFO (1)
@@ -87,7 +87,7 @@ static inline uint32_t getMSR() {
       case 0x19:
         msr_mod = MSR_MOD_RYZEN_19H;
         applog(LOG_NOTICE, "MSR Ryzen v2");
-        applog(LOG_NOTICE, "Arch Zen2");
+        applog(LOG_NOTICE, "Arch Zen3");
         break;
 
       default:
@@ -123,6 +123,7 @@ bool reuse = false;
 static bool uninstall() {
   if (driver != INVALID_HANDLE_VALUE) {
     CloseHandle(driver);
+    usleep(100000);
   }
 
   if (!service) {
