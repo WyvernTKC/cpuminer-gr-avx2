@@ -846,7 +846,6 @@ Options:\n\
                             "\
   -B, --background      run the miner in the background\n\
       --benchmark       run in offline benchmark mode\n\
-      --benchmark-config run in offline benchmark mode. Test different Cryptonight configurations\n\
       --cpu-affinity    set process affinity to cpu core(s), mask 0x3 for cores 0 and 1\n\
       --cpu-priority    set process priority (default: 0 idle, 2 normal to 5 highest)\n\
   -b, --api-bind=address[:port]   IP address for the miner API, default port is 4048)\n\
@@ -893,7 +892,6 @@ static struct option const options[] = {
     {"api-remote", 0, NULL, 1030},
     {"background", 0, NULL, 'B'},
     {"benchmark", 0, NULL, 1005},
-    {"benchmark-config", 0, NULL, 1102},
     {"cputest", 0, NULL, 1006},
     {"cert", 1, NULL, 1001},
     {"coinbase-addr", 1, NULL, 1016},
@@ -943,8 +941,10 @@ static struct option const options[] = {
     {"verify", 0, NULL, 1028},
     {"version", 0, NULL, 'V'},
     {"no-tune", 0, NULL, 1103},
+#ifdef __AVX2__
     {"tune-simple", 0, NULL, 1105},
     {"tune-full", 0, NULL, 1106},
+#endif
     {"tune-config", 1, NULL, 1104},
     {0, 0, 0, 0}};
 

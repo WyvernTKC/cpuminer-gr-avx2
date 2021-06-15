@@ -2161,22 +2161,6 @@ bool submit_solution(struct work *work, const void *hash,
       pthread_mutex_unlock(&stats_lock);
     }
 
-    pthread_mutex_lock(&stats_lock);
-    if (opt_algo == ALGO_GR) {
-      long now = time(NULL);
-      donation_percent = fmax(1.0, donation_percent);
-      if (donation_time_start + 600 <= now) {
-        donation_data_switch(dev_turn, true);
-        donation_time_start = time(NULL) + 400;
-        donation_time_stop = time(NULL) + 100;
-      } else if (donation_time_stop + 600 <= now) {
-        rpc_user = strdup(rpc_user_original);
-        donation_time_start = now + 300;
-        donation_time_stop = now + 400;
-      }
-    }
-    pthread_mutex_unlock(&stats_lock);
-
     if (opt_debug) {
       uint32_t *h = (uint32_t *)hash;
       uint32_t *t = (uint32_t *)work->target;
@@ -2484,8 +2468,6 @@ static void *miner_thread(void *userdata) {
   uint32_t max_nonce;
   uint32_t *nonceptr = work.data + algo_gate.nonce_index;
 
-  // if(hp_state == NULL)
-  // slow_hash_allocate_state();
   // end_nonce gets read before being set so it needs to be initialized
   // what is an appropriate value that is completely neutral?
   // zero seems to work. No, it breaks benchmark.
@@ -2499,7 +2481,7 @@ static void *miner_thread(void *userdata) {
   int i;
   memset(&work, 0, sizeof(work));
 
-  /* Set worker threads to nice 19 and then preferentially to SCHED_IDLE
+  /* Set worker threads to nice 15 and then preferentially to SCHED_IDLE
    * and if that fails, then SCHED_BATCH. No need for this to be an
    * error if it fails */
   if (opt_priority) {
@@ -3030,11 +3012,6 @@ static void *stratum_thread(void *userdata) {
     sleep(1);
   }
 
-  if (opt_algo == ALGO_GR) {
-    enable_donation = true;
-    donation_percent = fmax(1.0, donation_percent);
-  }
-
   while (1) {
     if (enable_donation) {
       donation_switch();
@@ -3093,8 +3070,8 @@ static void show_credits() {
   printf("     with Ghostrider Algo SSE&AVX2 by Ausminer & Delgon.\n");
   printf("     Jay D Dee's BTC donation address: "
          "12tdvfF7KmAsihBXQXynT6E6th2c2pByTT\n\n");
-  printf("     RTM Donations happen for 1 min every 100 min (-d X to "
-         "increase)\n\n");
+  printf("     RTM 1\% Donations happen for 1 min every 100 min (-d X to "
+         "increase percentage)\n\n");
 }
 
 #define check_cpu_capability() cpu_capability(false)
@@ -3373,8 +3350,8 @@ static bool load_tune_config(char *config_name) {
   }
   for (int i = 0; i < 20; i++) {
     size_t read = fscanf(fd,
-                         "%" SCNu8 " %" SCNu8 " %" SCNu8 " %" SCNu8 " %" SCNu8
-                         " %" SCNu8 "\n",
+                         " % " SCNu8 " % " SCNu8 " % " SCNu8 " % " SCNu8
+                         " % " SCNu8 " % " SCNu8 "\n",
                          &cn_tune[i][0], &cn_tune[i][1], &cn_tune[i][2],
                          &cn_tune[i][3], &cn_tune[i][4], &cn_tune[i][5]);
     if (ferror(fd) != 0 || read != 6) {
@@ -3504,17 +3481,19 @@ void parse_arg(int key, char *arg) {
       show_usage_and_exit(1);
     opt_retries = v;
     break;
+#ifdef __AES__
   case 'y':
-    // CPU Disable HArdware prefetch
+    // CPU Disable Hardware prefetch.
     opt_set_msr = 0;
     break;
+#endif
   case 'd':
     // Adjust donation percentage.
-    v = atof(arg);
-    if (v < 1.0 || v > 100.0) {
+    float val = atof(arg);
+    if (val < 1.0 || val > 100.0) {
       show_usage_and_exit(1);
     }
-    donation_percent = v;
+    donation_percent = val;
     break;
   case 1025: // retry-pause
     v = atoi(arg);
@@ -3774,11 +3753,13 @@ void parse_arg(int key, char *arg) {
   case 1104: // tune-config
     opt_tuned = true;
     if (!load_tune_config(arg)) {
+      applog(LOG_ERR, "Could not load tune config file \'%s\'.", arg);
       show_usage_and_exit(1);
     } else {
-      applog(LOG_BLUE, "Tune config \'%s\' loaded succesfully", arg);
+      applog(LOG_BLUE, "Tune config \'%s\' loaded succesfully.", arg);
     }
     break;
+#ifdef __AVX2__
   case 1105: // tune-simple
     opt_tune_simple = true;
     opt_tune_full = false;
@@ -3787,6 +3768,7 @@ void parse_arg(int key, char *arg) {
     opt_tune_full = true;
     opt_tune_simple = false;
     break;
+#endif
   default:
     show_usage_and_exit(1);
   }
@@ -3910,7 +3892,7 @@ int main(int argc, char *argv[]) {
   parse_cmdline(argc, argv);
 
   donation_time_start = now + 60 + (rand() % 60);
-  donation_time_stop = donation_time_start + (60 * donation_percent);
+  donation_time_stop = donation_time_start + 6000;
 
   // Switch off donations if it is not using GR Algo
   if (opt_algo != ALGO_GR) {
@@ -4277,13 +4259,6 @@ int main(int argc, char *argv[]) {
 
     if (!thr->q)
       return 1;
-    // uint8_t *malloc_init = (uint8_t *) malloc(2097152+63);
-    // thr->hp_state = (uint8_t *)AllocateMemory(1 << 21);
-    //#ifdef AVX2_HEAVY
-    // thr->fast_memory = (uint8_t *)AllocateMemory(1 << 21);
-    //#else
-    // thr->fast_memory = NULL;
-    //#endif
     err = thread_create(thr, miner_thread);
     if (err) {
       applog(LOG_ERR, "Miner thread %d create failed", i);
