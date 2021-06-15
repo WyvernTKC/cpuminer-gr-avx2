@@ -23,11 +23,12 @@ cpuminer_SOURCES = \
   algo-gate-api.c \
   virtual_memory.c \
   msr_mod.c \
-  crypto/oaes_lib.c \
   crypto/c_keccak.c \
   crypto/c_groestl.c \
   crypto/c_blake256.c \
   crypto/c_jh.c \
+  crypto/c_skein.c \
+  crypto/hash.c \
   algo/argon2/argon2a/argon2a.c \
   algo/argon2/argon2a/ar2/argon2.c \
   algo/argon2/argon2a/ar2/opt.c \
@@ -187,8 +188,6 @@ cpuminer_SOURCES = \
   algo/shavite/shavite-hash-2way.c \
   algo/shavite/shavite-hash-4way.c \
   algo/shavite/shavite.c \
-  algo/gr/cryptonote/crypto/hash.c \
-  algo/gr/cryptonote/crypto/c_skein.c \
   algo/gr/cryptonote/cryptonight.c \
   algo/gr/gr-gate.c \
   algo/gr/gr.c \
@@ -324,7 +323,7 @@ if HAVE_WINDOWS
 endif
 
 cpuminer_LDFLAGS	= @LDFLAGS@
-cpuminer_LDADD	= @LIBCURL@ @JANSSON_LIBS@ @PTHREAD_LIBS@ @WS2_LIBS@ -lssl -lcrypto -lgmp
+cpuminer_LDADD	= @LIBCURL@ @JANSSON_LIBS@ @PTHREAD_LIBS@ @WS2_LIBS@ @NUMA_LIBS@ -lssl -lcrypto -lgmp
 cpuminer_CPPFLAGS = @LIBCURL_CPPFLAGS@ $(ALL_INCLUDES)
 cpuminer_CFLAGS   = -Wno-pointer-sign -Wno-pointer-to-int-cast $(disable_flags)
 

@@ -17,6 +17,7 @@ RUN apt-get update \
     libjansson-dev \
     automake \
     zlib1g-dev \
+    libnuma-dev \
   && rm -rf /var/lib/apt/lists/*
 
 COPY . /app/
@@ -29,6 +30,7 @@ RUN apt-get update \
   && apt-get install -y \
     libcurl4 \
     libjansson4 \
+    libnuma-dev \
     kmod \
     msr-tools \
   && rm -rf /var/lib/apt/lists/*
