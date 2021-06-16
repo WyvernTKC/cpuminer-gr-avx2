@@ -2,7 +2,7 @@
 #define __COMPAT_H__
 
 #ifdef WIN32
-
+#include <winsock2.h>
 #include <windows.h>
 #include <time.h>
 

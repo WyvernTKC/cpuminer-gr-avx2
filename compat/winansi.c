@@ -4,6 +4,7 @@
  */
 
 #undef NOGDI
+#include <winsock2.h>
 #include <windows.h>
 #include <wingdi.h>
 #include <winreg.h>

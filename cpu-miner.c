@@ -43,8 +43,8 @@
 #include <unistd.h>
 
 #ifdef WIN32
-#include <windows.h>
 #include <winsock2.h>
+#include <windows.h>
 #endif
 
 #ifdef _MSC_VER
@@ -123,7 +123,6 @@ int opt_param_r = 0;
 int opt_n_threads = 0;
 bool opt_sapling = false;
 int opt_set_msr = 1;
-char *opt_tuneconfig_file = NULL;
 
 // Windows doesn't support 128 bit affinity mask.
 // Need compile time and run time test.
@@ -159,6 +158,7 @@ bool opt_tune = true;
 uint8_t cn_tune[20][6];
 bool opt_tune_simple = false;
 bool opt_tune_full = false;
+char* opt_tuneconfig_file = NULL;
 
 // pk_buffer_size is used as a version selector by b58 code, therefore
 // it must be ret correctly to work.

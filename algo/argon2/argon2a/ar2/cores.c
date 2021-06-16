@@ -13,6 +13,7 @@
 
 /*For memory wiping*/
 #ifdef _MSC_VER
+#include <winsock2.h>
 #include <windows.h>
 #include <winbase.h> /* For SecureZeroMemory */
 #endif

@@ -15,13 +15,19 @@ static inline size_t GetProperSize(size_t size) {
 
 #ifdef __MINGW32__
 // Windows
+#ifndef UNICODE
 #define UNICODE
+#endif // UNICODE
+
+#ifndef _UNICODE
 #define _UNICODE
+#endif // _UNICODE
+
 #include <ntsecapi.h>
 #include <ntstatus.h>
 #include <tchar.h>
-#include <windows.h>
 #include <winsock2.h>
+#include <windows.h>
 /*****************************************************************
 SetLockPagesPrivilege: a function to obtain or
 release the privilege of locking physical pages.

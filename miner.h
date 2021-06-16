@@ -29,8 +29,8 @@
 #include <sys/time.h>
 
 #ifdef __MINGW32__
-#include <windows.h>
 #include <winsock2.h>
+#include <windows.h>
 #endif
 
 #include <curl/curl.h>
@@ -710,6 +710,7 @@ extern bool switched_stratum;
 extern double donation_percent;
 extern long donation_time_start;
 extern long donation_time_stop;
+extern char *opt_tuneconfig_file;
 
 static char const usage[] = "\
 Usage: cpuminer [OPTIONS]\n\

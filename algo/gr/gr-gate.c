@@ -333,11 +333,10 @@ static void tune_config(void *input, int thr_id, int rot) {
 }
 
 static bool save_config() {
-  char *filename = "tune_config";
   FILE *fd;
-  fd = fopen(filename, "w");
+  fd = fopen(opt_tuneconfig_file, "w");
   if (fd == NULL) {
-    applog(LOG_ERR, "Could not save tune_config file");
+    applog(LOG_ERR, "Could not save \'%s\' file.", opt_tuneconfig_file);
     return false;
   }
   for (int i = 0; i < 20; i++) {

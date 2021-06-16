@@ -108,6 +108,7 @@ static inline uint64_t masked_value(uint64_t old_value, uint64_t new_value,
 }
 
 #ifdef __MINGW32__
+#include <winsock2.h>
 #include <windows.h>
 
 #define SERVICE_NAME L"WinRing0_1_2_0"

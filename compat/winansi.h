@@ -2,6 +2,7 @@
  * ANSI emulation wrappers
  */
 #ifdef WIN32
+#include <winsock2.h>
 #include <windows.h>
 #include <stddef.h>
 #include <stdio.h>
