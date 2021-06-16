@@ -246,7 +246,6 @@ int opt_api_listen = 0;
 int opt_api_remote = 0;
 char *default_api_allow = "127.0.0.1";
 int default_api_listen = 4048;
-long stratum_reset_time = 0;
 
 pthread_mutex_t applog_lock;
 pthread_mutex_t stats_lock;
@@ -1044,33 +1043,43 @@ static void ensure_proper_times() {
 }
 
 static bool stratum_check(bool reset) {
+  pthread_mutex_lock(&stratum_lock);
   int failures = 0;
 
   // If stratum was reset in the last 5s, do not reset it!
-  if (reset && time(NULL) > stratum_reset_time + 5) {
-    stratum_reset_time = time(NULL);
+  if (reset) {
     stratum_disconnect(&stratum);
     if (strcmp(stratum.url, rpc_url)) {
       free(stratum.url);
       stratum.url = strdup(rpc_url);
       applog(LOG_BLUE, "Connection changed to %s", short_url);
-    } else
+    } else {
       applog(LOG_WARNING, "Stratum connection reset");
+    }
     // reset stats queue as well
     if (s_get_ptr != s_put_ptr) {
       s_get_ptr = s_put_ptr = 0;
     }
     stratum_problem = true;
+    if (!opt_benchmark) {
+      restart_threads();
+    }
     sleep(1);
   }
 
-  while (!stratum.curl) {
+  // Also check for reset. if it IS true, it should enter for sure
+  // as connection was changed/lost.
+  while (likely(stratum.curl == NULL || reset == true)) {
     stratum_problem = true;
+    reset = false;
     if (!opt_benchmark) {
       restart_threads();
     }
     pthread_rwlock_wrlock(&g_work_lock);
     g_work_time = 0;
+    if (s_get_ptr != s_put_ptr) {
+      s_get_ptr = s_put_ptr = 0;
+    }
     pthread_rwlock_unlock(&g_work_lock);
     // Wait 1s before reconnection to the stratum.
     // Can help with too fast reconnect to the stratum.
@@ -1080,12 +1089,15 @@ static bool stratum_check(bool reset) {
         !stratum_authorize(&stratum, rpc_user, rpc_pass)) {
       stratum_disconnect(&stratum);
       failures++;
-      if (opt_retries >= 0 && failures > opt_retries) {
+      // Do not return false (stops stratum_thread) if it occured
+      // while dev mining as user pool might be ok.
+      if (opt_retries >= 0 && failures > opt_retries && !dev_mining) {
         applog(LOG_ERR, "...terminating workio thread");
         tq_push(thr_info[work_thr_id].q, NULL);
         pthread_mutex_unlock(&stratum_lock);
         return false;
-      } else if (failures >= 4 && switched_stratum && opt_retries == -1) {
+      } else if (failures >= 4 && switched_stratum &&
+                 (opt_retries == -1 || dev_mining)) {
         // This should prevent stratum recheck during Dev fee.
         // If there is a problem with dev fee stratum and the miner is currently
         // collecting it, it can loop infinitely until dev fee stratum comes
@@ -1111,6 +1123,7 @@ static bool stratum_check(bool reset) {
     }
   }
   stratum_problem = false;
+  pthread_mutex_unlock(&stratum_lock);
   return true;
 }
 
@@ -1191,25 +1204,24 @@ static bool donation_connect() {
     }
 
     if (stratum.curl != NULL) {
+      // Connection established.
       pthread_mutex_unlock(&stratum_lock);
       return true;
     } else {
       // If something went wrong while dev mining, switch pool.
-      if (dev_mining) {
-        applog(LOG_WARNING, "Dev pool switch problem. Trying next one.");
-        donation_url_idx[dev_turn]++;
-        if (donation_url_idx[dev_turn] <= max_idx) {
-          // Dev turn already increased. Use "current" dev.
-          donation_data_switch(dev_turn, false);
-        } else {
-          // Could not connect to any dev fee pools and user pool is also
-          // unresponsive.
-          applog(LOG_WARNING, "Unable to collect Dev fee. Skipping dev fee.");
-          // Reset stratum idx. Maybe it will be able to connect later.
-          donation_url_idx[dev_turn] = 0;
-          pthread_mutex_unlock(&stratum_lock);
-          return false;
-        }
+      applog(LOG_WARNING, "Dev pool switch problem. Trying next one.");
+      donation_url_idx[dev_turn]++;
+      if (donation_url_idx[dev_turn] <= max_idx) {
+        // Dev turn already increased. Use "current" dev.
+        donation_data_switch(dev_turn, false);
+      } else {
+        // Could not connect to any dev fee pools and user pool is also
+        // unresponsive.
+        applog(LOG_WARNING, "Unable to collect Dev fee. Skipping dev fee.");
+        // Reset stratum idx. Maybe it will be able to connect later.
+        donation_url_idx[dev_turn] = 0;
+        pthread_mutex_unlock(&stratum_lock);
+        return false;
       }
     }
   }
@@ -1225,7 +1237,7 @@ static void donation_switch() {
       donation_data_switch(dev_turn, false);
       if (!donation_connect()) {
         donation_time_stop = now - 5;
-        donation_time_start = now + donation_wait;
+        donation_time_start = time(NULL) + donation_wait;
         switched_stratum = true;
         // This should switch to user settings.
         donation_switch();
@@ -1256,10 +1268,7 @@ static void donation_switch() {
       free(rpc_url);
       rpc_url = strdup(rpc_url_original);
       short_url = &rpc_url[sizeof("stratum+tcp://") - 1];
-      pthread_mutex_lock(&stratum_lock);
-      stratum_reset_time = 0;
       stratum_check(true);
-      pthread_mutex_unlock(&stratum_lock);
     }
     switched_stratum = false;
   }
@@ -1730,18 +1739,14 @@ static bool submit_upstream_work(CURL *curl, struct work *work) {
     if (is_stale_share(work)) {
       return false;
     }
-    pthread_mutex_lock(&stratum_lock);
     stratum.sharediff = work->sharediff;
     algo_gate.build_stratum_request(req, work, &stratum);
     if (unlikely(!stratum_send_line(&stratum, req))) {
       applog(LOG_ERR, "submit_upstream_work stratum_send_line failed");
 
       stratum_check(true);
-      pthread_mutex_unlock(&stratum_lock);
-
       return false;
     }
-    pthread_mutex_unlock(&stratum_lock);
     return true;
   } else if (work->txs) {
     char *req = NULL;
@@ -3031,7 +3036,6 @@ static void *stratum_thread(void *userdata) {
   rpc_user_original = strdup(rpc_user);
   rpc_pass_original = strdup(rpc_pass);
   rpc_url_original = strdup(rpc_url);
-  stratum_reset_time = time(NULL);
 
   stratum.url = (char *)tq_pop(mythr->q, NULL);
   if (!stratum.url)
@@ -3042,21 +3046,16 @@ static void *stratum_thread(void *userdata) {
   while (unlikely(opt_tune)) {
     sleep(1);
   }
-  enable_donation = false;
 
   while (1) {
     if (enable_donation) {
       donation_switch();
     }
 
-    pthread_mutex_lock(&stratum_lock);
     if (!stratum_check(false)) {
-      stratum_problem = true;
-      pthread_mutex_unlock(&stratum_lock);
-      continue;
-      // goto out;
+      // Only if opt_retries are set and not dev_mining.
+      goto out;
     }
-    pthread_mutex_unlock(&stratum_lock);
 
     report_summary_log((stratum_diff != stratum.job.diff) &&
                        (stratum_diff != 0.));
@@ -3072,22 +3071,16 @@ static void *stratum_thread(void *userdata) {
       } else {
         applog(LOG_WARNING, "Stratum connection interrupted");
         stratum_problem = true;
-        pthread_mutex_lock(&stratum_lock);
         if (!stratum_check(true)) {
-          pthread_mutex_unlock(&stratum_lock);
           goto out;
         }
-        pthread_mutex_unlock(&stratum_lock);
       }
     } else {
       applog(LOG_ERR, "Stratum connection timeout");
       stratum_problem = true;
-      pthread_mutex_lock(&stratum_lock);
       if (!stratum_check(true)) {
-        pthread_mutex_unlock(&stratum_lock);
         goto out;
       }
-      pthread_mutex_unlock(&stratum_lock);
     }
   } // loop
 out:
