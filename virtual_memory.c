@@ -268,7 +268,9 @@ bool InitHugePages(size_t threads) {
   // Detect number of nodes in the system.
   const size_t nodes = numa_max_node();
   const size_t hw_threads = numa_num_possible_cpus();
-  applog(LOG_BLUE, "Detected %lu NUMA node(s).", nodes + 1);
+  if (opt_debug || nodes > 0) {
+    applog(LOG_BLUE, "Detected %lu NUMA node(s).", nodes + 1);
+  }
 
   int node_cpus[64];
   memset(node_cpus, 0, 64 * sizeof(int));
@@ -300,7 +302,7 @@ bool InitHugePages(size_t threads) {
     if (!InitNodeHugePages(node_cpus[node] * max_large_pages, node)) {
       nodes_err++;
       applog(LOG_ERR, "Failed to initialize Large Pages on node%lu", node);
-    } else {
+    } else if (opt_debug) {
       applog(LOG_BLUE, "Successfully initialized Large Pages on node%lu", node);
       nodes_ok++;
     }

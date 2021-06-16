@@ -1,34 +1,18 @@
-cpuminer-opt is a fork of cpuminer-multi by TPruvot with optimizations
+cpuminer-gr is a fork of cpuminer-opt by Jay D Dee which is a for ok cpuminer-multi with optimizations
 imported from other miners developped by lucas Jones, djm34, Wolf0, pooler,
 Jeff garzik, ig0tik3d, elmad, palmd, and Optiminer, with additional
 optimizations by Jay D Dee.
 
 All of the code is believed to be open and free. If anyone has a
-claim to any of it post your case in the cpuminer-opt Bitcoin Talk forum
-or by email.
+claim to any of it post your case in the cpuminer-gr by email.
 
 Miner programs are often flagged as malware by antivirus programs. This is
 a false positive, they are flagged simply because they are cryptocurrency 
 miners. The source code is open for anyone to inspect. If you don't trust 
 the software, don't use it.
 
-
-New thread:
-
-https://bitcointalk.org/index.php?topic=5226770.msg53865575#msg53865575
-
-Old thread:
-
-https://bitcointalk.org/index.php?topic=1326803.0
-
-mailto://jayddee246@gmail.com
-
-This note is to confirm that bitcointalk users JayDDee and joblo are the
-same person.
-
-I created a new BCT user JayDDee to match my github user id.
-The old thread has been locked but still contains useful information for
-reading.
+There is NO official bitcointalk thread about this miner. It is due to
+unjust ban after posting about first release about this miner.
 
 See file RELEASE_NOTES for change log and INSTALL_LINUX or INSTALL_WINDOWS
 for compile instructions.
@@ -36,20 +20,17 @@ for compile instructions.
 Requirements
 ------------
 
-1. A x86_64 architecture CPU with a minimum of SSE2 support. This includes
+1. A x86-64 architecture CPU with a minimum of SSE2 support. This includes
 Intel Core2 and newer and AMD equivalents. Further optimizations are available
 on some algoritms for CPUs with AES, AVX, AVX2, SHA, AVX512 and VAES.
 
-Older CPUs are supported by cpuminer-multi by TPruvot but at reduced
-performance.
-
-ARM and Aarch64 CPUs are not supported.
+ARM and Aarch64 CPUs are not supported, yet.
 
 2. 64 bit Linux or Windows OS. Ubuntu and Fedora based distributions,
 including Mint and Centos, are known to work and have all dependencies
 in their repositories. Others may work but may require more effort. Older
 versions such as Centos 6 don't work due to missing features. 
-64 bit Windows OS is supported with mingw_w64 and msys or pre-built binaries.
+64 bit Windows OS is supported with mingw-w64 and msys or pre-built binaries.
 
 MacOS, OSx and Android are not supported.
 
@@ -155,34 +136,12 @@ Supported Algorithms
                           yespower-b2b  generic yespower + blake2b
                           zr5           Ziftr
 
-Many variations of scrypt based algos can be mine by specifying their
-parameters:
-
-scryptn2: --algo scrypt --param-n 1048576
-
-cpupower: --algo yespower --param-key "CPUpower: The number of CPU working or available for proof-of-work mining"
-
-power2b: --algo yespower-b2b --param-n 2048 --param-r 32 --param-key "Now I am become Death, the destroyer of worlds"
-
-sugarchain: --algo yespower --param-n 2048 -param-r 32 --param-key "Satoshi Nakamoto 31/Oct/2008 Proof-of-work is essentially one-CPU-one-vote"
-
-yespoweriots: --algo yespower --param-n 2048 --param-key "Iots is committed to the development of IOT"
-
-yespowerlitb: --algo yespower --param-n 2048 --param-r 32 --param-key "LITBpower: The number of LITB working or available for proof-of-work mini"
-
-yespoweric: --algo yespower --param-n 2048 --param-r 32 --param-key "IsotopeC" 
-
-yespowerurx: --algo yespower --param-n 2048 --param-r 32 --param-key "UraniumX"
-
-yespowerltncg: --algo yespower --param-n 2048 --param-r 32 --param-key "LTNCGYES"
 
 Errata
 ------
 
 Old algorithms that are no longer used frequently will not have the latest
 optimizations.
-
-Cryptonight and variants are no longer supported, use another miner.
 
 Neoscrypt crashes on Windows, use legacy version.
 
@@ -199,10 +158,10 @@ Benchmark testing does not work for x11evo.
 Bugs
 ----
 
-Users are encouraged to post their bug reports using git issues or on the
-Bitcoin Talk forum or opening an issue in git:
+Users are encouraged to post their bug reports using git issues or on official
+RTM Discor or opening an issue in git:
 
-https://bitcointalk.org/index.php?topic=1326803.0
+https://discord.gg/2T8xG7e
 
 https://github.com/JayDDee/cpuminer-opt/issues
 
@@ -216,7 +175,17 @@ Donations
 
 cpuminer-opt has no fees of any kind but donations are accepted.
 
- BTC: 12tdvfF7KmAsihBXQXynT6E6th2c2pByTT
+Jay D Dee's BTC: 12tdvfF7KmAsihBXQXynT6E6th2c2pByTT
+
+This fork introduces 1% donation on added Ghost Rider (GR) algorithm only.
+
+If you wanna support us, any donations are welcome:
+Ausminer
+RTM: RXq9v8WbMLZaGH79GmK2oEdc33CTYkvyoZ
+
+Delgon
+RTM: RQKcAZBtsSacMUiGNnbk3h3KJAN94tstvt
+ETH: 0x6C1273b5f4D583bA00aeB2cE68f54825411D6E8c
+
 
 Happy mining!
-

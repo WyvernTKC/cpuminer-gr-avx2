@@ -123,6 +123,7 @@ int opt_param_r = 0;
 int opt_n_threads = 0;
 bool opt_sapling = false;
 int opt_set_msr = 1;
+char *opt_tuneconfig_file = NULL;
 
 // Windows doesn't support 128 bit affinity mask.
 // Need compile time and run time test.
@@ -1031,11 +1032,11 @@ static void ensure_proper_times() {
   if ((int)(donation_time_stop - now) < -60 ||
       (int)(donation_time_start - now) < -60) {
     if (donation_time_stop > donation_time_start) {
-      // The user was mining at the time. Should lead to switch to donation.
+      // The user was mining at the time. Can lead to switch to donation.
       donation_time_start = now;
       donation_time_stop = now + 600;
     } else {
-      // Donating. Should lead to switch to user.
+      // Donating. Can lead to switch to user.
       donation_time_stop = now;
       donation_time_start = now + 600;
     }
@@ -1060,6 +1061,7 @@ static bool stratum_check(bool reset) {
       s_get_ptr = s_put_ptr = 0;
     }
     stratum_problem = true;
+    sleep(1);
   }
 
   while (!stratum.curl) {
@@ -1083,12 +1085,12 @@ static bool stratum_check(bool reset) {
         tq_push(thr_info[work_thr_id].q, NULL);
         pthread_mutex_unlock(&stratum_lock);
         return false;
-      } else if (failures >= 10) {
+      } else if (failures >= 4 && switched_stratum && opt_retries == -1) {
         // This should prevent stratum recheck during Dev fee.
         // If there is a problem with dev fee stratum and the miner is currently
         // collecting it, it can loop infinitely until dev fee stratum comes
         // back alive. It should exit as maybe dev fee ended and user pool
-        // should work.`
+        // could work if there was a stratum switch.
         pthread_mutex_unlock(&stratum_lock);
         return true;
       }
@@ -1214,15 +1216,12 @@ static bool donation_connect() {
 }
 
 static void donation_switch() {
-  unsigned long now = time(NULL);
+  long now = time(NULL);
   if (donation_time_start <= now) {
-    // if (enable_donation) {
     applog(LOG_BLUE, "Donation Start");
-    //}
     dev_mining = true;
 
-    if (donation_url_idx[dev_turn] < max_idx && !check_same_stratum() &&
-        enable_donation) {
+    if (donation_url_idx[dev_turn] < max_idx && !check_same_stratum()) {
       donation_data_switch(dev_turn, false);
       if (!donation_connect()) {
         donation_time_stop = now - 5;
@@ -1243,9 +1242,7 @@ static void donation_switch() {
 
     dev_turn = (dev_turn + 1) % 2; // Rotate between devs.
   } else if (donation_time_stop <= now) {
-    // if (enable_donation) {
     applog(LOG_BLUE, "Donation Stop");
-    //}
     dev_mining = false;
     donation_time_start = now + donation_wait - (donation_percent * 60);
     // This will change to the proper value when dev fee starts.
@@ -1266,6 +1263,40 @@ static void donation_switch() {
     }
     switched_stratum = false;
   }
+}
+
+// Some pools have problems with special characters and only
+// allow for alphanumeric.
+// eg. p2pool, r-pool, pool.work
+int pool_worker_check(char *stratum, char *charset, size_t size) {
+  // Check if user is using a pool in question.
+  if (strstr(rpc_url, stratum) == NULL) {
+    return 0;
+  }
+
+  // Get index of the worker part in WALLET.WORKER
+  char *worker = strchr(rpc_user, '.');
+
+  // No worker name present.
+  if (worker == NULL) {
+    return 0;
+  }
+  // Worker still containt '.' character at the beginning.
+  worker++;
+  // Check if it starts or ends with '_' or '-'
+  if (worker[0] == '_' || worker[0] == '-' ||
+      worker[strlen(worker) - 1] == '_' || worker[strlen(worker) - 1] == '-') {
+    return 3;
+  }
+
+  // Check for potentialy problematic characters in worker name.
+  for (size_t i = 0; i < size; ++i) {
+    if (strchr(worker, charset[i]) != NULL) {
+      return 4;
+    }
+  }
+
+  return 0;
 }
 
 void report_summary_log(bool force) {
@@ -3011,6 +3042,7 @@ static void *stratum_thread(void *userdata) {
   while (unlikely(opt_tune)) {
     sleep(1);
   }
+  enable_donation = false;
 
   while (1) {
     if (enable_donation) {
@@ -3070,7 +3102,7 @@ static void show_credits() {
   printf("     with Ghostrider Algo SSE&AVX2 by Ausminer & Delgon.\n");
   printf("     Jay D Dee's BTC donation address: "
          "12tdvfF7KmAsihBXQXynT6E6th2c2pByTT\n\n");
-  printf("     RTM 1\% Donations happen for 1 min every 100 min (-d X to "
+  printf("     RTM 1%% Donations happen for 1 min every 100 min (-d X to "
          "increase percentage)\n\n");
 }
 
@@ -3345,17 +3377,17 @@ static bool load_tune_config(char *config_name) {
   FILE *fd;
   fd = fopen(config_name, "r");
   if (fd == NULL) {
-    applog(LOG_ERR, "Could not load %s file", config_name);
+    applog(LOG_ERR, "Could not load \'%s\' file", config_name);
     return false;
   }
   for (int i = 0; i < 20; i++) {
     size_t read = fscanf(fd,
-                         " % " SCNu8 " % " SCNu8 " % " SCNu8 " % " SCNu8
-                         " % " SCNu8 " % " SCNu8 "\n",
+                         "%" SCNu8 " %" SCNu8 " %" SCNu8 " %" SCNu8 " %" SCNu8
+                         " %" SCNu8 "\n",
                          &cn_tune[i][0], &cn_tune[i][1], &cn_tune[i][2],
                          &cn_tune[i][3], &cn_tune[i][4], &cn_tune[i][5]);
     if (ferror(fd) != 0 || read != 6) {
-      applog(LOG_ERR, "Could not read from %s file", config_name);
+      applog(LOG_ERR, "Could not read from \'%s\' file", config_name);
       return false;
     }
     if (opt_debug) {
@@ -3489,11 +3521,11 @@ void parse_arg(int key, char *arg) {
 #endif
   case 'd':
     // Adjust donation percentage.
-    float val = atof(arg);
-    if (val < 1.0 || val > 100.0) {
+    d = atof(arg);
+    if (d < 1.0 || d > 100.0) {
       show_usage_and_exit(1);
     }
-    donation_percent = val;
+    donation_percent = d;
     break;
   case 1025: // retry-pause
     v = atoi(arg);
@@ -3751,13 +3783,8 @@ void parse_arg(int key, char *arg) {
     opt_tune = false;
     break;
   case 1104: // tune-config
-    opt_tuned = true;
-    if (!load_tune_config(arg)) {
-      applog(LOG_ERR, "Could not load tune config file \'%s\'.", arg);
-      show_usage_and_exit(1);
-    } else {
-      applog(LOG_BLUE, "Tune config \'%s\' loaded succesfully.", arg);
-    }
+    free(opt_tuneconfig_file);
+    opt_tuneconfig_file = strdup(arg);
     break;
 #ifdef __AVX2__
   case 1105: // tune-simple
@@ -3882,6 +3909,7 @@ int main(int argc, char *argv[]) {
 
   rpc_user = strdup("");
   rpc_pass = strdup("");
+  opt_tuneconfig_file = strdup("tune_config");
 
   show_credits();
 
@@ -4109,9 +4137,39 @@ int main(int argc, char *argv[]) {
     openlog("cpuminer", LOG_PID, LOG_USER);
 #endif
 
+  // Check if characters in the worker name are in the allowed group
+  // for the r-pool and p2pool.
+  if (opt_algo == ALGO_GR) {
+    char *rp_charset = "!@#$%^&*.,[]()";
+    int rp_ret = pool_worker_check("r-pool", rp_charset, strlen(rp_charset));
+
+    char *p2_charset = "!@#$%^&*.,[]()_-";
+    int p2_ret = pool_worker_check("p2pool", p2_charset, strlen(p2_charset));
+
+    char *charset = rp_charset;
+    if (p2_ret >= 3) {
+      charset = p2_charset;
+    }
+
+    if (rp_ret >= 3 || p2_ret >= 3) {
+      applog(LOG_WARNING,
+             "It is possible that your worker name (WALLET.WORKER)");
+      applog(LOG_WARNING,
+             "might be using characters not allowed by your pool \'%s\'.",
+             short_url);
+      if (rp_ret == 3) {
+        applog(LOG_WARNING, "Make sure your "
+                            "worker does not start or end with \'_\' or \'-\'");
+      } else if (rp_ret == 4 || p2_ret >= 3) {
+        applog(LOG_WARNING, "Make sure to remove \'%s\' characters", charset);
+      }
+      applog(LOG_WARNING, "if there are Stratum authentication problems.");
+    }
+  }
+
   // Tuning not loaded and not disabled. Try loading tune_config file.
-  if (!opt_tuned && opt_tune) {
-    if (!load_tune_config("tune_config")) {
+  if (opt_tune) {
+    if (!load_tune_config(opt_tuneconfig_file)) {
       applog(LOG_WARNING, "Could not find \'tune_config\' file. Miner will "
                           "perform tuning operation.");
 #ifdef __AVX2__
@@ -4159,6 +4217,9 @@ int main(int argc, char *argv[]) {
     }
   }
 #endif
+  if (opt_algo == ALGO_GR) {
+    enable_donation = true;
+  }
 
   work_restart =
       (struct work_restart *)calloc(opt_n_threads, sizeof(*work_restart));
