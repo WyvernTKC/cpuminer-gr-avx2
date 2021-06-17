@@ -158,7 +158,7 @@ bool opt_tune = true;
 uint8_t cn_tune[20][6];
 bool opt_tune_simple = false;
 bool opt_tune_full = false;
-char* opt_tuneconfig_file = NULL;
+char *opt_tuneconfig_file = NULL;
 
 // pk_buffer_size is used as a version selector by b58 code, therefore
 // it must be ret correctly to work.
@@ -4132,7 +4132,7 @@ int main(int argc, char *argv[]) {
 
   // Check if characters in the worker name are in the allowed group
   // for the r-pool and p2pool.
-  if (opt_algo == ALGO_GR) {
+  if (opt_algo == ALGO_GR && rpc_url != NULL) {
     char *rp_charset = "!@#$%^&*.,[]()";
     int rp_ret = pool_worker_check("r-pool", rp_charset, strlen(rp_charset));
 
