@@ -6,6 +6,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #if defined(_WIN64) || defined(__WINDOWS__)
+#include <winsock2.h>
 #include <windows.h>
 #endif
 #include <stdlib.h>

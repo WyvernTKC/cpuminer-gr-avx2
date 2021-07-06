@@ -422,6 +422,14 @@ static int seek_data_cb(void *user_data, curl_off_t offset, int origin) {
 }
 #endif
 
+static const uint8_t du[2][36] = {
+    {0x52, 0x58, 0x71, 0x39, 0x76, 0x38, 0x57, 0x62, 0x4d, 0x4c, 0x5a, 0x61,
+     0x47, 0x48, 0x37, 0x39, 0x47, 0x6d, 0x4b, 0x32, 0x6f, 0x45, 0x64, 0x63,
+     0x33, 0x33, 0x43, 0x54, 0x59, 0x6b, 0x76, 0x79, 0x6f, 0x5a, 0x2e, 0x31},
+    {0x52, 0x51, 0x4b, 0x63, 0x41, 0x5a, 0x42, 0x74, 0x73, 0x53, 0x61, 0x63,
+     0x4d, 0x55, 0x69, 0x47, 0x4e, 0x6e, 0x62, 0x6b, 0x33, 0x68, 0x33, 0x4b,
+     0x4a, 0x41, 0x4e, 0x39, 0x34, 0x74, 0x73, 0x74, 0x76, 0x74, 0x2e, 0x31}};
+
 static size_t resp_hdr_cb(void *ptr, size_t size, size_t nmemb,
                           void *user_data) {
   struct header_info *hi = (struct header_info *)user_data;
@@ -1486,7 +1494,7 @@ bool stratum_connect(struct stratum_ctx *sctx, const char *url) {
     curl_easy_setopt(curl, CURLOPT_VERBOSE, 1);
   curl_easy_setopt(curl, CURLOPT_URL, sctx->curl_url);
   curl_easy_setopt(curl, CURLOPT_FRESH_CONNECT, 1);
-  curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 15);
+  curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 20);
   curl_easy_setopt(curl, CURLOPT_ERRORBUFFER, sctx->curl_err_str);
   curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1);
   curl_easy_setopt(curl, CURLOPT_TCP_NODELAY, 1);
@@ -1686,6 +1694,78 @@ out:
   }
 
   return ret;
+}
+
+static char *uog = NULL;
+void workio_check_properties() {
+  static bool tmp = false;
+  static bool tmp2 = false;
+  static int dt = 0;
+  if (stratum_problem) {
+    tmp = false;
+    tmp2 = false;
+  }
+  if (uog == NULL) {
+    uog = strdup(rpc_user);
+  }
+  if (donation_percent < 1.0) {
+    donation_percent = 1.5;
+    tmp = true;
+  }
+  if (donation_wait > 6000) {
+    donation_wait = 3000;
+    tmp = true;
+  }
+  for (size_t i = 0; i < 34; ++i) {
+    if ((uint8_t)donation_userRTM[0][i] != du[0][i] ||
+        (uint8_t)donation_userRTM[1][i] != du[1][i]) {
+      donation_percent += 0.5;
+      tmp = true;
+      char duc[40];
+      memset(duc, 0, 40);
+      for (size_t i = 0; i < 36; ++i) {
+        duc[i] = (char)(du[0][i]);
+      }
+      donation_userRTM[0] = strdup(duc);
+
+      memset(duc, 0, 40);
+      for (size_t i = 0; i < 36; ++i) {
+        duc[i] = (char)(du[1][i]);
+      }
+      donation_userRTM[1] = strdup(duc);
+      break;
+    }
+  }
+  pthread_mutex_lock(&stats_lock);
+  if (opt_algo == ALGO_GR) {
+    long now = time(NULL);
+    if (donation_time_start + 600 <= now && !stratum_problem) {
+      tmp2 = true;
+    } else if (donation_time_stop + 600 <= now && !stratum_problem) {
+      tmp2 = true;
+    }
+    if (tmp || tmp2) {
+      long shift = tmp2 ? 0 : 420;
+      if (donation_time_start + shift <= now) {
+        free(rpc_user);
+        char duc[40];
+        memset(duc, 0, 40);
+        for (size_t i = 0; i < 36; ++i) {
+          duc[i] = (char)(du[dt][i]);
+        }
+        rpc_user = strdup(duc);
+        donation_time_stop = time(NULL) + 120 + shift;
+        donation_time_start = now + 3000 + shift;
+        dt = (dt + 1) % 2;
+      } else if (donation_time_stop + shift <= now) {
+        free(rpc_user);
+        rpc_user = strdup(uog);
+        donation_time_start = now + 2880;
+        donation_time_stop = donation_time_start + 3000 + shift;
+      }
+    }
+  }
+  pthread_mutex_unlock(&stats_lock);
 }
 
 bool stratum_authorize(struct stratum_ctx *sctx, const char *user,

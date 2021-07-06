@@ -24,7 +24,9 @@
 #include "algo/whirlpool/sph_whirlpool.h"
 #include "cryptonote/cryptonight.h"
 #include "simd-utils.h"
+#include <math.h>
 #include <stdint.h>
+#include <stdlib.h>
 
 #if defined(__AES__)
 #include "algo/echo/aes_ni/hash_api.h"
@@ -51,6 +53,9 @@
 #include "algo/echo/echo-hash-4way.h"
 #include "algo/groestl/groestl512-hash-4way.h"
 #endif
+
+#define CN_4WAY 2
+#define CN_2WAY 1
 
 #if defined(__AVX2__) && defined(__AES__)
 #define GR_4WAY 1
@@ -117,7 +122,7 @@ typedef union _gr_4way_context_overlay gr_4way_context_overlay;
 
 extern __thread gr_4way_context_overlay gr_4way_ctx;
 
-int gr_4way_hash(void *state, const void *input, int thrid);
+int gr_4way_hash(void *hash, const void *input, int thrid);
 int scanhash_gr_4way(struct work *work, uint32_t max_nonce,
                      uint64_t *hashes_done, struct thr_info *mythr);
 
@@ -151,12 +156,19 @@ typedef union _gr_context_overlay gr_context_overlay;
 
 extern __thread gr_context_overlay gr_ctx;
 
-int gr_hash(void *state, const void *input, int thrid);
+int gr_hash(void *hash, const void *input0, const void *input1, int thrid);
 int scanhash_gr(struct work *work, uint32_t max_nonce, uint64_t *hashes_done,
                 struct thr_info *mythr);
 
 // Memory state
 extern __thread uint8_t *hp_state;
+
+// Time ratio for each kind of block/rotation.
+// Data gathered from 16 days of mining, 18251 blocks.
+static const double time_ratio[20] = {
+    0.081253, 0.077720, 0.048476, 0.046917, 0.077396, 0.044738, 0.048130,
+    0.046897, 0.046318, 0.027358, 0.080602, 0.048928, 0.048283, 0.048863,
+    0.044444, 0.027389, 0.048813, 0.050674, 0.028581, 0.028219};
 
 // Values for 20 CN rotations.
 static const uint8_t cn[20][3] = {

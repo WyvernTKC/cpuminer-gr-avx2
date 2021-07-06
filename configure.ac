@@ -1,4 +1,4 @@
-AC_INIT([cpuminer-opt-gr], [1.1.5])
+AC_INIT([cpuminer-opt-gr], [1.1.7])
 
 AC_PREREQ([2.59c])
 AC_CANONICAL_SYSTEM
@@ -116,6 +116,11 @@ fi
 LDFLAGS="$PTHREAD_LDFLAGS $LDFLAGS"
 # PTHREAD_LIBS="$PTHREAD_LIBS"
 
+# Numa
+if test "x$have_win32" != "xtrue" ; then
+   AC_CHECK_LIB([numa], [numa_max_node], NUMA_LIBS="-lnuma",[])
+fi
+
 AC_MSG_CHECKING(whether __uint128_t is supported)
 AC_COMPILE_IFELSE([AC_LANG_PROGRAM([static __uint128_t i = 100;])],
       AC_DEFINE(USE_INT128, 1, [Define if __uint128_t is available])
@@ -185,6 +190,8 @@ AC_SUBST(JANSSON_LIBS)
 AC_SUBST(PTHREAD_FLAGS)
 AC_SUBST(PTHREAD_LIBS)
 AC_SUBST(WS2_LIBS)
+
+AC_SUBST(NUMA_LIBS)
 
 AC_CONFIG_FILES([
 	Makefile

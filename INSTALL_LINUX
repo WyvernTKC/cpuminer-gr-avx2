@@ -29,7 +29,7 @@ The following command should install everything you need on Debian based
 distributions such as Ubuntu. Fedora and other distributions may have similar
 but different package names. 
 
-$ sudo apt-get install build-essential automake libssl-dev libcurl4-openssl-dev libjansson-dev libgmp-dev zlib1g-dev git
+$ sudo apt-get install build-essential automake libssl-dev libcurl4-openssl-dev libjansson-dev libgmp-dev zlib1g-dev libnuma-dev git
 
 SHA support on AMD Ryzen CPUs requires gcc version 5 or higher and
 openssl 1.1.0e or higher. Add one of the following to CFLAGS for SHA
@@ -51,7 +51,7 @@ Local builds will always have the best performance and compatibility.
 
 Download the source code for the latest realease from the official repository.
 
-https://github.com/JayDDee/cpuminer-opt/releases
+https://github.com/WyvernTKC/cpuminer-gr-avx2/releases
 
 Extract the source code.
 
@@ -60,9 +60,9 @@ $ tar xvzf cpuminer-opt-x.y.z.tar.gz
 
 Alternatively it can be cloned from git.
 
-$ git clone https://github.com/JayDDee/cpuminer-opt.git
+$ git clone https://github.com/WyvernTKC/cpuminer-gr-avx2/releases
  
-4. Build cpuminer-opt
+4. Build cpuminer-gr
 ---------------------
 
 It is recomended to Build with default options, this will usuallly

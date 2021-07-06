@@ -2,6 +2,25 @@
 
 #if defined(GR_4WAY)
 
+#define CRYPTONIGHT_HASH(variant, way)                                         \
+  if (vectorized) {                                                            \
+    dintrlv_4x64_512(hash0, hash1, hash2, hash3, vhash);                       \
+  }                                                                            \
+                                                                               \
+  if (way == CN_4WAY) {                                                        \
+    cryptonight_##variant##_4way_hash(hash0, hash1, hash2, hash3, hash0,       \
+                                      hash1, hash2, hash3);                    \
+  } else if (way == CN_2WAY) {                                                 \
+    cryptonight_##variant##_2way_hash(hash0, hash1, hash0, hash1);             \
+    cryptonight_##variant##_2way_hash(hash2, hash3, hash2, hash3);             \
+  } else {                                                                     \
+    cryptonight_##variant##_hash(hash0, hash0);                                \
+    cryptonight_##variant##_hash(hash1, hash1);                                \
+    cryptonight_##variant##_hash(hash2, hash2);                                \
+    cryptonight_##variant##_hash(hash3, hash3);                                \
+  }                                                                            \
+  vectorized = false;
+
 int gr_4way_hash(void *output, const void *input, int thrid) {
   uint64_t vhash[10 * 4] __attribute__((aligned(128)));
   uint64_t vhashA[10 * 2] __attribute__((aligned(128)));
@@ -267,95 +286,22 @@ int gr_4way_hash(void *output, const void *input, int thrid) {
       vectorized = true;
       break;
     case CNTurtlelite:
-      if (vectorized) {
-        dintrlv_4x64_512(hash0, hash1, hash2, hash3, vhash);
-      }
-      if (cn_config[Turtlelite]) {
-        cryptonight_turtlelite_2way_hash(hash0, hash1, hash0, hash1);
-        cryptonight_turtlelite_2way_hash(hash2, hash3, hash2, hash3);
-      } else {
-        cryptonight_turtlelite_hash(hash0, hash0);
-        cryptonight_turtlelite_hash(hash1, hash1);
-        cryptonight_turtlelite_hash(hash2, hash2);
-        cryptonight_turtlelite_hash(hash3, hash3);
-      }
-      vectorized = false;
+      CRYPTONIGHT_HASH(turtlelite, cn_config[Turtlelite]);
       break;
     case CNTurtle:
-      if (vectorized) {
-        dintrlv_4x64_512(hash0, hash1, hash2, hash3, vhash);
-      }
-      if (cn_config[Turtle]) {
-        cryptonight_turtle_2way_hash(hash0, hash1, hash0, hash1);
-        cryptonight_turtle_2way_hash(hash2, hash3, hash2, hash3);
-      } else {
-        cryptonight_turtle_hash(hash0, hash0);
-        cryptonight_turtle_hash(hash1, hash1);
-        cryptonight_turtle_hash(hash2, hash2);
-        cryptonight_turtle_hash(hash3, hash3);
-      }
-      vectorized = false;
+      CRYPTONIGHT_HASH(turtle, cn_config[Turtle]);
       break;
     case CNDarklite:
-      if (vectorized) {
-        dintrlv_4x64_512(hash0, hash1, hash2, hash3, vhash);
-      }
-
-      if (cn_config[Darklite]) {
-        cryptonight_darklite_2way_hash(hash0, hash1, hash0, hash1);
-        cryptonight_darklite_2way_hash(hash2, hash3, hash2, hash3);
-      } else {
-        cryptonight_darklite_hash(hash0, hash0);
-        cryptonight_darklite_hash(hash1, hash1);
-        cryptonight_darklite_hash(hash2, hash2);
-        cryptonight_darklite_hash(hash3, hash3);
-      }
-      vectorized = false;
+      CRYPTONIGHT_HASH(darklite, cn_config[Darklite]);
       break;
     case CNDark:
-      if (vectorized) {
-        dintrlv_4x64_512(hash0, hash1, hash2, hash3, vhash);
-      }
-      if (cn_config[Dark]) {
-        cryptonight_dark_2way_hash(hash0, hash1, hash0, hash1);
-        cryptonight_dark_2way_hash(hash2, hash3, hash2, hash3);
-      } else {
-        cryptonight_dark_hash(hash0, hash0);
-        cryptonight_dark_hash(hash1, hash1);
-        cryptonight_dark_hash(hash2, hash2);
-        cryptonight_dark_hash(hash3, hash3);
-      }
-      vectorized = false;
+      CRYPTONIGHT_HASH(dark, cn_config[Dark]);
       break;
     case CNLite:
-      if (vectorized) {
-        dintrlv_4x64_512(hash0, hash1, hash2, hash3, vhash);
-      }
-      if (cn_config[Lite]) {
-        cryptonight_lite_2way_hash(hash0, hash1, hash0, hash1);
-        cryptonight_lite_2way_hash(hash2, hash3, hash2, hash3);
-      } else {
-        cryptonight_lite_hash(hash0, hash0);
-        cryptonight_lite_hash(hash1, hash1);
-        cryptonight_lite_hash(hash2, hash2);
-        cryptonight_lite_hash(hash3, hash3);
-      }
-      vectorized = false;
+      CRYPTONIGHT_HASH(lite, cn_config[Lite]);
       break;
     case CNFast:
-      if (vectorized) {
-        dintrlv_4x64_512(hash0, hash1, hash2, hash3, vhash);
-      }
-      if (cn_config[Fast]) {
-        cryptonight_fast_2way_hash(hash0, hash1, hash0, hash1);
-        cryptonight_fast_2way_hash(hash2, hash3, hash2, hash3);
-      } else {
-        cryptonight_fast_hash(hash0, hash0);
-        cryptonight_fast_hash(hash1, hash1);
-        cryptonight_fast_hash(hash2, hash2);
-        cryptonight_fast_hash(hash3, hash3);
-      }
-      vectorized = false;
+      CRYPTONIGHT_HASH(fast, cn_config[Fast]);
       break;
     }
 
@@ -396,23 +342,19 @@ int scanhash_gr_4way(struct work *work, uint32_t max_nonce,
   __m256i *noncev = (__m256i *)vdata + 9; // aligned
   volatile uint8_t *restart = &(work_restart[thr_id].restart);
 
-  if (opt_tune) {
+  if (!opt_tuned && opt_tune) {
     tune(pdata, thr_id);
     opt_tuned = true; // Tuned.
-    opt_tune = false; // Tune only once.
-    // Prevent error messages after tuning with --benchmark.
-    if (opt_benchmark) {
-      exit(0);
-    }
-  }
-
-  if (opt_benchmark_config) {
-    benchmark_configs(pdata, thr_id);
+    opt_tune = false;
+    return 0;
   }
 
   if (opt_benchmark) {
+    if (thr_id == 0) {
+      applog(LOG_BLUE, "Starting benchmark. Benchmark takes 300s to complete");
+    }
     benchmark(pdata, thr_id, 0);
-    diff_to_hash(ptarget, 0.05 / 65536.0);
+    exit(0);
   }
 
   mm256_bswap32_intrlv80_4x64(vdata, pdata);

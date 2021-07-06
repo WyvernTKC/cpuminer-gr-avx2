@@ -1,20 +1,33 @@
 #include "virtual_memory.h"
 #include "miner.h" // applog
-#include "stdio.h"
+#include <math.h>  // ceil
+#include <stdio.h>
+#include <unistd.h> // usleep
 
 static bool huge_pages = false;
 __thread bool allocated_hp = false;
 __thread size_t currently_allocated = 0;
 
+// Large Page size should be a multiple of 2MiB.
+static inline size_t GetProperSize(size_t size) {
+  return (size_t)ceil((double)size / 2097152.) * 2097152;
+}
+
 #ifdef __MINGW32__
 // Windows
+#ifndef UNICODE
 #define UNICODE
+#endif // UNICODE
+
+#ifndef _UNICODE
 #define _UNICODE
+#endif // _UNICODE
+
 #include <ntsecapi.h>
 #include <ntstatus.h>
 #include <tchar.h>
-#include <windows.h>
 #include <winsock2.h>
+#include <windows.h>
 /*****************************************************************
 SetLockPagesPrivilege: a function to obtain or
 release the privilege of locking physical pages.
@@ -168,14 +181,16 @@ void *AllocateLargePagesMemory(size_t size) {
 }
 
 void DeallocateLargePagesMemory(void **memory) {
-  VirtualFree(*memory, currently_allocated, MEM_RELEASE);
+  VirtualFree(*memory, 0, MEM_RELEASE);
   *memory = NULL;
   allocated_hp = false;
 }
 
 #else
 // Linux
+#include <numa.h> // numa_max_node
 #include <sys/mman.h>
+
 static inline int read_hp(const char *path) {
   FILE *fd;
   fd = fopen(path, "r");
@@ -184,11 +199,12 @@ static inline int read_hp(const char *path) {
   }
 
   uint64_t value = 0;
-  size_t read = fscanf(fd, "%lu", &value);
-  fclose(fd);
+  int read = fscanf(fd, "%lu", &value);
   if (ferror(fd) != 0 || read != 1) {
+    fclose(fd);
     return -2;
   }
+  fclose(fd);
   return (int)value;
 }
 
@@ -199,18 +215,21 @@ static inline bool write_hp(const char *path, uint64_t value) {
     return false;
   }
 
-  fprintf(fd, "%lu", value);
-  fclose(fd);
-  if (ferror(fd) != 0) {
+  int wrote = fprintf(fd, "%lu", value);
+  if (ferror(fd) != 0 && wrote != 1) {
+    fclose(fd);
     return false;
   }
+  fclose(fd);
   return true;
 }
 
-// One thread should allocate 2 MiB of Large Pages.
-bool InitHugePages(size_t threads) {
-  const char *free_path = "/sys/devices/system/node/node0/hugepages/"
-                          "hugepages-2048kB/free_hugepages";
+static bool InitNodeHugePages(size_t threads, size_t node) {
+  char free_path[256];
+  sprintf(free_path,
+          "/sys/devices/system/node/node%lu/hugepages/"
+          "hugepages-2048kB/free_hugepages",
+          node);
   int available_pages = read_hp(free_path);
   if (available_pages < 0) {
     huge_pages = false;
@@ -220,18 +239,89 @@ bool InitHugePages(size_t threads) {
     huge_pages = true;
     return huge_pages;
   }
-  const char *nr_path = "/sys/devices/system/node/node0/hugepages/"
-                        "hugepages-2048kB/nr_hugepages";
+  char nr_path[256];
+  sprintf(nr_path,
+          "/sys/devices/system/node/node%lu/hugepages/"
+          "hugepages-2048kB/nr_hugepages",
+          node);
   int set_pages = read_hp(nr_path);
-  set_pages = set_pages < 0 ? 0 : set_pages;
-  huge_pages = write_hp(nr_path, (size_t)set_pages + threads - available_pages);
+  set_pages = set_pages < 0 ? 0 : set_pages + threads - available_pages;
+  huge_pages = write_hp(nr_path, set_pages);
+
+  // Check if the value was really written.
+  if (huge_pages) {
+    int nr_hugepages = read_hp(nr_path);
+    // Failed to write values properly?
+    if (nr_hugepages < set_pages) {
+      huge_pages = false;
+    }
+  }
+
+  return huge_pages;
+}
+
+// One thread should allocate 2 MiB of Large Pages.
+bool InitHugePages(size_t threads) {
+  // Fast variant requires 2MiB per "way".
+  // AVX2     => 4way possible.
+  // non-AVX2 => 2way possible.
+#ifdef __AVX2__
+  const size_t max_large_pages = 4;
+#else
+  const size_t max_large_pages = 2;
+#endif
+
+  // Detect number of nodes in the system.
+  const size_t nodes = numa_max_node();
+  const size_t hw_threads = numa_num_possible_cpus();
+  if (opt_debug || nodes > 0) {
+    applog(LOG_BLUE, "Detected %lu NUMA node(s).", nodes + 1);
+  }
+
+  int node_cpus[64];
+  memset(node_cpus, 0, 64 * sizeof(int));
+
+  for (size_t node = 0; node <= nodes; ++node) {
+    struct bitmask *mask = numa_allocate_cpumask();
+    numa_node_to_cpus(node, mask);
+    for (size_t i = 0; i < hw_threads; ++i) {
+      node_cpus[node] += numa_bitmask_isbitset(mask, i);
+    }
+    numa_free_nodemask(mask);
+  }
+
+  // Spread Large Pages allocation through each node.
+  if (threads > hw_threads) {
+    applog(LOG_BLUE, "Using %d threads on %d hw_threads.", threads, hw_threads);
+    for (size_t node = 0; node <= nodes; ++node) {
+      int t = node_cpus[node];
+      node_cpus[node] = ceil((double)node_cpus[node] *
+                             ((double)threads / (double)hw_threads));
+      applog(LOG_BLUE, "Treating node %d with %d threads as %d threads.", node,
+             t, node_cpus[node]);
+    }
+  }
+
+  int nodes_ok = 0;
+  int nodes_err = 0;
+  for (size_t node = 0; node <= nodes; ++node) {
+    if (!InitNodeHugePages(node_cpus[node] * max_large_pages, node)) {
+      nodes_err++;
+      applog(LOG_ERR, "Failed to initialize Large Pages on node%lu", node);
+    } else if (opt_debug) {
+      applog(LOG_BLUE, "Successfully initialized Large Pages on node%lu", node);
+      nodes_ok++;
+    }
+  }
+  if (nodes_ok > 0) {
+    huge_pages = true;
+  }
   return huge_pages;
 }
 
 #define MAP_HUGE_2MB (21 << MAP_HUGE_SHIFT)
 void *AllocateLargePagesMemory(size_t size) {
   // Needs to be multiple of Large Pages (2 MiB).
-  size = ((size / 2097152) * 2097152) + 2097152;
 #if defined(__FreeBSD__)
   void *mem =
       mmap(0, size, PROT_READ | PROT_WRITE,
@@ -246,8 +336,7 @@ void *AllocateLargePagesMemory(size_t size) {
 
   if (mem == MAP_FAILED) {
     if (huge_pages) {
-      applog(LOG_ERR,
-             "Huge Pages allocation failed. Run with root privileges.");
+      applog(LOG_ERR, "Huge Pages allocation failed.");
     }
 
     // Retry without huge pages.
@@ -265,8 +354,7 @@ void *AllocateLargePagesMemory(size_t size) {
 
 void DeallocateLargePagesMemory(void **memory) {
   // Needs to be multiple of Large Pages (2 MiB).
-  size_t size = ((currently_allocated / 2097152) * 2097152) + 2097152;
-  int status = munmap(*memory, size);
+  int status = munmap(*memory, GetProperSize(currently_allocated));
   if (status != 0) {
     applog(LOG_ERR, "Could not properly deallocate memory!");
   }
@@ -279,13 +367,13 @@ void DeallocateLargePagesMemory(void **memory) {
 void *AllocateMemory(size_t size) {
   void *mem = AllocateLargePagesMemory(size);
   if (mem == NULL) {
-    if (opt_debug) {
-      applog(LOG_NOTICE, "Using malloc as allocation method");
+    if (huge_pages) {
+      applog(LOG_WARNING, "Using malloc as allocation method.");
     }
     mem = malloc(size);
     allocated_hp = false;
     if (mem == NULL) {
-      applog(LOG_ERR, "Could not allocate any memory for thread");
+      applog(LOG_ERR, "Could not allocate any memory for thread.");
       exit(1);
     }
   } else {
@@ -298,6 +386,9 @@ void *AllocateMemory(size_t size) {
 void DeallocateMemory(void **memory) {
   if (allocated_hp) {
     DeallocateLargePagesMemory(memory);
+    // Wait a while (25ms) after deallocation. Should help with
+    // fast allocation afterwards.
+    usleep(25000);
   } else if (*memory != NULL) {
     // No special method of allocation was used.
     free(*memory);
@@ -305,8 +396,10 @@ void DeallocateMemory(void **memory) {
 }
 
 void PrepareMemory(void **memory, size_t size) {
-  if (*memory != NULL) {
-    DeallocateMemory(memory);
+  if (GetProperSize(currently_allocated) != GetProperSize(size)) {
+    if (*memory != NULL) {
+      DeallocateMemory(memory);
+    }
+    *memory = (void *)AllocateMemory(GetProperSize(size));
   }
-  *memory = (void *)AllocateMemory(size);
 }

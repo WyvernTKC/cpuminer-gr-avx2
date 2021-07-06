@@ -1,155 +1,273 @@
 #include "gr-gate.h"
 
-int gr_hash(void *output, const void *input, int thrid) {
-  uint64_t hash[8] __attribute__((aligned(64)));
+#define CRYPTONIGHT_HASH(variant, way)                                         \
+  if (way == CN_2WAY) {                                                        \
+    cryptonight_##variant##_2way_hash(hash0, hash1, hash0, hash1);             \
+  } else {                                                                     \
+    cryptonight_##variant##_hash(hash0, hash0);                                \
+    cryptonight_##variant##_hash(hash1, hash1);                                \
+  }
+
+#define CORE_HASH(hash, input, output, size)                                   \
+  sph_##hash##512_init(&ctx.hash);                                             \
+  sph_##hash##512(&ctx, input, size);                                          \
+  sph_##hash##512_close(&ctx, output);
+
+int gr_hash(void *output, const void *input0, const void *input1, int thrid) {
+  uint64_t hash0[10] __attribute__((aligned(64)));
+  uint64_t hash1[10] __attribute__((aligned(64)));
   gr_context_overlay ctx;
   memcpy(&ctx, &gr_ctx, sizeof(ctx));
-  void *in = (void *)input;
-  int size = 80;
 
   for (int i = 0; i < 15 + 3; i++) {
     const uint8_t algo = gr_hash_order[i];
     switch (algo) {
     case BLAKE:
-      sph_blake512_init(&ctx.blake);
-      sph_blake512(&ctx.blake, in, size);
-      sph_blake512_close(&ctx.blake, hash);
+      if (i == 0) {
+        CORE_HASH(blake, input0, hash0, 80);
+        CORE_HASH(blake, input1, hash1, 80);
+      } else {
+        CORE_HASH(blake, hash0, hash0, 64);
+        CORE_HASH(blake, hash1, hash1, 64);
+      }
       break;
     case BMW:
-      sph_bmw512_init(&ctx.bmw);
-      sph_bmw512(&ctx.bmw, in, size);
-      sph_bmw512_close(&ctx.bmw, hash);
+      if (i == 0) {
+        CORE_HASH(bmw, input0, hash0, 80);
+        CORE_HASH(bmw, input1, hash1, 80);
+      } else {
+        CORE_HASH(bmw, hash0, hash0, 64);
+        CORE_HASH(bmw, hash1, hash1, 64);
+      }
       break;
     case GROESTL:
 #if defined(__AES__)
-      groestl512_full(&ctx.groestl, (char *)hash, (char *)in, size << 3);
+      if (i == 0) {
+        groestl512_full(&ctx.groestl, (char *)hash0, (char *)input0, 640);
+        groestl512_full(&ctx.groestl, (char *)hash1, (char *)input1, 640);
+      } else {
+        groestl512_full(&ctx.groestl, (char *)hash0, (char *)hash0, 512);
+        groestl512_full(&ctx.groestl, (char *)hash1, (char *)hash1, 512);
+      }
 #else
-      sph_groestl512_init(&ctx.groestl);
-      sph_groestl512(&ctx.groestl, in, size);
-      sph_groestl512_close(&ctx.groestl, hash);
+      if (i == 0) {
+        CORE_HASH(groestl, input0, hash0, 80);
+        CORE_HASH(groestl, input1, hash1, 80);
+      } else {
+        CORE_HASH(groestl, hash0, hash0, 64);
+        CORE_HASH(groestl, hash1, hash1, 64);
+      }
 #endif
       break;
     case SKEIN:
-      sph_skein512_init(&ctx.skein);
-      sph_skein512(&ctx.skein, in, size);
-      sph_skein512_close(&ctx.skein, hash);
+      if (i == 0) {
+        CORE_HASH(skein, input0, hash0, 80);
+        CORE_HASH(skein, input1, hash1, 80);
+      } else {
+        CORE_HASH(skein, hash0, hash0, 64);
+        CORE_HASH(skein, hash1, hash1, 64);
+      }
       break;
     case JH:
-      sph_jh512_init(&ctx.jh);
-      sph_jh512(&ctx.jh, in, size);
-      sph_jh512_close(&ctx.jh, hash);
+      if (i == 0) {
+        CORE_HASH(jh, input0, hash0, 80);
+        CORE_HASH(jh, input1, hash1, 80);
+      } else {
+        CORE_HASH(jh, hash0, hash0, 64);
+        CORE_HASH(jh, hash1, hash1, 64);
+      }
       break;
     case KECCAK:
-      sph_keccak512_init(&ctx.keccak);
-      sph_keccak512(&ctx.keccak, in, size);
-      sph_keccak512_close(&ctx.keccak, hash);
+      if (i == 0) {
+        CORE_HASH(keccak, input0, hash0, 80);
+        CORE_HASH(keccak, input1, hash1, 80);
+      } else {
+        CORE_HASH(keccak, hash0, hash0, 64);
+        CORE_HASH(keccak, hash1, hash1, 64);
+      }
       break;
     case LUFFA:
-      luffa_full(&ctx.luffa, (BitSequence *)hash, 512, (const BitSequence *)in,
-                 size);
+      if (i == 0) {
+        luffa_full(&ctx.luffa, (BitSequence *)hash0, 512,
+                   (const BitSequence *)input0, 80);
+        luffa_full(&ctx.luffa, (BitSequence *)hash1, 512,
+                   (const BitSequence *)input1, 80);
+      } else {
+        luffa_full(&ctx.luffa, (BitSequence *)hash0, 512,
+                   (const BitSequence *)hash0, 64);
+        luffa_full(&ctx.luffa, (BitSequence *)hash1, 512,
+                   (const BitSequence *)hash1, 64);
+      }
       break;
     case CUBEHASH:
-      cubehash_full(&ctx.cube, (byte *)hash, 512, (byte *)in, size);
+      if (i == 0) {
+        cubehash_full(&ctx.cube, (byte *)hash0, 512, (byte *)input0, 80);
+        cubehash_full(&ctx.cube, (byte *)hash1, 512, (byte *)input1, 80);
+      } else {
+        cubehash_full(&ctx.cube, (byte *)hash0, 512, (byte *)hash0, 64);
+        cubehash_full(&ctx.cube, (byte *)hash1, 512, (byte *)hash1, 64);
+      }
       break;
     case SHAVITE:
-      shavite512_full(&ctx.shavite, hash, in, size);
+      if (i == 0) {
+        shavite512_full(&ctx.shavite, hash0, input0, 80);
+        shavite512_full(&ctx.shavite, hash1, input1, 80);
+      } else {
+        shavite512_full(&ctx.shavite, hash0, hash0, 64);
+        shavite512_full(&ctx.shavite, hash1, hash1, 64);
+      }
       break;
     case SIMD:
-      simd_full(&ctx.simd, (BitSequence *)hash, (const BitSequence *)in,
-                size << 3);
+      if (i == 0) {
+        simd_full(&ctx.simd, (BitSequence *)hash0, (const BitSequence *)input0,
+                  640);
+        simd_full(&ctx.simd, (BitSequence *)hash1, (const BitSequence *)input1,
+                  640);
+      } else {
+        simd_full(&ctx.simd, (BitSequence *)hash0, (const BitSequence *)hash0,
+                  512);
+        simd_full(&ctx.simd, (BitSequence *)hash1, (const BitSequence *)hash1,
+                  512);
+      }
       break;
     case ECHO:
 #if defined(__AES__)
-      echo_full(&ctx.echo, (BitSequence *)hash, 512, (const BitSequence *)in,
-                size);
+      if (i == 0) {
+        echo_full(&ctx.echo, (BitSequence *)hash0, 512,
+                  (const BitSequence *)input0, 80);
+        echo_full(&ctx.echo, (BitSequence *)hash1, 512,
+                  (const BitSequence *)input1, 80);
+      } else {
+        echo_full(&ctx.echo, (BitSequence *)hash0, 512,
+                  (const BitSequence *)hash0, 64);
+        echo_full(&ctx.echo, (BitSequence *)hash1, 512,
+                  (const BitSequence *)hash1, 64);
+      }
 #else
-      sph_echo512_init(&ctx.echo);
-      sph_echo512(&ctx.echo, in, size);
-      sph_echo512_close(&ctx.echo, hash);
+      if (i == 0) {
+        CORE_HASH(echo, input0, hash0, 80);
+        CORE_HASH(echo, input1, hash1, 80);
+      } else {
+        CORE_HASH(echo, hash0, hash0, 64);
+        CORE_HASH(echo, hash1, hash1, 64);
+      }
 #endif
       break;
     case HAMSI:
-      sph_hamsi512_init(&ctx.hamsi);
-      sph_hamsi512(&ctx.hamsi, in, size);
-      sph_hamsi512_close(&ctx.hamsi, hash);
+      if (i == 0) {
+        CORE_HASH(hamsi, input0, hash0, 80);
+        CORE_HASH(hamsi, input1, hash1, 80);
+      } else {
+        CORE_HASH(hamsi, hash0, hash0, 64);
+        CORE_HASH(hamsi, hash1, hash1, 64);
+      }
       break;
     case FUGUE:
 #if defined(__AES__)
-      fugue512_full(&ctx.fugue, hash, in, size);
+      if (i == 0) {
+        fugue512_full(&ctx.fugue, hash0, input0, 80);
+        fugue512_full(&ctx.fugue, hash1, input1, 80);
+      } else {
+        fugue512_full(&ctx.fugue, hash0, hash0, 64);
+        fugue512_full(&ctx.fugue, hash1, hash1, 64);
+      }
 #else
-      sph_fugue512_full(&ctx.fugue, hash, in, size);
+      if (i == 0) {
+        sph_fugue512_full(&ctx.fugue, hash0, input0, 80);
+        sph_fugue512_full(&ctx.fugue, hash1, input1, 80);
+      } else {
+        sph_fugue512_full(&ctx.fugue, hash0, hash0, 64);
+        sph_fugue512_full(&ctx.fugue, hash1, hash1, 64);
+      }
 #endif
       break;
     case SHABAL:
-      sph_shabal512_init(&ctx.shabal);
-      sph_shabal512(&ctx.shabal, in, size);
-      sph_shabal512_close(&ctx.shabal, hash);
+      if (i == 0) {
+        CORE_HASH(shabal, input0, hash0, 80);
+        CORE_HASH(shabal, input1, hash1, 80);
+      } else {
+        CORE_HASH(shabal, hash0, hash0, 64);
+        CORE_HASH(shabal, hash1, hash1, 64);
+      }
       break;
     case WHIRLPOOL:
-      sph_whirlpool512_full(&ctx.whirlpool, hash, in, size);
+      if (i == 0) {
+        sph_whirlpool512_full(&ctx.whirlpool, hash0, input0, 80);
+        sph_whirlpool512_full(&ctx.whirlpool, hash1, input1, 80);
+      } else {
+        sph_whirlpool512_full(&ctx.whirlpool, hash0, hash0, 64);
+        sph_whirlpool512_full(&ctx.whirlpool, hash1, hash1, 64);
+      }
       break;
     case CNTurtlelite:
-      cryptonight_turtlelite_hash(in, hash);
+      CRYPTONIGHT_HASH(turtlelite, cn_config[Turtlelite]);
       break;
     case CNTurtle:
-      cryptonight_turtle_hash(in, hash);
+      CRYPTONIGHT_HASH(turtle, cn_config[Turtle]);
       break;
     case CNDarklite:
-      cryptonight_darklite_hash(in, hash);
+      CRYPTONIGHT_HASH(darklite, cn_config[Darklite]);
       break;
     case CNDark:
-      cryptonight_dark_hash(in, hash);
+      CRYPTONIGHT_HASH(dark, cn_config[Dark]);
       break;
     case CNLite:
-      cryptonight_lite_hash(in, hash);
+      CRYPTONIGHT_HASH(lite, cn_config[Lite]);
       break;
     case CNFast:
-      cryptonight_fast_hash(in, hash);
+      CRYPTONIGHT_HASH(fast, cn_config[Fast]);
       break;
     }
 
     // Stop early.
-    if (work_restart[thrid].restart && !opt_benchmark) {
+    if (work_restart[thrid].restart && !(opt_benchmark || opt_tune)) {
       if (opt_debug) {
         applog(LOG_DEBUG, "Thread %d exit early", thrid);
       }
       return 0;
     }
-    in = (void *)hash;
-    size = 64;
   }
-  memcpy(output, hash, 32);
+  memcpy(output, hash0, 32);
+  memcpy(output + 32, hash1, 32);
   return 1;
 }
 
 int scanhash_gr(struct work *work, uint32_t max_nonce, uint64_t *hashes_done,
                 struct thr_info *mythr) {
-
-  uint32_t _ALIGN(128) hash32[8];
-  uint32_t _ALIGN(128) edata[20];
+  uint32_t hash[2 * 8] __attribute__((aligned(64)));
+  uint32_t edata0[20] __attribute__((aligned(64)));
+  uint32_t edata1[20] __attribute__((aligned(64)));
   uint32_t *pdata = work->data;
   uint32_t *ptarget = work->target;
   const uint32_t first_nonce = pdata[19];
+  const uint32_t last_nonce = max_nonce - 2;
   const int thr_id = mythr->id;
   uint32_t nonce = first_nonce;
   volatile uint8_t *restart = &(work_restart[thr_id].restart);
 
-  if (opt_benchmark_config) {
-    benchmark_configs(pdata, thr_id);
+  if (!opt_tuned && opt_tune) {
+    tune(pdata, thr_id);
+    opt_tuned = true; // Tuned.
+    opt_tune = false;
+    return 0;
   }
 
   if (opt_benchmark) {
+    if (thr_id == 0) {
+      applog(LOG_BLUE, "Starting benchmark. Benchmark takes 300s to complete");
+    }
     benchmark(pdata, thr_id, 0);
-    diff_to_hash(ptarget, 0.05 / 65536.0);
+    exit(0);
   }
 
-  mm128_bswap32_80(edata, pdata);
+  mm128_bswap32_80(edata0, pdata);
+  mm128_bswap32_80(edata1, pdata);
 
   // Check if algorithm order changed.
   static __thread uint32_t s_ntime = UINT32_MAX;
   if (s_ntime != pdata[17]) {
     uint32_t ntime = swab32(pdata[17]);
-    gr_getAlgoString((const uint8_t *)(&edata[1]), gr_hash_order);
+    gr_getAlgoString((const uint8_t *)(&edata0[1]), gr_hash_order);
     s_ntime = ntime;
     if (opt_debug && !thr_id) {
       char order[100];
@@ -158,26 +276,35 @@ int scanhash_gr(struct work *work, uint32_t max_nonce, uint64_t *hashes_done,
       }
       applog(LOG_DEBUG, "hash order %s (%08x)", order, ntime);
     }
+    if (opt_tuned) {
+      select_tuned_config(thr_id);
+    }
   }
 
   // Allocates hp_state for Cryptonight algorithms.
   // Needs to be run AFTER gr_hash_order is set!
   AllocateNeededMemory();
 
+  edata0[19] = nonce;
+  edata1[19] = nonce + 1;
+
   do {
-    edata[19] = nonce;
-    if (gr_hash(hash32, edata, thr_id)) {
-      if (unlikely(valid_hash(hash32, ptarget))) {
-        if (opt_debug) {
-          applog(LOG_BLUE, "Solution found. Nonce: %u | Diff: %.10lf",
-                 bswap_32(nonce), hash_to_diff(hash32));
+    if (gr_hash(hash, edata0, edata1, thr_id)) {
+      for (int i = 0; i < 2; i++) {
+        if (unlikely(valid_hash(hash + (i << 3), ptarget))) {
+          if (opt_debug) {
+            applog(LOG_BLUE, "Solution found. Nonce: %u | Diff: %.10lf",
+                   bswap_32(nonce + i), hash_to_diff(hash + (i << 3)));
+          }
+          pdata[19] = bswap_32(nonce + i);
+          submit_solution(work, hash + (i << 3), mythr);
         }
-        pdata[19] = bswap_32(nonce);
-        submit_solution(work, hash32, mythr);
       }
     }
-    nonce++;
-  } while (likely(nonce < max_nonce && !(*restart)));
+    edata0[19] += 2;
+    edata1[19] += 2;
+    nonce += 2;
+  } while (likely((nonce < last_nonce) && !(*restart)));
   pdata[19] = nonce;
   *hashes_done = pdata[19] - first_nonce;
   return 0;

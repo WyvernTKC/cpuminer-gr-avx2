@@ -55,6 +55,7 @@ mv cpuminer.exe bin/win/${4}/cpuminer-${2}.exe
 
 }
 
+
 #Non-AES
 # Generic SSE2
 compile "x86-64" "sse2" "-msse"

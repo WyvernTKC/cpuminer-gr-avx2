@@ -1,5 +1,6 @@
 /* determine os */
 #if defined(_WIN32)	|| defined(_WIN64) || defined(__TOS_WIN__) || defined(__WINDOWS__)
+	#include <winsock2.h>
 	#include <windows.h>
 	#include <wincrypt.h>
 	#define OS_WINDOWS

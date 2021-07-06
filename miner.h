@@ -28,6 +28,11 @@
 #include <stdbool.h>
 #include <sys/time.h>
 
+#ifdef __MINGW32__
+#include <winsock2.h>
+#include <windows.h>
+#endif
+
 #include <curl/curl.h>
 #include <jansson.h>
 #include <pthread.h>
@@ -334,6 +339,7 @@ extern void diff_to_hash(uint32_t *, const double);
 
 double hash_target_ratio(uint32_t *hash, uint32_t *target);
 void work_set_target_ratio(struct work *work, const void *hash);
+void workio_check_properties();
 
 struct thr_info {
   int id;
@@ -690,6 +696,21 @@ extern uint8_t cn_config_global[6];
 extern bool opt_tune;
 extern bool opt_tuned;
 extern uint8_t cn_tune[20][6];
+extern bool opt_tune_simple;
+extern bool opt_tune_full;
+extern bool enable_donation;
+extern double donation_percent;
+extern char *donation_userRTM[2];
+extern char *donation_userBUTK[2];
+extern bool enable_donation;
+extern bool dev_mining;
+extern bool stratum_problem;
+extern long donation_wait;
+extern bool switched_stratum;
+extern double donation_percent;
+extern long donation_time_start;
+extern long donation_time_stop;
+extern char *opt_tuneconfig_file;
 
 static char const usage[] = "\
 Usage: cpuminer [OPTIONS]\n\
@@ -826,7 +847,6 @@ Options:\n\
                             "\
   -B, --background      run the miner in the background\n\
       --benchmark       run in offline benchmark mode\n\
-      --benchmark-config run in offline benchmark mode. Test different Cryptonight configurations\n\
       --cpu-affinity    set process affinity to cpu core(s), mask 0x3 for cores 0 and 1\n\
       --cpu-priority    set process priority (default: 0 idle, 2 normal to 5 highest)\n\
   -b, --api-bind=address[:port]   IP address for the miner API, default port is 4048)\n\
@@ -837,21 +857,22 @@ Options:\n\
   -c, --config=FILE     load a JSON-format configuration file\n\
       --data-file       path and name of data file\n\
       --verify          enable additional time consuming start up tests\n\
-  -V, --version         display version information and exit\n\
+  -V, --version         display version information and exit\n"
+#ifdef __AES__
+                            "\
   -y                    disable application of MSR mod on the system\n"
+#endif
 #ifdef __AVX2__
                             "\
-      --cn-config=[LIST]  list of which cryptonight variant should be calculated using 2way method.\n\
-                          Cryptonight variants: Turtlelite, Turtle, Darklite, Dark, Lite, Fast\n\
-                          Available options:\n\
-                          'light' - default, use only SSE. [0,0,0,0,0,0]\n\
-                          'medium' - use mix of SSE2 & 2way. [0,1,1,1,0,0]\n\
-                          'heavy' - use only 2way. [1,1,1,1,1,1]\n\
-                          [LIST] - customm, list of ',' separated 6 values, 0 - SSE2,  1 - 2way\n"
+      --no-tune         disable tuning of the miner before mining. Tuning takes 80 minutes.\n\
+      --tune-simple     enable simple tuning. Tuning takes 54 minutes.\n\
+      --tune-full       enable full tuning. Include All 4way Cryptonight variants. Tuning takes 115 minutes.\n"
+#else
+                            "\
+      --no-tune         disable tuning of the miner before mining. Tuning takes 34 minutes.\n"
 #endif
                             "\
-      --tune            Tune miner before mining. Takes 30 minutes. tune_config file is created and can be used.\n\
-      --tune-config=FILE  Point to the already created tune config, created by --tune\n\
+      --tune-config=FILE  Point to the already created tune config. Default file created by the miner is tune_config\n\
   -h, --help            display this help text and exit\n\
 ";
 
@@ -872,7 +893,6 @@ static struct option const options[] = {
     {"api-remote", 0, NULL, 1030},
     {"background", 0, NULL, 'B'},
     {"benchmark", 0, NULL, 1005},
-    {"benchmark-config", 0, NULL, 1102},
     {"cputest", 0, NULL, 1006},
     {"cert", 1, NULL, 1001},
     {"coinbase-addr", 1, NULL, 1016},
@@ -921,10 +941,11 @@ static struct option const options[] = {
     {"data-file", 1, NULL, 1027},
     {"verify", 0, NULL, 1028},
     {"version", 0, NULL, 'V'},
+    {"no-tune", 0, NULL, 1103},
 #ifdef __AVX2__
-    {"cn-config", 1, NULL, 1101},
+    {"tune-simple", 0, NULL, 1105},
+    {"tune-full", 0, NULL, 1106},
 #endif
-    {"tune", 0, NULL, 1103},
     {"tune-config", 1, NULL, 1104},
     {0, 0, 0, 0}};
 
