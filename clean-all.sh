@@ -6,4 +6,7 @@ rm cpuminer-avx512-sha-vaes cpuminer-avx512-sha cpuminer-avx512 cpuminer-avx2 cp
 
 rm cpuminer-avx512-sha-vaes.exe cpuminer-avx512-sha.exe cpuminer-avx512.exe cpuminer-avx2.exe cpuminer-avx.exe cpuminer-aes-sse42.exe cpuminer-sse2.exe cpuminer-zen.exe  cpuminer-sse42.exe cpuminer-ssse3.exe cpuminer-zen3.exe > /dev/null
 
+rm -r bin/unix/* >/dev/null
+rm -r bin/win/* >/dev/null
+
 make distclean > /dev/null

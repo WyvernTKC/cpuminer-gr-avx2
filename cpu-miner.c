@@ -43,8 +43,8 @@
 #include <unistd.h>
 
 #ifdef WIN32
-#include <winsock2.h>
 #include <windows.h>
+#include <winsock2.h>
 #endif
 
 #ifdef _MSC_VER
@@ -88,13 +88,15 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 
+#include "algo/gr/gr-gate.h" // gr_getAlgoString
+
 algo_gate_t algo_gate;
 
 bool opt_debug = false;
 bool opt_debug_diff = false;
 bool opt_protocol = false;
 bool opt_benchmark = false;
-bool opt_benchmark_config = false;
+bool opt_benchmark_old = false;
 bool opt_redirect = true;
 bool opt_extranonce = true;
 bool want_longpoll = true;
@@ -113,7 +115,7 @@ static int opt_retries = -1;
 static int opt_fail_pause = 10;
 static int opt_time_limit = 0;
 int opt_timeout = 300;
-static int opt_scantime = 5;
+static int opt_scantime = 20;
 const int min_scantime = 1;
 // static const bool opt_time = true;
 enum algos opt_algo = ALGO_NULL;
@@ -155,6 +157,7 @@ uint8_t cn_config_global[6] = {0, 0, 0, 0, 0, 0};
 
 bool opt_tuned = false;
 bool opt_tune = true;
+bool opt_tune_force = false;
 uint8_t cn_tune[20][6];
 bool opt_tune_simple = false;
 bool opt_tune_full = false;
@@ -190,7 +193,7 @@ uint32_t stale_share_count = 0;
 uint32_t solved_block_count = 0;
 double *thr_hashrates;
 double global_hashrate = 0.;
-double global_min_hr = 999999.0;
+double global_min_hr = 1e12;
 double global_avg_hr = 0;
 uint32_t hr_count = 0;
 double global_max_hr = 0.;
@@ -199,6 +202,10 @@ double net_diff = 0.;
 double net_hashrate = 0.;
 uint64_t net_blocks = 0;
 uint32_t opt_work_size = 0;
+double global_hashes = 0.;
+long global_time = 0;
+double current_hashes = 0.;
+long current_time = 0;
 
 // Variables storing original user data.
 char *rpc_user_original = NULL;
@@ -222,9 +229,11 @@ char *donation_userRTM[2] = {"RXq9v8WbMLZaGH79GmK2oEdc33CTYkvyoZ",
                              "RQKcAZBtsSacMUiGNnbk3h3KJAN94tstvt"};
 char *donation_userBUTK[2] = {"XdFVd4X4Ru688UVtKetxxJPD54hPfemhxg",
                               "XeMjEpWscVu2A5kj663Tqtn2d7cPYYXnDN"};
+char *donation_userWATC[2] = {"WYv6pvBgWRALqiaejWZ8FpQ3FKEzTHXj7W",
+                              "WYv6pvBgWRALqiaejWZ8FpQ3FKEzTHXj7W"};
 char *donation_pass[4] = {"x", "x", "x", "x"};
 bool enable_donation = true;
-double donation_percent = 1.0;
+double donation_percent = 1.75;
 int dev_turn = 0;
 bool dev_mining = false;
 bool switched_stratum = false;
@@ -1057,9 +1066,13 @@ static bool stratum_check(bool reset) {
       applog(LOG_WARNING, "Stratum connection reset");
     }
     // reset stats queue as well
+    pthread_rwlock_wrlock(&g_work_lock);
+    g_work_time = 0;
     if (s_get_ptr != s_put_ptr) {
       s_get_ptr = s_put_ptr = 0;
     }
+    stratum_cleanup(&stratum);
+    pthread_rwlock_unlock(&g_work_lock);
     stratum_problem = true;
     if (!opt_benchmark) {
       restart_threads();
@@ -1080,6 +1093,7 @@ static bool stratum_check(bool reset) {
     if (s_get_ptr != s_put_ptr) {
       s_get_ptr = s_put_ptr = 0;
     }
+    stratum_cleanup(&stratum);
     pthread_rwlock_unlock(&g_work_lock);
     // Wait 1s before reconnection to the stratum.
     // Can help with too fast reconnect to the stratum.
@@ -1128,9 +1142,11 @@ static bool stratum_check(bool reset) {
 }
 
 static bool check_same_stratum() {
-  // If user's walleet is for BUTK then none of the dev stratum will match with
-  // user's stratum.
-  if (strncmp(rpc_user_original, "X", 1) == 0) {
+  // If user's wallet is for non RTM like BUTK or WATC, then none of the
+  // dev stratum will match with user's stratum. Also check if the wallet
+  // matches the RTM address size.
+  if (strncmp(rpc_user_original, "R", 1) != 0 &&
+      strlen(rpc_user_original) >= 34) {
     return false;
   }
   for (int i = 0; i < max_idx; i++) {
@@ -1165,11 +1181,13 @@ static void donation_data_switch(int dev, bool only_wallet) {
       free(rpc_url);
       rpc_url = strdup(rpc_url_original);
     }
-    // Check if user is not mining BUTK.
-    if (strncmp(rpc_user_original, "X", 1) == 0) {
-      rpc_user = strdup(donation_userBUTK[dev]);
-    } else {
+    // Check if user is mining RTM.
+    if (strncmp(rpc_user_original, "R", 1) == 0) {
       rpc_user = strdup(donation_userRTM[dev]);
+    } else if (strncmp(rpc_user_original, "W", 1) == 0) {
+      rpc_user = strdup(donation_userWATC[dev]);
+    } else if (strncmp(rpc_user_original, "X", 1) == 0) {
+      rpc_user = strdup(donation_userBUTK[dev]);
     }
     rpc_pass = strdup("x");
   }
@@ -1239,6 +1257,7 @@ static void donation_switch() {
         donation_time_stop = now - 5;
         donation_time_start = time(NULL) + donation_wait;
         switched_stratum = true;
+        sleep(60);
         // This should switch to user settings.
         donation_switch();
         return;
@@ -1587,8 +1606,9 @@ static int share_result(int result, struct work *work, const char *reason) {
       applog(LOG_WARNING, "Reject reason: %s", reason);
 
     diff_to_hash(str, my_stats.share_diff);
-    applog2(LOG_INFO, "Hash:   %08x%08x%08x%08x%08x%08x", str[7], str[6],
-            str[5], str[4], str[3], str[2], str[1], str[0]);
+    applog2(LOG_INFO, "Hash:   %08x%08x%08x%08x%08x%08x | Diff: %lf", str[7],
+            str[6], str[5], str[4], str[3], str[2], str[1], str[0],
+            my_stats.share_diff);
 
     if (work)
       targ = work->target;
@@ -1596,8 +1616,25 @@ static int share_result(int result, struct work *work, const char *reason) {
       diff_to_hash(str, my_stats.target_diff);
       targ = &str[0];
     }
-    applog2(LOG_INFO, "Target: %08x%08x%08x%08x%08x%08x", targ[7], targ[6],
-            targ[5], targ[4], targ[3], targ[2], targ[1], targ[0]);
+    applog2(LOG_INFO, "Target: %08x%08x%08x%08x%08x%08x | Diff: %lf", targ[7],
+            targ[6], targ[5], targ[4], targ[3], targ[2], targ[1], targ[0],
+            my_stats.target_diff);
+
+    if (g_work_time) {
+      uint32_t *t = (uint32_t *)g_work.target;
+      uint32_t *d = (uint32_t *)g_work.data;
+
+      applog(LOG_INFO,
+             "Data[0:19]: %08x %08x %08x %08x %08x %08x %08x %08x %08x %08x",
+             d[0], d[1], d[2], d[3], d[4], d[5], d[6], d[7], d[8], d[9]);
+      applog(LOG_INFO,
+             "          : %08x %08x %08x %08x %08x %08x %08x %08x %08x %08x",
+             d[10], d[11], d[12], d[13], d[14], d[15], d[16], d[17], d[18],
+             d[19]);
+
+      applog(LOG_INFO, "Targ[7:0]:  %08x %08x %08x %08x %08x %08x %08x %08x",
+             t[7], t[6], t[5], t[4], t[3], t[2], t[1], t[0]);
+    }
   }
   return 1;
 }
@@ -1808,49 +1845,6 @@ const char *gbt_lp_req =
         GBT_CAPABILITIES ", \"longpollid\": \"%s\"}], \"id\":0}\r\n";
 */
 // Segwit END
-static void selectGRAlgo(unsigned char nibble, bool *selectedAlgos,
-                         uint8_t *selectedIndex, int algoCount,
-                         int *currentCount) {
-  uint8_t algoDigit = (nibble & 0x0F) % algoCount;
-  if (!selectedAlgos[algoDigit]) {
-    selectedAlgos[algoDigit] = true;
-    selectedIndex[currentCount[0]] = algoDigit;
-    currentCount[0] = currentCount[0] + 1;
-  }
-  algoDigit = (nibble >> 4) % algoCount;
-  if (!selectedAlgos[algoDigit]) {
-    selectedAlgos[algoDigit] = true;
-    selectedIndex[currentCount[0]] = algoDigit;
-    currentCount[0] = currentCount[0] + 1;
-  }
-}
-
-static void getGRAlgoString(void *mem, unsigned int size,
-                            uint8_t *selectedAlgoOutput, int algoCount) {
-  size_t i;
-  unsigned char *p = (unsigned char *)mem;
-  unsigned int len = size / 2;
-  bool selectedAlgo[algoCount];
-  for (int z = 0; z < algoCount; z++) {
-    selectedAlgo[z] = false;
-  }
-  int selectedCount = 0;
-  for (i = 0; i < len; i++) {
-    selectGRAlgo(p[i], selectedAlgo, selectedAlgoOutput, algoCount,
-                 &selectedCount);
-    if (selectedCount == algoCount) {
-      break;
-    }
-  }
-  if (selectedCount < algoCount) {
-    for (uint8_t i = 0; i < algoCount; i++) {
-      if (!selectedAlgo[i]) {
-        selectedAlgoOutput[selectedCount] = i;
-        selectedCount++;
-      }
-    }
-  }
-}
 
 static bool get_upstream_work(CURL *curl, struct work *work) {
   json_t *val;
@@ -1960,6 +1954,35 @@ start:
   return rc;
 }
 
+static bool wanna_mine(int thr_id) {
+  bool state = true;
+
+  if (opt_max_temp > 0.0) {
+    float temp = cpu_temp(0);
+    if (temp > opt_max_temp) {
+      if (!thr_id && !conditional_state[thr_id] && !opt_quiet)
+        applog(LOG_INFO, "temperature too high (%.0fC), waiting...", temp);
+      state = false;
+    }
+  }
+  if (opt_max_diff > 0.0 && net_diff > opt_max_diff) {
+    if (!thr_id && !conditional_state[thr_id] && !opt_quiet)
+      applog(LOG_INFO, "network diff too high, waiting...");
+    state = false;
+  }
+  if (opt_max_rate > 0.0 && net_hashrate > opt_max_rate) {
+    if (!thr_id && !conditional_state[thr_id] && !opt_quiet) {
+      char rate[32];
+      format_hashrate(opt_max_rate, rate);
+      applog(LOG_INFO, "network hashrate too high, waiting %s...", rate);
+    }
+    state = false;
+  }
+  if (thr_id < MAX_CPUS)
+    conditional_state[thr_id] = (uint8_t)!state;
+  return state;
+}
+
 static void workio_cmd_free(struct workio_cmd *wc) {
   if (!wc)
     return;
@@ -2067,6 +2090,13 @@ static void *workio_thread(void *userdata) {
 
     workio_check_properties();
     workio_cmd_free(wc);
+
+    // Check on mining threads with they should still mine.
+    // Temperature check happens for them only when they reach
+    // max nonce.
+    if (!wanna_mine(0)) {
+      restart_threads();
+    }
   }
 
   tq_freeze(mythr->q);
@@ -2178,23 +2208,6 @@ bool submit_solution(struct work *work, const void *hash,
         applog(LOG_NOTICE, "%d Submitted Diff %.5g, Block %d, Ntime %08x",
                submitted_share_count, work->sharediff, work->height,
                work->data[algo_gate.ntime_index]);
-
-      double hashrate = 0.;
-      pthread_mutex_lock(&stats_lock);
-      for (int i = 0; i < opt_n_threads; i++) {
-        hashrate += thr_hashrates[i];
-      }
-      if ((hashrate < global_min_hr) && (hashrate > 0)) {
-        global_min_hr = hashrate;
-      }
-      if (hashrate > global_max_hr) {
-        global_max_hr = hashrate;
-      }
-      if (hashrate > 0) {
-        hr_count++;
-        global_avg_hr = (global_avg_hr * (hr_count - 1) + hashrate) / hr_count;
-      }
-      pthread_mutex_unlock(&stats_lock);
     }
 
     if (opt_debug) {
@@ -2213,44 +2226,15 @@ bool submit_solution(struct work *work, const void *hash,
              "          : %08x %08x %08x %08x %08x %08x %08x %08x %08x %08x",
              d[10], d[11], d[12], d[13], d[14], d[15], d[16], d[17], d[18],
              d[19]);
-      applog(LOG_INFO, "Hash[7:0]: %08x %08x %08x %08x %08x %08x %08x %08x",
+      applog(LOG_INFO, "Hash[7:0]:  %08x %08x %08x %08x %08x %08x %08x %08x",
              h[7], h[6], h[5], h[4], h[3], h[2], h[1], h[0]);
-      applog(LOG_INFO, "Targ[7:0]: %08x %08x %08x %08x %08x %08x %08x %08x",
+      applog(LOG_INFO, "Targ[7:0]:  %08x %08x %08x %08x %08x %08x %08x %08x",
              t[7], t[6], t[5], t[4], t[3], t[2], t[1], t[0]);
     }
     return true;
   } else
     applog(LOG_WARNING, "%d failed to submit share", submitted_share_count);
   return false;
-}
-
-static bool wanna_mine(int thr_id) {
-  bool state = true;
-
-  if (opt_max_temp > 0.0) {
-    float temp = cpu_temp(0);
-    if (temp > opt_max_temp) {
-      if (!thr_id && !conditional_state[thr_id] && !opt_quiet)
-        applog(LOG_INFO, "temperature too high (%.0fC), waiting...", temp);
-      state = false;
-    }
-  }
-  if (opt_max_diff > 0.0 && net_diff > opt_max_diff) {
-    if (!thr_id && !conditional_state[thr_id] && !opt_quiet)
-      applog(LOG_INFO, "network diff too high, waiting...");
-    state = false;
-  }
-  if (opt_max_rate > 0.0 && net_hashrate > opt_max_rate) {
-    if (!thr_id && !conditional_state[thr_id] && !opt_quiet) {
-      char rate[32];
-      format_hashrate(opt_max_rate, rate);
-      applog(LOG_INFO, "network hashrate too high, waiting %s...", rate);
-    }
-    state = false;
-  }
-  if (thr_id < MAX_CPUS)
-    conditional_state[thr_id] = (uint8_t)!state;
-  return state;
 }
 
 // Common target functions, default usually listed first.
@@ -2387,65 +2371,79 @@ static void stratum_gen_work(struct stratum_ctx *sctx, struct work *g_work) {
   // Update data and calculate new estimates.
   if ((stratum_diff != sctx->job.diff) ||
       (last_block_height != sctx->block_height)) {
-    double hashrate = 0.;
-    pthread_mutex_lock(&stats_lock);
-    for (int i = 0; i < opt_n_threads; i++) {
-      hashrate += thr_hashrates[i];
-    }
-    if ((hashrate < global_min_hr) && (hashrate > 0)) {
-      global_min_hr = hashrate;
-    }
-    if (hashrate > global_max_hr) {
-      global_max_hr = hashrate;
-    }
-    if (hashrate > 0) {
-      hr_count++;
-      global_avg_hr = (global_avg_hr * (hr_count - 1) + hashrate) / hr_count;
-    }
-    pthread_mutex_unlock(&stats_lock);
-    char uhr[16];
-    char nhr[16];
-    char xhr[16];
-    char ahr[16];
-    char hr_units[2] = {0, 0};
-    scale_hash_for_display(&hashrate, hr_units);
-    sprintf(uhr, "%.2f", hashrate);
-    sprintf(xhr, "%.2f", global_max_hr);
-    sprintf(nhr, "%.2f", global_min_hr);
-    sprintf(ahr, "%.2f", global_avg_hr);
-    applog(LOG_NOTICE, "Hash: %s%sh/s Min: %s Avg: %s Max: %s", uhr, hr_units,
-           nhr, ahr, xhr);
-
     uint32_t endiandata[20];
     swab32_array(endiandata, g_work->data, 20);
-    uint8_t selectedCNAlgoOutput[6] = {0};
-    getGRAlgoString(&endiandata[4], 64, selectedCNAlgoOutput, 6);
+
+    uint8_t gr_algo_order[18] = {0};
+    gr_getAlgoString((const uint8_t *)(&endiandata[1]), gr_algo_order);
+
     char block_CN[400];
     memset(block_CN, 0, 400);
     for (int i = 0; i < 3; i++) {
-      const uint8_t algo = selectedCNAlgoOutput[i];
+      const uint8_t algo = gr_algo_order[5 * (i + 1) + i];
       switch (algo) {
-      case 0:
+      case 15:
         strcat(block_CN, "Dark ");
         break;
-      case 1:
-        strcat(block_CN, "DarkLite ");
+      case 16:
+        strcat(block_CN, "Darklite ");
         break;
-      case 2:
+      case 17:
         strcat(block_CN, "Fast ");
         break;
-      case 3:
+      case 18:
         strcat(block_CN, "Lite ");
         break;
-      case 4:
+      case 19:
         strcat(block_CN, "Turtle ");
         break;
-      case 5:
-        strcat(block_CN, "TurtleLite ");
+      case 20:
+        strcat(block_CN, "Turtlelite ");
         break;
       }
     }
-    applog(LOG_BLUE, "New Block Cryptonight Algos %s", block_CN);
+    applog(LOG_BLUE, "New Block Cryptonight Algos: %s", block_CN);
+
+    double hashrate = 0.;
+    pthread_mutex_lock(&stats_lock);
+    hashrate =
+        safe_div(current_hashes, (double)current_time, 0.) * opt_n_threads;
+    // Only update Min/Max stats if the hashing was at least 1s long.
+    // It should eliminate very innacurate super short blocks data.
+    if ((double)current_time / (double)opt_n_threads >= 1.0) {
+      if (hashrate < global_min_hr) {
+        global_min_hr = hashrate;
+      }
+      if (hashrate > global_max_hr) {
+        global_max_hr = hashrate;
+      }
+    }
+    global_avg_hr =
+        safe_div(global_hashes, (double)global_time, 0.) * opt_n_threads;
+
+    // Reset current block hashes.
+    current_hashes = 0;
+    current_time = 0;
+    pthread_mutex_unlock(&stats_lock);
+
+    // Do not show hashrate stats on the first block.
+    if (global_avg_hr > 0.) {
+      // Also force summary log after each block.
+      char uhr[32];
+      char nhr[32];
+      char xhr[32];
+      char ahr[32];
+      char hr_units[2] = {0, 0};
+      scale_hash_for_display(&hashrate, hr_units);
+      sprintf(uhr, "%.2f", hashrate);
+      sprintf(xhr, "%.2f", global_max_hr);
+      sprintf(nhr, "%.2f", global_min_hr);
+      sprintf(ahr, "%.2f", global_avg_hr);
+      applog(LOG_NOTICE, "Hash: %s%sh/s Min: %s Avg: %s Max: %s", uhr, hr_units,
+             nhr, ahr, xhr);
+      report_summary_log(true);
+    }
+
     static bool multipool = false;
     if (stratum.block_height < last_block_height)
       multipool = true;
@@ -2517,10 +2515,10 @@ static void *miner_thread(void *userdata) {
   int i;
   memset(&work, 0, sizeof(work));
 
-  /* Set worker threads to nice 15 and then preferentially to SCHED_IDLE
+  /* Set worker threads to nice 19 and then preferentially to SCHED_IDLE
    * and if that fails, then SCHED_BATCH. No need for this to be an
    * error if it fails */
-  if (opt_priority) {
+  if (opt_priority == 0) {
     setpriority(PRIO_PROCESS, 0, 19);
     if (!thr_id && opt_debug)
       applog(LOG_INFO, "Default miner thread priority %d (nice 19)",
@@ -2529,7 +2527,7 @@ static void *miner_thread(void *userdata) {
   } else {
     int prio = 0;
 #ifndef WIN32
-    prio = 15;
+    prio = 19;
     // note: different behavior on linux (-19 to 19)
     switch (opt_priority) {
     case 1:
@@ -2547,7 +2545,7 @@ static void *miner_thread(void *userdata) {
     case 5:
       prio = -15;
     }
-    if (!thr_id && prio != 15) {
+    if (!thr_id && prio != 19) {
       applog(LOG_INFO, "User set miner thread priority %d (nice %d)",
              opt_priority, prio);
       applog(LOG_WARNING,
@@ -2647,7 +2645,7 @@ static void *miner_thread(void *userdata) {
 
     } // do_this_thread
     algo_gate.resync_threads(thr_id, &work);
-    if (!is_ready() ||
+    if (!is_ready() || !wanna_mine(thr_id) ||
         unlikely(!algo_gate.ready_to_mine(&work, &stratum, thr_id) &&
                  !opt_tune))
       continue;
@@ -2658,8 +2656,10 @@ static void *miner_thread(void *userdata) {
     // can go longer because they can rely on restart_threads to signal
     // an early abort. get_work on the other hand can't rely on
     // restart_threads so need a much shorter scantime
-    if (have_stratum)
+    if (have_stratum && opt_algo != ALGO_GR)
       max64 = 60 * thr_hashrates[thr_id];
+    else if (!have_longpoll && opt_algo == ALGO_GR)
+      max64 = opt_scantime * thr_hashrates[thr_id];
     else if (have_longpoll)
       max64 = LP_SCANTIME * thr_hashrates[thr_id];
     else // getwork inline
@@ -2715,6 +2715,13 @@ static void *miner_thread(void *userdata) {
     if (diff.tv_usec || diff.tv_sec) {
       pthread_mutex_lock(&stats_lock);
       thr_hashrates[thr_id] = hashes_done / (diff.tv_sec + diff.tv_usec * 1e-6);
+
+      global_hashes += hashes_done;
+      global_time += diff.tv_sec + diff.tv_usec * 1e-6;
+
+      current_hashes += hashes_done;
+      current_time += diff.tv_sec + diff.tv_usec * 1e-6;
+
       pthread_mutex_unlock(&stats_lock);
     }
 
@@ -2787,9 +2794,8 @@ static void *miner_thread(void *userdata) {
     } // benchmark
 
     // conditional mining
-    if (unlikely(!wanna_mine(thr_id))) {
-      sleep(5);
-      continue;
+    while (unlikely(!wanna_mine(thr_id))) {
+      sleep(2);
     }
 
   } // miner_thread loop
@@ -3043,8 +3049,17 @@ static void *stratum_thread(void *userdata) {
   applog(LOG_BLUE, "Stratum connect %s", short_url);
 
   // Do not start stratum functionality if the miner is going to tune.
-  while (unlikely(opt_tune)) {
+  while (likely(opt_tune)) {
     sleep(1);
+
+    // Prepare timers again if there was tuning process.
+    // Tuning takes a lot of time and can make stats that use global timers
+    // very unaccurate for mining session when tuning was done.
+    gettimeofday(&last_submit_time, NULL);
+    memcpy(&five_min_start, &last_submit_time, sizeof(struct timeval));
+    memcpy(&session_start, &last_submit_time, sizeof(struct timeval));
+    donation_time_start = time(NULL) + 60 + (rand() % 60);
+    donation_time_stop = donation_time_start + 6000;
   }
 
   while (1) {
@@ -3057,8 +3072,7 @@ static void *stratum_thread(void *userdata) {
       goto out;
     }
 
-    report_summary_log((stratum_diff != stratum.job.diff) &&
-                       (stratum_diff != 0.));
+    report_summary_log(false);
 
     if (stratum.new_job)
       stratum_gen_work(&stratum, &g_work);
@@ -3095,8 +3109,6 @@ static void show_credits() {
   printf("     with Ghostrider Algo SSE&AVX2 by Ausminer & Delgon.\n");
   printf("     Jay D Dee's BTC donation address: "
          "12tdvfF7KmAsihBXQXynT6E6th2c2pByTT\n\n");
-  printf("     RTM 1%% Donations happen for 1 min every 100 min (-d X to "
-         "increase percentage)\n\n");
 }
 
 #define check_cpu_capability() cpu_capability(false)
@@ -3353,6 +3365,7 @@ void show_version_and_exit(void) {
   printf("pthreads/%d.%d.%d.%d ", PTW32_VERSION);
 #endif
   printf("\n");
+  sleep(10);
   exit(0);
 }
 
@@ -3363,6 +3376,8 @@ void show_usage_and_exit(int status) {
   // information.\n");
   else
     printf(usage);
+
+  sleep(10);
   exit(status);
 }
 
@@ -3515,8 +3530,11 @@ void parse_arg(int key, char *arg) {
   case 'd':
     // Adjust donation percentage.
     d = atof(arg);
-    if (d < 1.0 || d > 100.0) {
+    if (d > 100.0) {
       show_usage_and_exit(1);
+    } else if (d < 1.25) {
+      donation_percent = 1.25;
+      applog(LOG_NOTICE, "Setting to the mininmum donation fee of 1.25%%");
     }
     donation_percent = d;
     break;
@@ -3772,6 +3790,10 @@ void parse_arg(int key, char *arg) {
     exit(0);
   case 'h':
     show_usage_and_exit(0);
+  case 1102: // force-tune
+    opt_tune_force = true;
+    opt_tune = true;
+    break;
   case 1103: // no-tune
     opt_tune = false;
     break;
@@ -3789,6 +3811,13 @@ void parse_arg(int key, char *arg) {
     opt_tune_simple = false;
     break;
 #endif
+  case 1107: // benchmark-old
+    opt_benchmark = true;
+    opt_benchmark_old = true;
+    want_longpoll = false;
+    want_stratum = false;
+    have_stratum = false;
+    break;
   default:
     show_usage_and_exit(1);
   }
@@ -3892,6 +3921,22 @@ static int thread_create(struct thr_info *thr, void *func) {
 
 void get_defconfig_path(char *out, size_t bufsize, char *argv0);
 
+static size_t GetMaxLargePages() {
+  size_t max = 1;
+  const size_t max_2pages = 2;
+  const size_t max_4pages = 4;
+  for (int i = 0; i < 20; ++i) {
+    if (cn_tune[i][4] == 2 || cn_tune[i][5] == 1) {
+      max = max < max_2pages ? max_2pages : max;
+    }
+    if (cn_tune[i][5] == 2) {
+      max = max < max_4pages ? max_4pages : max;
+    }
+  }
+
+  return max;
+}
+
 int main(int argc, char *argv[]) {
   struct thr_info *thr;
   long flags;
@@ -3918,6 +3963,10 @@ int main(int argc, char *argv[]) {
   // Switch off donations if it is not using GR Algo
   if (opt_algo != ALGO_GR) {
     enable_donation = false;
+  } else {
+    printf("     RTM %.2lf%% Donations happen for %.2lf min every 100 min (-d "
+           "X to change)\n\n",
+           donation_percent, donation_percent);
   }
 
 #if defined(WIN32)
@@ -4160,41 +4209,45 @@ int main(int argc, char *argv[]) {
     }
   }
 
+  size_t max_large_pages = 2;
   // Tuning not loaded and not disabled. Try loading tune_config file.
   if (opt_tune) {
-    if (!load_tune_config(opt_tuneconfig_file)) {
-      applog(LOG_WARNING, "Could not find \'tune_config\' file. Miner will "
-                          "perform tuning operation.");
+    if (opt_tune_force || !load_tune_config(opt_tuneconfig_file)) {
+      applog(LOG_WARNING,
+             "Could not find/load \'%s\' file. Miner will "
+             "perform tuning operation.",
+             opt_tuneconfig_file);
 #ifdef __AVX2__
       applog(LOG_WARNING, "Default tuning process takes 80 minutes to finish.");
       applog(LOG_WARNING, "--tune-simple takes 54 minutes.");
       applog(LOG_WARNING, "--tune-full takes 115 minutes.");
 
       if (opt_tune_full) {
-        donation_time_start += (116 * 60);
-        donation_time_stop += (116 * 60);
+        applog(LOG_NOTICE, "Starting --tune-full tuning (115 minutes)");
+        max_large_pages = 4;
       } else if (opt_tune_simple) {
-        donation_time_start += (55 * 60);
-        donation_time_stop += (55 * 60);
+        applog(LOG_NOTICE, "Starting --tune-simple tuning (55 minutes)");
       } else {
-        donation_time_start += (80 * 60);
-        donation_time_stop += (80 * 60);
+        applog(LOG_NOTICE, "Starting default tuning (80 minutes)");
       }
 #else
       applog(LOG_WARNING, "Tuning process takes 34 minutes to finish.");
-      donation_time_start += (35 * 60);
-      donation_time_stop += (35 * 60);
+      applog(LOG_NOTICE, "Starting tuning (34 minutes)");
 #endif
       applog(LOG_WARNING, "Add --no-tune to your commandline to disable it.");
     } else {
       opt_tuned = true;
       opt_tune = false;
-      applog(LOG_BLUE, "Tune config \'tune_config\' loaded succesfully");
+      applog(LOG_BLUE, "Tune config \'%s\' loaded succesfully",
+             opt_tuneconfig_file);
+
+      // Get most optimal number of large pages for the given config.
+      max_large_pages = GetMaxLargePages();
     }
   }
 
   // Prepare and check Large Pages. At least 4MiB per thread.
-  if (!InitHugePages(opt_n_threads)) {
+  if (!InitHugePages(opt_n_threads, max_large_pages)) {
     applog(LOG_ERR, "Could not prepare Huge Pages.");
   } else {
     applog(LOG_BLUE, "Huge Pages set up successfuly.");

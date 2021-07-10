@@ -163,7 +163,7 @@ static BOOL TrySetLockPagesPrivilege() {
   return ObtainLockPagesPrivilege() && SetLockPagesPrivilege();
 }
 
-bool InitHugePages(size_t threads) {
+bool InitHugePages(size_t threads, size_t max_large_pages) {
   huge_pages = TrySetLockPagesPrivilege();
   return huge_pages;
 }
@@ -261,16 +261,7 @@ static bool InitNodeHugePages(size_t threads, size_t node) {
 }
 
 // One thread should allocate 2 MiB of Large Pages.
-bool InitHugePages(size_t threads) {
-  // Fast variant requires 2MiB per "way".
-  // AVX2     => 4way possible.
-  // non-AVX2 => 2way possible.
-#ifdef __AVX2__
-  const size_t max_large_pages = 4;
-#else
-  const size_t max_large_pages = 2;
-#endif
-
+bool InitHugePages(size_t threads, size_t max_large_pages) {
   // Detect number of nodes in the system.
   const size_t nodes = numa_max_node();
   const size_t hw_threads = numa_num_possible_cpus();
@@ -396,7 +387,7 @@ void DeallocateMemory(void **memory) {
 }
 
 void PrepareMemory(void **memory, size_t size) {
-  if (GetProperSize(currently_allocated) != GetProperSize(size)) {
+  if (GetProperSize(currently_allocated) < GetProperSize(size)) {
     if (*memory != NULL) {
       DeallocateMemory(memory);
     }

@@ -158,26 +158,6 @@ cpuminer.exe --help
 
 Command options are specific to where you mine. Refer to the pool's instructions on how to set them.
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 Create a link to the locally compiled version of gmp.h
 
 $ ln -s $LOCAL_LIB/gmp-version/gmp.h ./gmp.h

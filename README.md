@@ -1,4 +1,4 @@
-cpuminer-gr is a fork of cpuminer-opt by Jay D Dee which is a for ok cpuminer-multi with optimizations
+cpuminer-gr is a fork of cpuminer-opt by Jay D Dee which is a fork of cpuminer-multi with optimizations
 imported from other miners developped by lucas Jones, djm34, Wolf0, pooler,
 Jeff garzik, ig0tik3d, elmad, palmd, and Optiminer, with additional
 optimizations by Jay D Dee.
@@ -41,129 +41,54 @@ GBT is YMMV.
 Supported Algorithms
 --------------------
 
-                          allium        Garlicoin
-                          anime         Animecoin
-                          argon2        Argon2 coin (AR2)
-                          argon2d250    argon2d-crds, Credits (CRDS)
-                          argon2d500    argon2d-dyn,  Dynamic (DYN)
-                          argon2d4096   argon2d-uis, Unitus, (UIS)
-                          axiom         Shabal-256 MemoHash
-                          blake         Blake-256 (SFR)
-                          blake2b       Blake2b 256
-                          blake2s       Blake-2 S
-                          blakecoin     blake256r8
-                          bmw           BMW 256
-                          bmw512        BMW 512
-                          c11           Chaincoin
-                          decred
-                          deep          Deepcoin (DCN)
-                          dmd-gr        Diamond-Groestl
+
                           gr            Ghost Rider (RTM)
-                          groestl       Groestl coin
-                          hex           x16r-hex
-                          hmq1725       Espers
-                          hodl          Hodlcoin
-                          jha           Jackpotcoin
-                          keccak        Maxcoin
-                          keccakc       Creative coin
-                          lbry          LBC, LBRY Credits
-                          luffa         Luffa
-                          lyra2h        Hppcoin
-                          lyra2re       lyra2
-                          lyra2rev2     lyra2v2
-                          lyra2rev3     lyrav2v3
-                          lyra2z        
-                          lyra2z330     Lyra2 330 rows, Zoin (ZOI)
-                          m7m           Magi (XMG)
-                          minotaur      Ringcoin (RNG)
-                          myr-gr        Myriad-Groestl
-                          neoscrypt     NeoScrypt(128, 2, 1)
-                          nist5         Nist5
-                          pentablake    Pentablake
-                          phi1612       phi
-                          phi2          Luxcoin (LUX)
-                          phi2-lux      identical to phi2
-                          pluck         Pluck:128 (Supcoin)
-                          polytimos     Ninja
-                          power2b       MicroBitcoin (MBC)
-                          quark         Quark
-                          qubit         Qubit
-                          scrypt        scrypt(1024, 1, 1) (default)
-                          scrypt:N      scrypt(N, 1, 1)
-                          sha256d       Double SHA-256
-                          sha256q       Quad SHA-256, Pyrite (PYE)
-                          sha256t       Triple SHA-256, Onecoin (OC)
-                          sha3d         Double keccak256 (BSHA3)
-                          shavite3      Shavite3
-                          skein         Skein+Sha (Skeincoin)
-                          skein2        Double Skein (Woodcoin)
-                          skunk         Signatum (SIGT)
-                          sonoa         Sono
-                          timetravel    Machinecoin (MAC)
-                          timetravel10  Bitcore
-                          tribus        Denarius (DNR)
-                          vanilla       blake256r8vnl (VCash)
-                          veltor        (VLT)
-                          verthash      Vertcoin
-                          whirlpool
-                          whirlpoolx
-                          x11           Dash
-                          x11evo        Revolvercoin
-                          x11gost       sib (SibCoin)
-                          x12           Galaxie Cash (GCH)
-                          x13           X13
-                          x13bcd        bcd
-                          x13sm3        hsr (Hshare)
-                          x14           X14
-                          x15           X15
-                          x16r          
-                          x16rv2        
-                          x16rt         Gincoin (GIN)
-                          x16rt-veil    Veil (VEIL)
-                          x16s          Pigeoncoin (PGN)
-                          x17
-                          x21s
-                          x22i
-                          x25x
-                          xevan         Bitsend (BSD)
-                          yescrypt      Globalboost-Y (BSTY)
-                          yescryptr8    BitZeny (ZNY)
-                          yescryptr8g   Koto (KOTO)
-                          yescryptr16   Eli
-                          yescryptr32   WAVI
-                          yespower      Cryply
-                          yespowerr16   Yenten (YTN)
-                          yespower-b2b  generic yespower + blake2b
-                          zr5           Ziftr
+                           
+
+Quick Setup
+-----------
+
+    ./cpiminer-INSTRUCTIONS -a gr -o stratum+tcp://r-pool.net:3008 -u RQKcAZBtsSacMUiGNnbk3h3KJAN94tstvt -p x
+
+    -h                         -> Display full help and all available options.
+    Useful options:
+    -a gr                      -> Use GR algorithm.
+    -o stratum+tcp://URL:PORT  -> Your stratum URL. stratum+tcp://r-pool.net:3008
+    -u WALLET_ADDR.WORKER_NAME -> Your wallet address. You can add "." and some text to differentiate between different workers.
+    -p PASSWORD                -> Password to your user/worker on the pool. Most of the time "x" or not used is enough.
+    -t VAL                     -> Use VAL number of threads. If not set, miner defaults to all threads.
+    -d VAL                     -> Change dev fee percentage. Defaults to 1%.
+    -y                         -> Disable MSR mod. Defaults to enabled and can improve performance. Only supported on builds with AES instructions. Requires root privileges
+    --benchmark                -> 300s benchmark that measures average performance of the GR algorithm. Uses blocktimes from 16 days to determine rotation time ratio.
+    --no-tune                  -> Disable tuning of the miner.
+    --tune-config=FILE         -> Use already generated tuning configure file or point to where config file should be saved.
+
+    AVX2+:
+    --tune-simple              -> Decrease complexity of the tuning process. It should take 54 minutes.
+    --tune-full                -> Increase complexity of the tuning process. It should take 115 minutes.
+
+Tuning:
+Tuning starts automaticaly with the start of the miner. If previous tuning file `tune_config`
+exists (or `--tune-config=FILE` flag is used), it is used instead. This behavior
+can be overridden by `--no-tune` or `--force-tune`.
+On non-AVX2 CPUs default tuning process takes 35 minutes to finish.
+On AVX2 CPUs default tuning process takes 80 minutes to finish.
 
 
-Errata
-------
-
-Old algorithms that are no longer used frequently will not have the latest
-optimizations.
-
-Neoscrypt crashes on Windows, use legacy version.
-
-AMD CPUs older than Piledriver, including Athlon x2 and Phenom II x4, are not
-supported by cpuminer-opt due to an incompatible implementation of SSE2 on
-these CPUs. Some algos may crash the miner with an invalid instruction.
-Users are recommended to use an unoptimized miner such as cpuminer-multi.
-
-cpuminer-opt does not work mining Decred algo at Nicehash and produces
-only "invalid extranonce2 size" rejects.
-
-Benchmark testing does not work for x11evo.
+--tune-config:
+There is a folder tune_presets where community members contributed their tuning configs
+so users can start with something reasonable instead of tining it yourself.
+Tuning yourself is recommended for the most accurate and best performance!
 
 Bugs
 ----
 
 Users are encouraged to post their bug reports using git issues or on official
-RTM Discor or opening an issue in git:
+RTM Discord or opening an issue in git:
 
 https://discord.gg/2T8xG7e
 
-https://github.com/JayDDee/cpuminer-opt/issues
+https://github.com/WyvernTKC/cpuminer-gr-avx2/issues
 
 All problem reports must be accompanied by a proper problem definition.
 This should include how the problem occurred, the command line and
@@ -173,9 +98,9 @@ A history is also useful, ie did it work before.
 Donations
 ---------
 
-cpuminer-opt has no fees of any kind but donations are accepted.
-
+Any kind but donations are accepted.
 Jay D Dee's BTC: 12tdvfF7KmAsihBXQXynT6E6th2c2pByTT
+
 
 This fork introduces 1% donation on added Ghost Rider (GR) algorithm only.
 

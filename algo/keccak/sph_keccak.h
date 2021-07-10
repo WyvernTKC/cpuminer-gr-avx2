@@ -7,7 +7,7 @@
  * ==========================(LICENSE BEGIN)============================
  *
  * Copyright (c) 2007-2010  Projet RNRT SAPHIR
- * 
+ *
  * Permission is hereby granted, free of charge, to any person obtaining
  * a copy of this software and associated documentation files (the
  * "Software"), to deal in the Software without restriction, including
@@ -15,10 +15,10 @@
  * distribute, sublicense, and/or sell copies of the Software, and to
  * permit persons to whom the Software is furnished to do so, subject to
  * the following conditions:
- * 
+ *
  * The above copyright notice and this permission notice shall be
  * included in all copies or substantial portions of the Software.
- * 
+ *
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
  * EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
  * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
@@ -37,31 +37,34 @@
 #define SPH_KECCAK_H__
 
 #ifdef __cplusplus
-extern "C"{
+extern "C" {
 #endif
 
-#include <stddef.h>
+// Taken from keccak-gate.h
+extern int hard_coded_eb;
+
 #include "algo/sha/sph_types.h"
+#include <stddef.h>
 
 /**
  * Output size (in bits) for Keccak-224.
  */
-#define SPH_SIZE_keccak224   224
+#define SPH_SIZE_keccak224 224
 
 /**
  * Output size (in bits) for Keccak-256.
  */
-#define SPH_SIZE_keccak256   256
+#define SPH_SIZE_keccak256 256
 
 /**
  * Output size (in bits) for Keccak-384.
  */
-#define SPH_SIZE_keccak384   384
+#define SPH_SIZE_keccak384 384
 
 /**
  * Output size (in bits) for Keccak-512.
  */
-#define SPH_SIZE_keccak512   512
+#define SPH_SIZE_keccak512 512
 
 /**
  * This structure is a context for Keccak computations: it contains the
@@ -75,14 +78,14 @@ extern "C"{
  */
 typedef struct {
 #ifndef DOXYGEN_IGNORE
-	unsigned char buf[144];    /* first field, for alignment */
-	size_t ptr, lim;
-	union {
+  unsigned char buf[144]; /* first field, for alignment */
+  size_t ptr, lim;
+  union {
 #if SPH_64
-		sph_u64 wide[25];
+    sph_u64 wide[25];
 #endif
-		sph_u32 narrow[50];
-	} u;
+    sph_u32 narrow[50];
+  } u;
 #endif
 } sph_keccak_context;
 
@@ -148,8 +151,8 @@ void sph_keccak224_close(void *cc, void *dst);
  * @param n     the number of extra bits (0 to 7)
  * @param dst   the destination buffer
  */
-void sph_keccak224_addbits_and_close(
-	void *cc, unsigned ub, unsigned n, void *dst);
+void sph_keccak224_addbits_and_close(void *cc, unsigned ub, unsigned n,
+                                     void *dst);
 
 /**
  * Initialize a Keccak-256 context. This process performs no memory allocation.
@@ -193,8 +196,8 @@ void sph_keccak256_close(void *cc, void *dst);
  * @param n     the number of extra bits (0 to 7)
  * @param dst   the destination buffer
  */
-void sph_keccak256_addbits_and_close(
-	void *cc, unsigned ub, unsigned n, void *dst);
+void sph_keccak256_addbits_and_close(void *cc, unsigned ub, unsigned n,
+                                     void *dst);
 
 /**
  * Initialize a Keccak-384 context. This process performs no memory allocation.
@@ -238,8 +241,8 @@ void sph_keccak384_close(void *cc, void *dst);
  * @param n     the number of extra bits (0 to 7)
  * @param dst   the destination buffer
  */
-void sph_keccak384_addbits_and_close(
-	void *cc, unsigned ub, unsigned n, void *dst);
+void sph_keccak384_addbits_and_close(void *cc, unsigned ub, unsigned n,
+                                     void *dst);
 
 /**
  * Initialize a Keccak-512 context. This process performs no memory allocation.
@@ -283,8 +286,8 @@ void sph_keccak512_close(void *cc, void *dst);
  * @param n     the number of extra bits (0 to 7)
  * @param dst   the destination buffer
  */
-void sph_keccak512_addbits_and_close(
-	void *cc, unsigned ub, unsigned n, void *dst);
+void sph_keccak512_addbits_and_close(void *cc, unsigned ub, unsigned n,
+                                     void *dst);
 
 #ifdef __cplusplus
 }

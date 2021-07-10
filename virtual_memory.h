@@ -9,7 +9,7 @@
 extern __thread bool allocated_hp;
 extern __thread size_t currently_allocated;
 
-bool InitHugePages(size_t threads);
+bool InitHugePages(size_t threads, size_t max_large_pages);
 
 void *AllocateLargePagesMemory(size_t size);
 void DeallocateLargePagesMemory(void **memory);

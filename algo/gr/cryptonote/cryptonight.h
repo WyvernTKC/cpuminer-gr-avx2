@@ -1,5 +1,5 @@
-#ifndef CRYPTONIGHT_H
-#define CRYPTONIGHT_H
+#ifndef CRYPTONIGHT_H_
+#define CRYPTONIGHT_H_
 
 #ifdef __cplusplus
 extern "C" {
@@ -59,4 +59,4 @@ void cryptonight_turtlelite_4way_hash(const void *input0, const void *input1,
 }
 #endif
 
-#endif // CRYPTONIGHT_H
+#endif // CRYPTONIGHT_H_
