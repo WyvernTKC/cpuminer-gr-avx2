@@ -1539,18 +1539,19 @@ void stratum_cleanup(struct stratum_ctx *sctx) {
   // Clean stratum_job and work.
   if (sctx->job.job_id) {
     free(sctx->job.job_id);
+    sctx->job.job_id = NULL;
   }
   if (sctx->job.coinbase) {
     free(sctx->job.coinbase);
-  }
-  if (sctx->job.xnonce2) {
-    free(sctx->job.xnonce2);
+    sctx->job.coinbase = NULL;
   }
   if (sctx->job.merkle) {
     for (size_t i = 0; i < (size_t)sctx->job.merkle_count; i++) {
       free(sctx->job.merkle[i]);
+      sctx->job.merkle[i] = NULL;
     }
     free(sctx->job.merkle);
+    sctx->job.merkle = NULL;
   }
 
   struct stratum_job job_tmp = {0};
@@ -1562,11 +1563,13 @@ void stratum_cleanup(struct stratum_ctx *sctx) {
 
   if (sctx->xnonce1) {
     free(sctx->xnonce1);
+    sctx->xnonce1 = NULL;
   }
   sctx->xnonce1_size = 0;
   sctx->xnonce2_size = 0;
   if (sctx->session_id) {
     free(sctx->session_id);
+    sctx->session_id = NULL;
   }
 }
 

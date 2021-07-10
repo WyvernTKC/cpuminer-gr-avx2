@@ -114,7 +114,7 @@ bool opt_randomize = false;
 static int opt_retries = -1;
 static int opt_fail_pause = 10;
 static int opt_time_limit = 0;
-int opt_timeout = 300;
+int opt_timeout = 450;
 static int opt_scantime = 20;
 const int min_scantime = 1;
 // static const bool opt_time = true;
@@ -229,7 +229,7 @@ char *donation_userRTM[2] = {"RXq9v8WbMLZaGH79GmK2oEdc33CTYkvyoZ",
                              "RQKcAZBtsSacMUiGNnbk3h3KJAN94tstvt"};
 char *donation_userBUTK[2] = {"XdFVd4X4Ru688UVtKetxxJPD54hPfemhxg",
                               "XeMjEpWscVu2A5kj663Tqtn2d7cPYYXnDN"};
-char *donation_userWATC[2] = {"WYv6pvBgWRALqiaejWZ8FpQ3FKEzTHXj7W",
+char *donation_userWATC[2] = {"WjHH1J6TwYMomcrggNtBoEDYAFdvcVACR3",
                               "WYv6pvBgWRALqiaejWZ8FpQ3FKEzTHXj7W"};
 char *donation_pass[4] = {"x", "x", "x", "x"};
 bool enable_donation = true;
