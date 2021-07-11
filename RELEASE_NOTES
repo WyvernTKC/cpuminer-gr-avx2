@@ -65,6 +65,160 @@ If not what makes it happen or not happen?
 Change Log
 ----------
 
+1.1.8
+
+#### Fixes:
+- Fix rare cases of Low Difficulty share stream after lost connection.
+- Display proper Cryptonight variants used with new blocks.
+- Properly calculate real current, min, max, avg hashrate - Hashes done by the miner.
+- Block sends of shares with mixed address RTM/WATC/BUTK to the pool.
+
+#### Changes:
+- Check for the `--max-temp=N` with every submitted share and ~20s. Previously was ~60s and with new block/job.
+- Increase performance of 2 Cryptonight variants and some general Cryptonight changes in GR algo (5-8%). Re-tuning of the miner is recommended!
+- Better support for WATC/BUTK mining.
+- Provide better info during the tuning process.
+- `--benchmark` - Now provides true average hashrate from each rotation and estimated pool average.
+- Dev fee changed from 1% to 1.75% with the ability to decrease it back to 1.25% using `-d X` flag.
+
+#### Added:
+- `--force-tune` - Forces tuning regardless if the `tune_config` file is present. Useful on HiveOS.
+- `--benchmark-old` - Old ratios of calculating hashrate. Left for comparison purposes with the previous version.
+
+#### Removed:
+- All algorithms support that is not used by Ghost Rider (GR) algorithm.
+
+#### Notes:
+- Ausminers and I have put a great amount of time and work into the miner for this next increase,
+so we had to up the dev fee % slightly to 1.75% to help offset that time and allow us to work
+on it more in the future. It can still be set with the `-d` parameter back to 1.25%
+
+1.1.7
+
+#### Fixes:
+- Fix stratum reconnection problems if users were not able to reconnect within the 60-120s.
+- Fix problems with displayed share ping. It could be wrong if some stale shares were skipped. (display only bug)
+- Properly detect problems with Large Pages set up on Linux.
+
+#### Improvements:
+- Include `tune_config` preset files for many CPU models done with the highest possible tuning options. Thanks again to the community for this amazing contribution.
+- Detect multiple NUMA nodes on the system and allocate Large Pages to individual nodes.
+- Add additional tuning for AVX2+ instruction sets. Users using those binaries are recommended to retune their miner.
+- Default AVX2+ tuning is now extended to 80 minutes. Includes additional tests that should bring more performance (6-18%). Includes options that should benefit most of the CPUs. Use `--tune-simple` for the previous tuning method (34 minutes).
+- Stop stratum functionality until miner tunes if tuning is enabled. Should lead to more accurate results.
+- `--tune-config=FILE` It will also now specify a non-default (tune_config) file where the tune configuration will be saved.
+
+#### Added:
+AVX2+ Only!
+- `--tune-full` - 115 minutes. The tuning process tests all possible Cryptonight variants for 4way. Many mobile or low-end CPUs can benefit from it as they are almost always cache starved. It is possible that a longer time from `--tune-full` will not bring any additional performance!
+- `--tune-simple` - 54 minutes. Previous tuning with included 4way implementations of Cryptonight Turtle and Turtlelite variants.
+
+#### Build:
+- `libnuma` (libnuma-dev) is now required for building the binaries on Linux.
+
+1.1.6
+
+#### Fixes
+- Fix dev stratum switch. If dev fee collection is not possible, the dev fee will be skipped.
+- Possible fix related to Windows Defender taking an increasing amount of memory if run near the start of the system.
+
+#### Improvements:
+- Tuning available on all instruction sets! Now also improves performance in AVX and non-AES versions of the miner.
+- Changed default behavior. Now the miner is tuning by default unless the `tune_config` file is present or the `--no-tune` flag is specified.
+- `--benchmark` should provide more real-world performance average that users see on pools.
+- Detect problems with stratum connection and stop mining threads until the connection can be reestablished. Until now the miner tried to solve and submit shares even the stratum connection was not established. That could lead to sending many old/stale shares to the pool after successful reconnection.
+- Disable MSR functionality on non-AES architectures as it leads to a decrease in performance in those cases.
+- Tune Cryptonight prefetch and code.
+
+#### Removed:
+- `--cn-config=CONFIG`
+- `--benchmark-config` 
+- `--tune` - This option is now ON by default.
+
+#### Added:
+- `--no-tune` - Disable tuning process.
+
+1.1.5.1
+
+- Fix memory leak on Windows.
+- Fix problems for users mining BUTK.
+
+1.1.5
+
+- Fixed rare problems with stratum switching that resulted in "low difficulty" shares.
+- Minimal tuning for Cryptonight. 1-2% improvement.
+- Fixed Windows binaries for 5000 series AMD CPUs. `--tune` and `--tune-config` now work as they should
+- `--benchmark` - Proper memory flushing. Should give more accurate results. The current benchmark will report lower values compared to previous versions.
+
+1.1.4
+
+- Fix stratum changes. In specific scenarios, it could produce many errors.
+- Bring back some of the lost performance to Ryzens using 1way Cryptonight.
+- Reworked some benchmarking functionality to be more representative of real-world hashing. Results are not comparable to previous versions.
+- Temporarily restricted tuning of Fast variant of Cryptonight due to reports stating lowered hashrate after tuning on Ryzen 5000 series.
+
+1.1.3
+
+- Dev pool is now selected from the list.
+- Show new statistic info about hashrate after each new block.
+- Another attempt to fix stratum issues from some users.
+- Include prefetch for loading / storing data for Cryptonight (~1-2% improvement)
+- Rewrite 2way Cryptonight. (~15-50% improvement)
+- Include 2 new options for AVX2+:
+  -- `--tune` - Optimal tuning for 2way or 1way solving of Cryptonight. Takes ~34 minutes. Creates `tune_config` file that can be used later. It is recommended to run it with `--benchmark` to disable any stratum and network communication. Can be used directly with your normal mining options and will start mining after the tuning process. After doing it once, use `--tune-config` after that.
+  -- `--tune-config=FILE` - Use tuning config generated by `--tune` while mining.
+
+#### The expected improvement compared to 1.1.2 -> 10-30%
+
+1.1.2
+
+- Added automatic Large Pages to the Windows environment. Requires administrator privileges for the one-time setup.
+- Added MSR functionality to the Windows environment. Releases will include `WinRing0x64.sys`, licensed and signed Ring0 Driver to enable this functionality.
+- Added ability to manually set how Cryptonight algorithms should be solved, SSE or AVX2. --cn-config. Changes algorithm to variants in this order: `Turtlelite, Turtle, Darklite, Dark, Lite, Fast`
+presets:
+`light`  - equivalent to 0,0,0,0,0,0 (default)
+`medium` - equivalent to 0,1,1,1,0,0
+`heavy`  - equivalent to 1,1,1,1,1,1
+list of 6 coma ',' separated values:
+0 - Use SSE2 implementation. 1 - Use AVX2
+`--cn-config=medium`
+`--cn-config=1,0,0,1,0,0`
+- Added a long benchmark of each `--cn-config` configuration. `--benchmark-config` It takes around 20 minutes to complete fully.
+
+1.1.1
+
+- Fixed stratum connection errors.
+- Minor improvements to the SSE CN algorithm. Can affect Light/Medium variants.
+
+1.1.0b
+
+- General - Use the latest cpuminer-opt branch.
+- MSR ~2-5% increased performance. Enabled by default. Use `-y` to disable it.
+-- Linux -- Seamless. Requires `root` privileges.
+- Large Pages   ~15-20+% increased performance.
+-- Linux -- Seamless. Requires `root` privileges.
+-- Windows -- Prior one-time configuration required. Follow this 15s tutorial: https://docs.microsoft.com/en-us/sql/database-engine/configure-windows/enable-the-lock-pages-in-memory-option-windows
+A system restart is required after successful configuration.
+- SSE2 - ~2-3% increase in performance compared to the official miner.
+- AVX - ~10-15% increase in performance.
+- AVX2 - ~15-25% increase in performance. Multiple binaries. Performance Light -> Heavy depending on the available L3 cache on the CPU. Big CPUs like Zen3, Threadrippers, and Xeons are most likely to benefit from Heavier implementation. 
+-- Heavey - All 2way
+-- Medium - Mixed SSE & 2way
+-- Light - SSE
+- Benchmark functionality -- 30s+ benchmark that should give the real average performance of the GR algorithm. Especially useful to test which binaries might be better for your CPU.
+- Adjustable Dev Fee -- `-d X` to set donation percentage. Defaults to 1. Can be disabled in the source code.
+
+1.0.0
+
+- Improved hash rate ~2.2X average improvement
+- More consistent hash rate (less variation in hash rate)
+- Xeon Phi Support (I'm a HPC nerd, so seeing 4KHs+ On a Xeon Phi is awesome. The unoptimized version topped out at 800Hs)
+- There is a 1% donation fee built in. (1 min every 100 min)
+
+
+Change Log cpuminer-opt
+-----------------------
+
 v3.16.2
 
 Verthash: midstate prehash optimization for all architectures.

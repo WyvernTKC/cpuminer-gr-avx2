@@ -21,7 +21,7 @@
   }                                                                            \
   vectorized = false;
 
-int gr_4way_hash(void *output, const void *input, int thrid) {
+int gr_4way_hash(void *output, const void *input, const int thr_id) {
   uint64_t vhash[10 * 4] __attribute__((aligned(128)));
   uint64_t vhashA[10 * 2] __attribute__((aligned(128)));
   uint64_t vhashB[10 * 2] __attribute__((aligned(128)));
@@ -306,9 +306,9 @@ int gr_4way_hash(void *output, const void *input, int thrid) {
     }
 
     // Stop early. do not stop while benchmarking or tuning.
-    if (work_restart[thrid].restart && !(opt_benchmark || opt_tune)) {
-      if (opt_debug) {
-        applog(LOG_DEBUG, "Thread %d exit early", thrid);
+    if (work_restart[thr_id].restart && !(opt_benchmark || opt_tune)) {
+      if (opt_debug && !thr_id) {
+        applog(LOG_DEBUG, "Threads exit early.");
       }
       return 0;
     }
@@ -343,6 +343,7 @@ int scanhash_gr_4way(struct work *work, uint32_t max_nonce,
   volatile uint8_t *restart = &(work_restart[thr_id].restart);
 
   if (!opt_tuned && opt_tune) {
+    sleep(1);
     tune(pdata, thr_id);
     opt_tuned = true; // Tuned.
     opt_tune = false;
@@ -350,11 +351,15 @@ int scanhash_gr_4way(struct work *work, uint32_t max_nonce,
   }
 
   if (opt_benchmark) {
+    sleep(1);
     if (thr_id == 0) {
-      applog(LOG_BLUE, "Starting benchmark. Benchmark takes 300s to complete");
+      applog(LOG_BLUE, "Starting benchmark. Benchmark takes %.0lfs to complete",
+             gr_benchmark_time / 1e6);
     }
     benchmark(pdata, thr_id, 0);
-    exit(0);
+    if (thr_id == 0) {
+      exit(0);
+    }
   }
 
   mm256_bswap32_intrlv80_4x64(vdata, pdata);
@@ -371,7 +376,7 @@ int scanhash_gr_4way(struct work *work, uint32_t max_nonce,
       for (int i = 0; i < 15 + 3; i++) {
         sprintf(order + (i * 3), "%02d ", gr_hash_order[i]);
       }
-      applog(LOG_DEBUG, "hash order %s (%08x)", order, ntime);
+      applog(LOG_DEBUG, "Hash order %s", order);
     }
     if (opt_tuned) {
       select_tuned_config(thr_id);
@@ -380,7 +385,7 @@ int scanhash_gr_4way(struct work *work, uint32_t max_nonce,
 
   // Allocates hp_state for Cryptonight algorithms.
   // Needs to be run AFTER gr_hash_order is set!
-  AllocateNeededMemory();
+  AllocateNeededMemory(true);
 
   *noncev = mm256_intrlv_blend_32(
       _mm256_set_epi32(n + 3, 0, n + 2, 0, n + 1, 0, n, 0), *noncev);
