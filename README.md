@@ -135,8 +135,8 @@ performance of those algorithms can vary A LOT. You might be getting like
 and 10000+H/s if the blocks use the fastest ones (Using my 2x2698v3 as an example).
 This means 2 things. First, the hash rate like you notice is very volatile and
 changes almost always with each block. The miner should show you Cryptonight
-variants used in the current block, Turtlelite, Turtle, Darklite, Dark, Lite, Fast
-- those are variants in the same order as I mentioned memory, irony is that the 
+variants used in the current block, Turtlelite, Turtle, Darklite, Dark, Lite, Fast - 
+those are variants in the same order as I mentioned memory, irony is that the 
 Fast variant is the slowest one and Turtlelite is the fastest :). Second, some
 blocks (in most parts the ones using easier variants) are found faster and not
 in a very consistent manner. All should average to around 120s per block tho
@@ -168,10 +168,14 @@ Jay D Dee's BTC: 12tdvfF7KmAsihBXQXynT6E6th2c2pByTT
 This fork introduces 1.75% donation on added Ghost Rider (GR) algorithm only.
 
 If you wanna support us, any donations are welcome:
-Ausminer
+
+
+Ausminers:
+
 RTM: RXq9v8WbMLZaGH79GmK2oEdc33CTYkvyoZ
 
-Delgon
+Delgon:
+
 RTM: RQKcAZBtsSacMUiGNnbk3h3KJAN94tstvt
 ETH: 0x6C1273b5f4D583bA00aeB2cE68f54825411D6E8c
 
