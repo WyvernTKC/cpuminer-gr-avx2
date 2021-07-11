@@ -68,25 +68,25 @@ Change Log
 1.1.8
 
 #### Fixes:
-- Fix rare cases of Low Difficutly share stream after lost connection.
+- Fix rare cases of Low Difficulty share stream after lost connection.
 - Display proper Cryptonight variants used with new blocks.
 - Properly calculate real current, min, max, avg hashrate - Hashes done by the miner.
 - Block sends of shares with mixed address RTM/WATC/BUTK to the pool.
 
 #### Changes:
 - Check for the `--max-temp=N` with every submitted share and ~20s. Previously was ~60s and with new block/job.
-- Increase preformance of 2 Cryptonight variants and some general Cryptonight changes in GR algo (5-8%). Re-tuning of the miner is recommended!
+- Increase performance of 2 Cryptonight variants and some general Cryptonight changes in GR algo (5-8%). Re-tuning of the miner is recommended!
 - Better support for WATC/BUTK mining.
-- Provide better info during tuning process.
+- Provide better info during the tuning process.
 - `--benchmark` - Now provides true average hashrate from each rotation and estimated pool average.
-- Dev fee changed from 1% to 1.75% with ability to decrease it back to 1.25% using `-d X` flag.
+- Dev fee changed from 1% to 1.75% with the ability to decrease it back to 1.25% using `-d X` flag.
 
 #### Added:
 - `--force-tune` - Forces tuning regardless if the `tune_config` file is present. Useful on HiveOS.
-- `--benchmark-old` - Old ratios of calculating hashrate. Left for comparision purposes with previous verison.
+- `--benchmark-old` - Old ratios of calculating hashrate. Left for comparison purposes with the previous version.
 
 #### Removed:
-- All agorithm support that is not used by Ghost Rider (GR) algorithm.
+- All algorithms support that is not used by Ghost Rider (GR) algorithm.
 
 #### Notes:
 - Ausminers and I have put a great amount of time and work into the miner for this next increase,

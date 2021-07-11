@@ -4262,7 +4262,7 @@ int main(int argc, char *argv[]) {
   if (!InitHugePages(opt_n_threads, max_large_pages)) {
     applog(LOG_ERR, "Could not prepare Huge Pages.");
   } else {
-    applog(LOG_BLUE, "Huge Pages set up successfuly.");
+    applog(LOG_BLUE, "Huge Pages set up successfully.");
   }
 
 #ifdef __AES__
@@ -4271,7 +4271,7 @@ int main(int argc, char *argv[]) {
     if (!execute_msr(num_cpus)) {
       applog(LOG_ERR, "Failed to set MSR for the CPU.");
     } else {
-      applog(LOG_BLUE, "MSR set up successfuly.");
+      applog(LOG_BLUE, "MSR set up successfully.");
     }
   }
 #endif

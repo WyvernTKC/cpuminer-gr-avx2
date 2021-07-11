@@ -240,10 +240,10 @@ static void explode_scratchpad(const __m128i *state, __m128i *ls,
 static void implode_scratchpad(const __m128i *ls, __m128i *state,
                                const size_t memory) {
   __m128i x[8] __attribute__((aligned(128)));
-  __m128i k[10];
+  __m128i k[10] __attribute__((aligned(32)));
 
   aes_genkey(state + 2, k);
-  const __m128i *key = __builtin_assume_aligned(k, 16);
+  const __m128i *key = __builtin_assume_aligned(k, 32);
 
   memcpy(x, state + 4, 128);
 
@@ -274,10 +274,10 @@ static void implode_scratchpad(const __m128i *ls, __m128i *state,
 static void implode_scratchpad_half(const __m128i *ls, __m128i *state,
                                     const size_t memory) {
   __m128i x[8] __attribute__((aligned(128)));
-  __m128i k[10];
+  __m128i k[10] __attribute__((aligned(32)));
 
   aes_genkey(state + 2, k);
-  const __m128i *key = __builtin_assume_aligned(k, 16);
+  const __m128i *key = __builtin_assume_aligned(k, 32);
 
   memcpy(x, state + 4, 128);
 
@@ -305,10 +305,10 @@ static void implode_scratchpad_half(const __m128i *ls, __m128i *state,
   }
 
   __m128i x2[8] __attribute__((aligned(128)));
-  __m128i k2[10];
+  __m128i k2[10] __attribute__((aligned(32)));
 
   aes_genkey(state, k2);
-  const __m128i *key2 = __builtin_assume_aligned(k2, 16);
+  const __m128i *key2 = __builtin_assume_aligned(k2, 32);
   // Last x state from scratchpad explode is saved in the 128 bytes after
   // 1/2 of memory
   memcpy(x2, ls, 128);
