@@ -232,6 +232,7 @@ char *donation_userBUTK[2] = {"XdFVd4X4Ru688UVtKetxxJPD54hPfemhxg",
 char *donation_userWATC[2] = {"WjHH1J6TwYMomcrggNtBoEDYAFdvcVACR3",
                               "WYv6pvBgWRALqiaejWZ8FpQ3FKEzTHXj7W"};
 char *donation_pass[4] = {"x", "x", "x", "x"};
+volatile bool switching_sctx_data = false;
 bool enable_donation = true;
 double donation_percent = 1.75;
 int dev_turn = 0;
@@ -1018,7 +1019,7 @@ static inline int stats_ptr_incr(int p) { return ++p % s_stats_size; }
 static bool is_stale_share(struct work *work) {
   if ((work->data[algo_gate.ntime_index] !=
        g_work.data[algo_gate.ntime_index]) ||
-      stratum_problem || g_work_time == 0) {
+      stratum_problem || g_work_time == 0 || switching_sctx_data) {
     applog(LOG_WARNING, "Skip stale share.");
     pthread_mutex_lock(&stats_lock);
     // Treat share as Stale.
@@ -1250,6 +1251,7 @@ static void donation_switch() {
   if (donation_time_start <= now) {
     applog(LOG_BLUE, "Donation Start");
     dev_mining = true;
+    switching_sctx_data = true;
 
     if (donation_url_idx[dev_turn] < max_idx && !check_same_stratum()) {
       donation_data_switch(dev_turn, false);
@@ -1260,6 +1262,7 @@ static void donation_switch() {
         sleep(60);
         // This should switch to user settings.
         donation_switch();
+        switching_sctx_data = false;
         return;
       }
     } else {
@@ -1275,6 +1278,7 @@ static void donation_switch() {
   } else if (donation_time_stop <= now) {
     applog(LOG_BLUE, "Donation Stop");
     dev_mining = false;
+    switching_sctx_data = true;
     donation_time_start = now + donation_wait - (donation_percent * 60);
     // This will change to the proper value when dev fee starts.
     donation_time_stop = donation_time_start + donation_wait * 2.0;
@@ -1291,6 +1295,7 @@ static void donation_switch() {
     }
     switched_stratum = false;
   }
+  switching_sctx_data = false;
 }
 
 // Some pools have problems with special characters and only
@@ -2187,6 +2192,13 @@ static void update_submit_stats(struct work *work, const void *hash) {
 
 bool submit_solution(struct work *work, const void *hash,
                      struct thr_info *thr) {
+  // Skip submitting of the share if there is stratum change beeing done.
+  // This should prevent miner from sending shares to the pool with wrong
+  // address mixing RTM and other alt coins.
+  if (switching_sctx_data) {
+    return false;
+  }
+
   work->sharediff = hash_to_diff(hash);
   if (likely(submit_work(thr, work))) {
     update_submit_stats(work, hash);

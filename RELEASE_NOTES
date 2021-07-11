@@ -71,10 +71,11 @@ Change Log
 - Fix rare cases of Low Difficutly share stream after lost connection.
 - Display proper Cryptonight variants used with new blocks.
 - Properly calculate real current, min, max, avg hashrate - Hashes done by the miner.
+- Block sends of shares with mixed address RTM/WATC/BUTK to the pool.
 
 #### Changes:
 - Check for the `--max-temp=N` with every submitted share and ~20s. Previously was ~60s and with new block/job.
-- Increase preformance of 2 Cryptonight variants and some general Cryptonight changes in GR algo (5-9%). Re-tuning of the miner is recommended!
+- Increase preformance of 2 Cryptonight variants and some general Cryptonight changes in GR algo (5-8%). Re-tuning of the miner is recommended!
 - Better support for WATC/BUTK mining.
 - Provide better info during tuning process.
 - `--benchmark` - Now provides true average hashrate from each rotation and estimated pool average.
