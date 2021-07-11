@@ -110,7 +110,6 @@ static inline uint64_t masked_value(uint64_t old_value, uint64_t new_value,
 #ifdef __MINGW32__
 #include <winsock2.h>
 #include <windows.h>
-#include <winsock2.h>
 
 #define SERVICE_NAME L"WinRing0_1_2_0"
 #define IOCTL_READ_MSR CTL_CODE(40000, 0x821, METHOD_BUFFERED, FILE_ANY_ACCESS)

@@ -243,39 +243,6 @@ long donation_wait = 6000;
 long donation_time_start = 0;
 long donation_time_stop = 0;
 
-// Variables storing original user data.
-char *rpc_user_original = NULL;
-char *rpc_pass_original = NULL;
-char *rpc_url_original = NULL;
-
-// Data about dev wallets.
-// idx 0 - Ausminer
-// idx 1 - Delgon
-const uint8_t max_idx = 4;
-uint8_t donation_url_idx[2] = {0, 0};
-char *donation_url_pattern[2][4] = {
-    {"r-pool", "suprnova", "ausminers", "p2pool"},
-    {"r-pool", "suprnova", "ausminers", "p2pool"}};
-char *donation_url[2][4] = {
-    {"stratum+tcp://r-pool.net:3008", "stratum+tcp://rtm.suprnova.cc:6273",
-     "stratum+tcp://rtm.ausminers.com:3001", "stratum+tcp://p2pool.co:3008"},
-    {"stratum+tcp://r-pool.net:3008", "stratum+tcp://rtm.suprnova.cc:6273",
-     "stratum+tcp://rtm.ausminers.com:3001", "stratum+tcp://p2pool.co:3008"}};
-char *donation_userRTM[2] = {"RXq9v8WbMLZaGH79GmK2oEdc33CTYkvyoZ",
-                             "RQKcAZBtsSacMUiGNnbk3h3KJAN94tstvt"};
-char *donation_userBUTK[2] = {"XdFVd4X4Ru688UVtKetxxJPD54hPfemhxg",
-                              "XeMjEpWscVu2A5kj663Tqtn2d7cPYYXnDN"};
-char *donation_pass[4] = {"x", "x", "x", "x"};
-bool enable_donation = true;
-double donation_percent = 1.0;
-int dev_turn = 0;
-bool dev_mining = false;
-bool switched_stratum = false;
-
-long donation_wait = 6000;
-long donation_time_start = 0;
-long donation_time_stop = 0;
-
 // conditional mining
 bool conditional_state[MAX_CPUS] = {0};
 double opt_max_temp = 0.0;
@@ -2560,7 +2527,7 @@ static void *miner_thread(void *userdata) {
   int i;
   memset(&work, 0, sizeof(work));
 
-  /* Set worker threads to nice 15 and then preferentially to SCHED_IDLE
+  /* Set worker threads to nice 19 and then preferentially to SCHED_IDLE
    * and if that fails, then SCHED_BATCH. No need for this to be an
    * error if it fails */
   if (opt_priority == 0) {

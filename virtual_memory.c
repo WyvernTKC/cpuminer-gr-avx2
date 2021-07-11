@@ -26,8 +26,8 @@ static inline size_t GetProperSize(size_t size) {
 #include <ntsecapi.h>
 #include <ntstatus.h>
 #include <tchar.h>
-#include <windows.h>
 #include <winsock2.h>
+#include <windows.h>
 /*****************************************************************
 SetLockPagesPrivilege: a function to obtain or
 release the privilege of locking physical pages.

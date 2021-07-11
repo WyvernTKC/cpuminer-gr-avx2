@@ -41,7 +41,9 @@ GBT is YMMV.
 Supported Algorithms
 --------------------
 
+
                           gr            Ghost Rider (RTM)
+                           
 
 Quick Setup
 -----------
@@ -162,6 +164,7 @@ Donations
 Any kind but donations are accepted.
 Jay D Dee's BTC: 12tdvfF7KmAsihBXQXynT6E6th2c2pByTT
 
+
 This fork introduces 1.75% donation on added Ghost Rider (GR) algorithm only.
 
 If you wanna support us, any donations are welcome:
@@ -171,5 +174,6 @@ RTM: RXq9v8WbMLZaGH79GmK2oEdc33CTYkvyoZ
 Delgon
 RTM: RQKcAZBtsSacMUiGNnbk3h3KJAN94tstvt
 ETH: 0x6C1273b5f4D583bA00aeB2cE68f54825411D6E8c
+
 
 Happy mining!

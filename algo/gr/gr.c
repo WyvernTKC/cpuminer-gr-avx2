@@ -285,17 +285,11 @@ int scanhash_gr(struct work *work, uint32_t max_nonce, uint64_t *hashes_done,
     if (opt_tuned) {
       select_tuned_config(thr_id);
     }
-    if (opt_tuned) {
-      select_tuned_config(thr_id);
-    }
   }
 
   // Allocates hp_state for Cryptonight algorithms.
   // Needs to be run AFTER gr_hash_order is set!
   AllocateNeededMemory(true);
-
-  edata0[19] = nonce;
-  edata1[19] = nonce + 1;
 
   edata0[19] = nonce;
   edata1[19] = nonce + 1;

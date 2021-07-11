@@ -29,8 +29,8 @@
 #include <sys/time.h>
 
 #ifdef __MINGW32__
-#include <windows.h>
 #include <winsock2.h>
+#include <windows.h>
 #endif
 
 #include <curl/curl.h>

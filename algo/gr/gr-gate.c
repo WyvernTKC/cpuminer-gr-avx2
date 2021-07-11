@@ -293,466 +293,397 @@ void *statistic_thread(void *arg) {
     print_stats(prefix, false);
     if (rotation == 0) {
       // Print permanently after full 20 rotations.
-      print_stats("Hashrate (Avg): ", false);
-=======
-      if (arg != NULL) {
-        bench_time_all += bench_time;
-        bench_hashes_all += bench_hashes;
-      } else {
-        bench_time_true += bench_time;
-        bench_hashes_true += bench_hashes;
-        if (opt_benchmark_old) {
-          bench_time *= time_ratio_old[(rotation + 19) % 20];
-          bench_hashes *= time_ratio_old[(rotation + 19) % 20];
-        } else {
-          bench_time *= time_ratio[(rotation + 19) % 20];
-          bench_hashes *= time_ratio[(rotation + 19) % 20];
-        }
-        bench_time_all += bench_time;
-        bench_hashes_all += bench_hashes;
-      }
-
-      char prefix[256] = {0};
-      sprintf(prefix,
-              "Hashrate (Avg. for rotation %02d):", tuning_rotation + 1);
-      print_stats(prefix, false);
-      if (rotation == 0) {
-        // Print permanently after full 20 rotations.
->>>>>>> beta
-        // Make sure it is true before other threads sync.
-        stop_benchmark = true;
-        sync_bench(); // Config change sync.
-        return NULL;
-      } else {
-        tuning_rotation++;
-      }
+      // Make sure it is true before other threads sync.
+      stop_benchmark = true;
+      sync_bench(); // Config change sync.
+      return NULL;
+    } else {
+      tuning_rotation++;
     }
   }
+}
 
-  static void tune_config(void *input, int thr_id, int rot) {
-    srand(thr_id);
-    rotation = 19;
-    long sleep_time = 12500000;
-    pthread_t pthr;
-    if (thr_id == 0) {
-      pthread_create(&pthr, NULL, &statistic_thread, &sleep_time);
-    }
+static void tune_config(void *input, int thr_id, int rot) {
+  srand(thr_id);
+  rotation = 19;
+  long sleep_time = 12500000;
+  pthread_t pthr;
+  if (thr_id == 0) {
+    pthread_create(&pthr, NULL, &statistic_thread, &sleep_time);
+  }
 
-    uint32_t n = 10000 * thr_id;
-    uint32_t edata0[20] __attribute__((aligned(64)));
-    mm128_bswap32_80(edata0, input);
-    edata0[19] = n;
+  uint32_t n = 10000 * thr_id;
+  uint32_t edata0[20] __attribute__((aligned(64)));
+  mm128_bswap32_80(edata0, input);
+  edata0[19] = n;
 #if defined(GR_4WAY)
-    uint32_t hash[8 * 4] __attribute__((aligned(64)));
-    uint32_t vdata[20 * 4] __attribute__((aligned(64)));
-    __m256i *noncev = (__m256i *)vdata + 9; // aligned
-    mm256_bswap32_intrlv80_4x64(vdata, input);
-    *noncev = mm256_intrlv_blend_32(
-        _mm256_set_epi32(n + 3, 0, n + 2, 0, n + 1, 0, n, 0), *noncev);
+  uint32_t hash[8 * 4] __attribute__((aligned(64)));
+  uint32_t vdata[20 * 4] __attribute__((aligned(64)));
+  __m256i *noncev = (__m256i *)vdata + 9; // aligned
+  mm256_bswap32_intrlv80_4x64(vdata, input);
+  *noncev = mm256_intrlv_blend_32(
+      _mm256_set_epi32(n + 3, 0, n + 2, 0, n + 1, 0, n, 0), *noncev);
 #else
-    uint32_t hash[8 * 2] __attribute__((aligned(64)));
-    uint32_t edata1[20] __attribute__((aligned(64)));
-    mm128_bswap32_80(edata1, input);
-    edata1[19] = n + 1;
+  uint32_t hash[8 * 2] __attribute__((aligned(64)));
+  uint32_t edata1[20] __attribute__((aligned(64)));
+  mm128_bswap32_80(edata1, input);
+  edata1[19] = n + 1;
 #endif
-    double hashes_done = 0.0;
-    uint32_t shuffle = 0;
-    // Use CN rotation.
-    edata0[1] = rand();
-    edata0[2] = rand();
-    gr_getAlgoString((const uint8_t *)(&edata0[1]), gr_hash_order);
-    gr_hash_order[5] = cn[rot][0] + 15;
-    gr_hash_order[11] = cn[rot][1] + 15;
-    gr_hash_order[17] = cn[rot][2] + 15;
+  double hashes_done = 0.0;
+  uint32_t shuffle = 0;
+  // Use CN rotation.
+  edata0[1] = rand();
+  edata0[2] = rand();
+  gr_getAlgoString((const uint8_t *)(&edata0[1]), gr_hash_order);
+  gr_hash_order[5] = cn[rot][0] + 15;
+  gr_hash_order[11] = cn[rot][1] + 15;
+  gr_hash_order[17] = cn[rot][2] + 15;
 
-    // Purge memory for test.
-    AllocateNeededMemory(false);
+  // Purge memory for test.
+  AllocateNeededMemory(false);
 
-    struct timeval start, end, diff;
+  struct timeval start, end, diff;
 
-    sync_bench();
-    sync_bench();
-    gettimeofday(&start, NULL);
-    while (true) {
+  sync_bench();
+  sync_bench();
+  gettimeofday(&start, NULL);
+  while (true) {
 #if defined(GR_4WAY)
-      // Make sure nonces are increased for each hash. Same hashes will result
-      // in better data locality on CN algos leading to better/innaccurate
-      // results.
-      gr_4way_hash(hash, vdata, thr_id);
-      *noncev = _mm256_add_epi32(*noncev, m256_const1_64(0x0000000400000000));
-      hashes_done += 4.0;
+    // Make sure nonces are increased for each hash. Same hashes will result
+    // in better data locality on CN algos leading to better/innaccurate
+    // results.
+    gr_4way_hash(hash, vdata, thr_id);
+    *noncev = _mm256_add_epi32(*noncev, m256_const1_64(0x0000000400000000));
+    hashes_done += 4.0;
 #else
-      // Increase nonce.
-      edata0[19] += 2;
-      edata1[19] += 2;
-      gr_hash(hash, edata0, edata1, thr_id);
-      hashes_done += 2.0;
+    // Increase nonce.
+    edata0[19] += 2;
+    edata1[19] += 2;
+    gr_hash(hash, edata0, edata1, thr_id);
+    hashes_done += 2.0;
 #endif
-      if (unlikely(rotation == 0)) {
-        gettimeofday(&end, NULL);
-        timeval_subtract(&diff, &end, &start);
-        double elapsed = (double)diff.tv_sec + (double)diff.tv_usec / 1e6;
-        pthread_mutex_lock(&stats_lock);
-        bench_hashes += hashes_done;
-        bench_time += elapsed;
-        pthread_mutex_unlock(&stats_lock);
-        sync_bench();
-        sync_bench();
-        break;
+    if (unlikely(rotation == 0)) {
+      gettimeofday(&end, NULL);
+      timeval_subtract(&diff, &end, &start);
+      double elapsed = (double)diff.tv_sec + (double)diff.tv_usec / 1e6;
+      pthread_mutex_lock(&stats_lock);
+      bench_hashes += hashes_done;
+      bench_time += elapsed;
+      pthread_mutex_unlock(&stats_lock);
+      sync_bench();
+      sync_bench();
+      break;
+    } else {
+      // Shuffle Cryptonight order every hashing functions.
+      // Different orders can impact the hashing performance.
+      ++shuffle;
+      if (shuffle < 3) {
+        gr_hash_order[5] = cn[rot][(shuffle + 0) % 3] + 15;
+        gr_hash_order[11] = cn[rot][(shuffle + 1) % 3] + 15;
+        gr_hash_order[17] = cn[rot][(shuffle + 2) % 3] + 15;
       } else {
-        // Shuffle Cryptonight order every hashing functions.
-        // Different orders can impact the hashing performance.
-        ++shuffle;
-        if (shuffle < 3) {
-          gr_hash_order[5] = cn[rot][(shuffle + 0) % 3] + 15;
-          gr_hash_order[11] = cn[rot][(shuffle + 1) % 3] + 15;
-          gr_hash_order[17] = cn[rot][(shuffle + 2) % 3] + 15;
-        } else {
-          gr_hash_order[5] = cn[rot][(shuffle + 0) % 3] + 15;
-          gr_hash_order[11] = cn[rot][(shuffle + 2) % 3] + 15;
-          gr_hash_order[17] = cn[rot][(shuffle + 1) % 3] + 15;
-          if (shuffle == 6) {
-            shuffle = 0;
-          }
+        gr_hash_order[5] = cn[rot][(shuffle + 0) % 3] + 15;
+        gr_hash_order[11] = cn[rot][(shuffle + 2) % 3] + 15;
+        gr_hash_order[17] = cn[rot][(shuffle + 1) % 3] + 15;
+        if (shuffle == 6) {
+          shuffle = 0;
         }
       }
     }
   }
+}
 
-  static bool save_config() {
-    FILE *fd;
-    fd = fopen(opt_tuneconfig_file, "w");
-    if (fd == NULL) {
-      applog(LOG_ERR, "Could not save \'%s\' file.", opt_tuneconfig_file);
-      return false;
-    }
-    for (int i = 0; i < 20; i++) {
-      fprintf(fd, "%d %d %d %d %d %d\n", cn_tune[i][0], cn_tune[i][1],
-              cn_tune[i][2], cn_tune[i][3], cn_tune[i][4], cn_tune[i][5]);
-    }
-    fclose(fd);
-    return true;
+static bool save_config() {
+  FILE *fd;
+  fd = fopen(opt_tuneconfig_file, "w");
+  if (fd == NULL) {
+    applog(LOG_ERR, "Could not save \'%s\' file.", opt_tuneconfig_file);
+    return false;
   }
+  for (int i = 0; i < 20; i++) {
+    fprintf(fd, "%d %d %d %d %d %d\n", cn_tune[i][0], cn_tune[i][1],
+            cn_tune[i][2], cn_tune[i][3], cn_tune[i][4], cn_tune[i][5]);
+  }
+  fclose(fd);
+  return true;
+}
 
-  // Config is a table of 3 values from 0-2.
-  static bool next_config(uint8_t * config) {
+// Config is a table of 3 values from 0-2.
+static bool next_config(uint8_t *config) {
 #ifdef __AVX2__
-    static const int max_val = 2;
+  static const int max_val = 2;
 #else
-    static const int max_val = 1;
+  static const int max_val = 1;
 #endif
 
-    bool increment = true;
-    for (size_t i = 0; i < 3; ++i) {
-      if (increment) {
-        if (config[i] == max_val) {
-          config[i] = 0;
-          if (i == 2) {
-            return false;
-          }
-        } else {
-          config[i]++;
-          increment = false;
+  bool increment = true;
+  for (size_t i = 0; i < 3; ++i) {
+    if (increment) {
+      if (config[i] == max_val) {
+        config[i] = 0;
+        if (i == 2) {
+          return false;
         }
       } else {
-        break;
+        config[i]++;
+        increment = false;
       }
+    } else {
+      break;
     }
-    return true;
   }
+  return true;
+}
 
-  static char *variant_name(const uint8_t variant) {
-    switch (variant) {
-    case 0:
-      return "Dark";
-    case 1:
-      return "Darklite";
-    case 2:
-      return "Fast";
-    case 3:
-      return "Lite";
-    case 4:
-      return "Turtle";
-    case 5:
-      return "Turtlelite";
-    }
-    return "Unknown";
+static char *variant_name(const uint8_t variant) {
+  switch (variant) {
+  case 0:
+    return "Dark";
+  case 1:
+    return "Darklite";
+  case 2:
+    return "Fast";
+  case 3:
+    return "Lite";
+  case 4:
+    return "Turtle";
+  case 5:
+    return "Turtlelite";
   }
+  return "Unknown";
+}
 
-  static char *variant_way(const uint8_t way) {
-    switch (way) {
-    case CN_4WAY:
-      return "4way";
-    case CN_2WAY:
-      return "2way";
-    default:
-      return "1way";
-    }
+static char *variant_way(const uint8_t way) {
+  switch (way) {
+  case CN_4WAY:
+    return "4way";
+  case CN_2WAY:
+    return "2way";
+  default:
+    return "1way";
   }
+}
 
-  static void variants_used(const uint8_t *ids, char *used) {
-    for (int i = 0; i < 3; ++i) {
-      used[cn_map[ids[i]] * 2] = 'X';
-    }
+static void variants_used(const uint8_t *ids, char *used) {
+  for (int i = 0; i < 3; ++i) {
+    used[cn_map[ids[i]] * 2] = 'X';
   }
+}
 
 // Used in tune to detect if the
 #define TURTLE(id) variant[id] == 0 || variant[id] == 1
 #define DARK(id) variant[id] == 2 || variant[id] == 3
 
-=======
-
-  static char *variant_name(const uint8_t variant) {
-    switch (variant) {
-    case 0:
-      return "Dark";
-    case 1:
-      return "Darklite";
-    case 2:
-      return "Fast";
-    case 3:
-      return "Lite";
-    case 4:
-      return "Turtle";
-    case 5:
-      return "Turtlelite";
+// Run tuning benchmarks and create tune_config in the end.
+void tune(void *input, int thr_id) {
+  for (int i = 0; i < 20; i++) {
+    double best_hashrate = 0;
+    tuning_rotation = i;
+    if (thr_id == 0) {
+      char *used = strdup("0 0 0 0 0 0");
+      memset(cn_tune[i], 0, 6);
+      variants_used(cn[i], used);
+      applog(LOG_NOTICE, "Testing rotation: %02d (%s) -> %s + %s + %s", i + 1,
+             used, variant_name(cn[i][0]), variant_name(cn[i][1]),
+             variant_name(cn[i][2]));
+      free(used);
     }
-    return "Unknown";
-  }
 
-  static char *variant_way(const uint8_t way) {
-    switch (way) {
-    case CN_4WAY:
-      return "4way";
-    case CN_2WAY:
-      return "2way";
-    default:
-      return "1way";
-    }
-  }
+    uint8_t config[3];
+    memset(config, 0, 3);
+    do {
+      memset(cn_config, 0, 6);
+      uint8_t variant[3] = {cn_map[cn[i][0]], cn_map[cn[i][1]],
+                            cn_map[cn[i][2]]};
+      bool skip = false;
 
-  static void variants_used(const uint8_t *ids, char *used) {
-    for (int i = 0; i < 3; ++i) {
-      used[cn_map[ids[i]] * 2] = 'X';
-    }
-  }
-
-// Used in tune to detect if the
-#define TURTLE(id) variant[id] == 0 || variant[id] == 1
-#define DARK(id) variant[id] == 2 || variant[id] == 3
-
-  // Run tuning benchmarks and create tune_config in the end.
-  void tune(void *input, int thr_id) {
-    for (int i = 0; i < 20; i++) {
-      double best_hashrate = 0;
-      tuning_rotation = i;
-      if (thr_id == 0) {
-        char *used = strdup("0 0 0 0 0 0");
-        memset(cn_tune[i], 0, 6);
-        variants_used(cn[i], used);
-        applog(LOG_NOTICE, "Testing rotation: %02d (%s) -> %s + %s + %s", i + 1,
-               used, variant_name(cn[i][0]), variant_name(cn[i][1]),
-               variant_name(cn[i][2]));
-        free(used);
-      }
-
-      uint8_t config[3];
-      memset(config, 0, 3);
-      do {
-        memset(cn_config, 0, 6);
-        uint8_t variant[3] = {cn_map[cn[i][0]], cn_map[cn[i][1]],
-                              cn_map[cn[i][2]]};
-        bool skip = false;
-
-        for (int j = 0; j < 3; ++j) {
-          if (config[j] == 2) {
-            if (!opt_tune_full) {
-              if (opt_tune_simple) {
-                if (!(TURTLE(j))) {
-                  skip = true;
-                }
-              } else if (!(TURTLE(j) || DARK(j))) {
+      for (int j = 0; j < 3; ++j) {
+        if (config[j] == 2) {
+          if (!opt_tune_full) {
+            if (opt_tune_simple) {
+              if (!(TURTLE(j))) {
                 skip = true;
               }
+            } else if (!(TURTLE(j) || DARK(j))) {
+              skip = true;
             }
           }
         }
+      }
 
-        if (skip) {
-          continue;
-        }
-
-        if (thr_id == 0) {
-          applog(LOG_INFO, "Testing: %s (%s) + %s (%s) + %s (%s)",
-                 variant_name(cn[i][0]), variant_way(config[0]),
-                 variant_name(cn[i][1]), variant_way(config[1]),
-                 variant_name(cn[i][2]), variant_way(config[2]));
-        }
-
-        cn_config[variant[0]] = config[0];
-        cn_config[variant[1]] = config[1];
-        cn_config[variant[2]] = config[2];
-        sync_conf();
-        tune_config(input, thr_id, i);
-        sync_conf();
-        if (thr_id == 0) {
-          if (best_hashrate < bench_hashrate) {
-            cn_tune[i][variant[0]] = config[0];
-            cn_tune[i][variant[1]] = config[1];
-            cn_tune[i][variant[2]] = config[2];
-
-            best_hashrate = bench_hashrate;
-          }
-          bench_hashrate = 0;
-          bench_time = 0;
-          bench_hashes = 0;
-        }
-        // Right now config
-        sync_conf();
-      } while (next_config(config));
+      if (skip) {
+        continue;
+      }
 
       if (thr_id == 0) {
-        applog(LOG_NOTICE,
-               "Best config for rotation %02d: %d %d %d %d %d %d -> %.02lf H/s",
-               i + 1, cn_tune[i][0], cn_tune[i][1], cn_tune[i][2],
-               cn_tune[i][3], cn_tune[i][4], cn_tune[i][5], best_hashrate);
-        char *used = strdup("0 0 0 0 0 0");
-        variants_used(cn[i], used);
-        applog(
-            LOG_NOTICE, "%s -> %s (%s) + %s (%s) + %s (%s)", used,
-            variant_name(cn[i][0]), variant_way(cn_tune[i][cn_map[cn[i][0]]]),
-            variant_name(cn[i][1]), variant_way(cn_tune[i][cn_map[cn[i][1]]]),
-            variant_name(cn[i][2]), variant_way(cn_tune[i][cn_map[cn[i][2]]]));
-        free(used);
+        applog(LOG_INFO, "Testing: %s (%s) + %s (%s) + %s (%s)",
+               variant_name(cn[i][0]), variant_way(config[0]),
+               variant_name(cn[i][1]), variant_way(config[1]),
+               variant_name(cn[i][2]), variant_way(config[2]));
       }
-    }
+
+      cn_config[variant[0]] = config[0];
+      cn_config[variant[1]] = config[1];
+      cn_config[variant[2]] = config[2];
+      sync_conf();
+      tune_config(input, thr_id, i);
+      sync_conf();
+      if (thr_id == 0) {
+        if (best_hashrate < bench_hashrate) {
+          cn_tune[i][variant[0]] = config[0];
+          cn_tune[i][variant[1]] = config[1];
+          cn_tune[i][variant[2]] = config[2];
+
+          best_hashrate = bench_hashrate;
+        }
+        bench_hashrate = 0;
+        bench_time = 0;
+        bench_hashes = 0;
+      }
+      // Right now config
+      sync_conf();
+    } while (next_config(config));
+
     if (thr_id == 0) {
-      for (int i = 0; i < 20; i++) {
-        applog(LOG_NOTICE,
-               "Best config for rotation %02d (%d %d %d): %d %d %d %d %d %d",
-               i + 1, cn[i][0], cn[i][1], cn[i][2], cn_tune[i][0],
-               cn_tune[i][1], cn_tune[i][2], cn_tune[i][3], cn_tune[i][4],
-               cn_tune[i][5]);
-      }
-      opt_tune = false;
-      opt_tuned = true;
-      rotation = 0;
-      tuning_rotation = 0;
-      save_config();
+      applog(LOG_NOTICE,
+             "Best config for rotation %02d: %d %d %d %d %d %d -> %.02lf H/s",
+             i + 1, cn_tune[i][0], cn_tune[i][1], cn_tune[i][2], cn_tune[i][3],
+             cn_tune[i][4], cn_tune[i][5], best_hashrate);
+      char *used = strdup("0 0 0 0 0 0");
+      variants_used(cn[i], used);
+      applog(LOG_NOTICE, "%s -> %s (%s) + %s (%s) + %s (%s)", used,
+             variant_name(cn[i][0]), variant_way(cn_tune[i][cn_map[cn[i][0]]]),
+             variant_name(cn[i][1]), variant_way(cn_tune[i][cn_map[cn[i][1]]]),
+             variant_name(cn[i][2]), variant_way(cn_tune[i][cn_map[cn[i][2]]]));
+      free(used);
     }
-    sync_conf();
+  }
+  if (thr_id == 0) {
+    for (int i = 0; i < 20; i++) {
+      applog(LOG_NOTICE,
+             "Best config for rotation %02d (%d %d %d): %d %d %d %d %d %d",
+             i + 1, cn[i][0], cn[i][1], cn[i][2], cn_tune[i][0], cn_tune[i][1],
+             cn_tune[i][2], cn_tune[i][3], cn_tune[i][4], cn_tune[i][5]);
+    }
+    opt_tune = false;
+    opt_tuned = true;
+    rotation = 0;
+    tuning_rotation = 0;
+    save_config();
+  }
+  sync_conf();
+}
+
+void benchmark(void *input, int thr_id, long sleep_time) {
+  for (int i = 0; i < 160; i++) {
+    ((uint8_t *)input)[i] = i;
   }
 
-  void benchmark(void *input, int thr_id, long sleep_time) {
-    for (int i = 0; i < 160; i++) {
-      ((uint8_t *)input)[i] = i;
-    }
+  srand(thr_id);
+  pthread_t pthr;
+  if (thr_id == 0) {
+    pthread_create(&pthr, NULL, &statistic_thread,
+                   sleep_time ? &sleep_time : NULL);
+  }
 
-    srand(thr_id);
-    pthread_t pthr;
-    if (thr_id == 0) {
-      pthread_create(&pthr, NULL, &statistic_thread,
-                     sleep_time ? &sleep_time : NULL);
-    }
-
-    uint32_t n = 10000 * thr_id;
-    uint32_t edata0[20] __attribute__((aligned(64)));
-    mm128_bswap32_80(edata0, input);
-    edata0[19] = n;
+  uint32_t n = 10000 * thr_id;
+  uint32_t edata0[20] __attribute__((aligned(64)));
+  mm128_bswap32_80(edata0, input);
+  edata0[19] = n;
 #if defined(GR_4WAY)
-    uint32_t hash[8 * 4] __attribute__((aligned(64)));
-    uint32_t vdata[20 * 4] __attribute__((aligned(64)));
-    __m256i *noncev = (__m256i *)vdata + 9; // aligned
-    mm256_bswap32_intrlv80_4x64(vdata, input);
-    *noncev = mm256_intrlv_blend_32(
-        _mm256_set_epi32(n + 3, 0, n + 2, 0, n + 1, 0, n, 0), *noncev);
+  uint32_t hash[8 * 4] __attribute__((aligned(64)));
+  uint32_t vdata[20 * 4] __attribute__((aligned(64)));
+  __m256i *noncev = (__m256i *)vdata + 9; // aligned
+  mm256_bswap32_intrlv80_4x64(vdata, input);
+  *noncev = mm256_intrlv_blend_32(
+      _mm256_set_epi32(n + 3, 0, n + 2, 0, n + 1, 0, n, 0), *noncev);
 #else
-    uint32_t hash[8 * 2] __attribute__((aligned(64)));
-    uint32_t edata1[20] __attribute__((aligned(64)));
-    mm128_bswap32_80(edata1, input);
-    edata1[19] = n + 1;
+  uint32_t hash[8 * 2] __attribute__((aligned(64)));
+  uint32_t edata1[20] __attribute__((aligned(64)));
+  mm128_bswap32_80(edata1, input);
+  edata1[19] = n + 1;
 #endif
-    uint8_t local_rotation = 255;
-    double hashes_done = 0.0;
-    uint32_t shuffle = 0;
+  uint8_t local_rotation = 255;
+  double hashes_done = 0.0;
+  uint32_t shuffle = 0;
 
-    struct timeval start, end, diff;
+  struct timeval start, end, diff;
 
-    sync_bench(); // Sync before benchmark starts.
-    gettimeofday(&start, NULL);
-    while (true) {
-      if (unlikely(local_rotation != rotation)) {
-        gettimeofday(&end, NULL);
-        timeval_subtract(&diff, &end, &start);
-        double elapsed = (double)diff.tv_sec + (double)diff.tv_usec / 1e6;
-        pthread_mutex_lock(&stats_lock);
-        bench_hashes += hashes_done;
-        bench_time += elapsed;
-        pthread_mutex_unlock(&stats_lock);
+  sync_bench(); // Sync before benchmark starts.
+  gettimeofday(&start, NULL);
+  while (true) {
+    if (unlikely(local_rotation != rotation)) {
+      gettimeofday(&end, NULL);
+      timeval_subtract(&diff, &end, &start);
+      double elapsed = (double)diff.tv_sec + (double)diff.tv_usec / 1e6;
+      pthread_mutex_lock(&stats_lock);
+      bench_hashes += hashes_done;
+      bench_time += elapsed;
+      pthread_mutex_unlock(&stats_lock);
 
-        hashes_done = 0.0;
-        shuffle = 1;
-        // Change first part of the hash to get different core rotation.
-        for (int i = 1; i < 5 + 1; ++i) {
-          edata0[i] = rand();
-        }
-        // Use new rotation.
-        gr_getAlgoString((const uint8_t *)(&edata0[1]), gr_hash_order);
-        gr_hash_order[5] = cn[rotation][0] + 15;
-        gr_hash_order[11] = cn[rotation][1] + 15;
-        gr_hash_order[17] = cn[rotation][2] + 15;
+      hashes_done = 0.0;
+      shuffle = 1;
+      // Change first part of the hash to get different core rotation.
+      for (int i = 1; i < 5 + 1; ++i) {
+        edata0[i] = rand();
+      }
+      // Use new rotation.
+      gr_getAlgoString((const uint8_t *)(&edata0[1]), gr_hash_order);
+      gr_hash_order[5] = cn[rotation][0] + 15;
+      gr_hash_order[11] = cn[rotation][1] + 15;
+      gr_hash_order[17] = cn[rotation][2] + 15;
 
-        if (opt_tuned) {
-          select_tuned_config(thr_id);
-        }
+      if (opt_tuned) {
+        select_tuned_config(thr_id);
+      }
 
-        // Purge memory for test.
-        AllocateNeededMemory(false);
+      // Purge memory for test.
+      AllocateNeededMemory(false);
 
+      sync_bench(); // Rotation change sync.
+      if (rotation == 0 && local_rotation != 255) {
         sync_bench(); // Rotation change sync.
-        if (rotation == 0 && local_rotation != 255) {
-          sync_bench(); // Rotation change sync.
-          if (likely(stop_benchmark)) {
-            // Exiting from normal benchmark.
-            if (sleep_time == 0 && thr_id == 0) {
-              print_stats("Hashrate (Est. Pool Average):", true);
-            }
-            return;
+        if (likely(stop_benchmark)) {
+          // Exiting from normal benchmark.
+          if (sleep_time == 0 && thr_id == 0) {
+            print_stats("Hashrate (Est. Pool Average):", true);
           }
-        }
-        local_rotation = rotation;
-        gettimeofday(&start, NULL);
-      } else if (!opt_benchmark_old) {
-        // Shuffle Cryptonight order every hashing functions.
-        // Different orders can impact the hashing performance.
-        if (shuffle < 3) {
-          gr_hash_order[5] = cn[local_rotation][(shuffle + 0) % 3] + 15;
-          gr_hash_order[11] = cn[local_rotation][(shuffle + 1) % 3] + 15;
-          gr_hash_order[17] = cn[local_rotation][(shuffle + 2) % 3] + 15;
-          ++shuffle;
-        } else {
-          gr_hash_order[5] = cn[local_rotation][(shuffle + 0) % 3] + 15;
-          gr_hash_order[11] = cn[local_rotation][(shuffle + 2) % 3] + 15;
-          gr_hash_order[17] = cn[local_rotation][(shuffle + 1) % 3] + 15;
-          ++shuffle;
-          if (shuffle == 6) {
-            shuffle = 0;
-          }
+          return;
         }
       }
-#if defined(GR_4WAY)
-      // Make sure nonces are increased for each hash. Same hashes will result
-      // in better data locality on CN algos leading to better/innaccurate
-      // results.
-      gr_4way_hash(hash, vdata, thr_id);
-      *noncev = _mm256_add_epi32(*noncev, m256_const1_64(0x0000000400000000));
-      hashes_done += 4.0;
-#else
-      // Increase nonce.
-      edata0[19] += 2;
-      edata1[19] += 2;
-      gr_hash(hash, edata0, edata1, thr_id);
-      hashes_done += 2.0;
-#endif
+      local_rotation = rotation;
+      gettimeofday(&start, NULL);
+    } else if (!opt_benchmark_old) {
+      // Shuffle Cryptonight order every hashing functions.
+      // Different orders can impact the hashing performance.
+      if (shuffle < 3) {
+        gr_hash_order[5] = cn[local_rotation][(shuffle + 0) % 3] + 15;
+        gr_hash_order[11] = cn[local_rotation][(shuffle + 1) % 3] + 15;
+        gr_hash_order[17] = cn[local_rotation][(shuffle + 2) % 3] + 15;
+        ++shuffle;
+      } else {
+        gr_hash_order[5] = cn[local_rotation][(shuffle + 0) % 3] + 15;
+        gr_hash_order[11] = cn[local_rotation][(shuffle + 2) % 3] + 15;
+        gr_hash_order[17] = cn[local_rotation][(shuffle + 1) % 3] + 15;
+        ++shuffle;
+        if (shuffle == 6) {
+          shuffle = 0;
+        }
+      }
     }
+#if defined(GR_4WAY)
+    // Make sure nonces are increased for each hash. Same hashes will result
+    // in better data locality on CN algos leading to better/innaccurate
+    // results.
+    gr_4way_hash(hash, vdata, thr_id);
+    *noncev = _mm256_add_epi32(*noncev, m256_const1_64(0x0000000400000000));
+    hashes_done += 4.0;
+#else
+    // Increase nonce.
+    edata0[19] += 2;
+    edata1[19] += 2;
+    gr_hash(hash, edata0, edata1, thr_id);
+    hashes_done += 2.0;
+#endif
   }
+}
