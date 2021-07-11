@@ -112,10 +112,10 @@ we can use some more parallelization and other tricks to notify the CPU of
 what is coming so it can prepare data faster.
 
 
-Ghost Rided (GR)
+Ghost Rider (GR)
 ---------------
 
-Ghostrider (GR) algorithm that is used to mine RTM consists of 15 "core" 
+Ghost Rider (GR) algorithm that is used to mine RTM consists of 15 "core" 
 algorithms (same as in X16 without SHA) and 6 different variants of Cryptonight
 which only 3 are used for hashing. Each block (in part of the previous block in
 reality) dictates what should be the order those algorithms are calculated in
