@@ -1969,8 +1969,10 @@ static bool wanna_mine(int thr_id) {
         applog(LOG_INFO, "temperature too high (%.0fC), waiting...", temp);
       state = false;
     }
+#if !(defined(__WINDOWS__) || defined(_WIN64) || defined(_WIN32))
     if (temp > hi_temp)
       hi_temp = temp;
+#endif
   }
   if (opt_max_diff > 0.0 && net_diff > opt_max_diff) {
     if (!thr_id && !conditional_state[thr_id] && !opt_quiet)
