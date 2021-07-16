@@ -1969,6 +1969,10 @@ static bool wanna_mine(int thr_id) {
         applog(LOG_INFO, "temperature too high (%.0fC), waiting...", temp);
       state = false;
     }
+#if !(defined(__WINDOWS__) || defined(_WIN64) || defined(_WIN32))
+    if (temp > hi_temp)
+      hi_temp = temp;
+#endif
   }
   if (opt_max_diff > 0.0 && net_diff > opt_max_diff) {
     if (!thr_id && !conditional_state[thr_id] && !opt_quiet)
@@ -2657,10 +2661,15 @@ static void *miner_thread(void *userdata) {
 
     } // do_this_thread
     algo_gate.resync_threads(thr_id, &work);
-    if (!is_ready() || !wanna_mine(thr_id) ||
+    if (!is_ready() ||
         unlikely(!algo_gate.ready_to_mine(&work, &stratum, thr_id) &&
                  !opt_tune))
       continue;
+
+    if (!wanna_mine(thr_id)) {
+      sleep(1);
+      continue;
+    }
 
     // LP_SCANTIME overrides opt_scantime option, is this right?
 
@@ -2804,13 +2813,7 @@ static void *miner_thread(void *userdata) {
 #endif
       }
     } // benchmark
-
-    // conditional mining
-    while (unlikely(!wanna_mine(thr_id))) {
-      sleep(2);
-    }
-
-  } // miner_thread loop
+  }   // miner_thread loop
 
 out:
   // slow_hash_free_state(mythr->id);
