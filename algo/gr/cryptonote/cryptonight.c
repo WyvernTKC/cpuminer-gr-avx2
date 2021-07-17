@@ -221,9 +221,16 @@ static __attribute__((always_inline)) inline void aes_round(const __m128i *key,
 
 #endif
 
+#define PREFETCH_TYPE_R _MM_HINT_T0
+#define PREFETCH_TYPE_W _MM_HINT_ET0
+#define PREFETCH_W(ptr) _mm_prefetch(ptr, PREFETCH_TYPE_W)
+#define PREFETCH_R(ptr) _mm_prefetch(ptr, PREFETCH_TYPE_R)
+
 #define PF_TYPE_R 0
 #define PF_TYPE_W 1
 #define PF_LOCALITY 0
+#define PREFETCH_W_SINGLE(ptr) __builtin_prefetch(ptr, PF_TYPE_W, PF_LOCALITY)
+#define PREFETCH_R_SINGLE(ptr) __builtin_prefetch(ptr, PF_TYPE_R, PF_LOCALITY)
 
 // Prefetch data. 4096 (4KiB) should allocate ~25% of most CPUs L1 Cache.
 #define PREFETCH_SIZE_B 4096
@@ -238,7 +245,7 @@ static __attribute__((always_inline)) inline void aes_round(const __m128i *key,
   aes_round(k, &x[0]);                                                         \
   aes_round(k, &x[1]);                                                         \
   aes_round(k, &x[2]);                                                         \
-  aes_round(k, &x[3]);                                                         \
+  aes_round(k, &x[3]);
 
 #else
 
@@ -250,17 +257,17 @@ static __attribute__((always_inline)) inline void aes_round(const __m128i *key,
   aes_round(k, &x[4]);                                                         \
   aes_round(k, &x[5]);                                                         \
   aes_round(k, &x[6]);                                                         \
-  aes_round(k, &x[7]);                                                         \
+  aes_round(k, &x[7]);
 
 #endif
 
 #ifdef __AVX2__
 
 #define xor_batch(dst, src)                                                    \
-  dst[0] = _mm256_xor_si256(dst[0], src[0]);                                      \
-  dst[1] = _mm256_xor_si256(dst[1], src[1]);                                      \
-  dst[2] = _mm256_xor_si256(dst[2], src[2]);                                      \
-  dst[3] = _mm256_xor_si256(dst[3], src[3]);                                      \
+  dst[0] = _mm256_xor_si256(dst[0], src[0]);                                   \
+  dst[1] = _mm256_xor_si256(dst[1], src[1]);                                   \
+  dst[2] = _mm256_xor_si256(dst[2], src[2]);                                   \
+  dst[3] = _mm256_xor_si256(dst[3], src[3]);
 
 #else
 
@@ -279,37 +286,37 @@ static __attribute__((always_inline)) inline void aes_round(const __m128i *key,
 static void explode_scratchpad(const __m128i *state, __m128i *ls,
                                const size_t memory) {
 #ifdef __VAES__
-  __m256i x[4];
+  __m256i x[4] __attribute__((aligned(128)));
   __m256i k[10];
 #elif defined(__AVX2__)
-  __m256i x[4];
+  __m256i x[4] __attribute__((aligned(128)));
   __m128i k[10];
 #else
-  __m128i x[8];
+  __m128i x[8] __attribute__((aligned(128)));
   __m128i k[10];
 #endif
 
   aes_genkey(state, k);
 #ifdef __VAES__
-  const __m256i *key = __builtin_assume_aligned(k, 32);
+  const __m256i *key = k;
 #else
-  const __m128i *key = __builtin_assume_aligned(k, 16);
+  const __m128i *key = k;
 #endif
 
   memcpy(x, state + 4, 128);
 
   size_t i;
   for (i = 0; i < PREFETCH_SHIFT; i += WPL) {
-    __builtin_prefetch(ls + i, PF_TYPE_W, PF_LOCALITY);
+    PREFETCH_W_SINGLE(ls + i);
   }
 
   for (i = 0; i < memory - PREFETCH_SIZE_B; i += 128) {
-    __builtin_prefetch(ls + PREFETCH_SHIFT, PF_TYPE_W, PF_LOCALITY);
-    __builtin_prefetch(ls + PREFETCH_SHIFT + WPL, PF_TYPE_W, PF_LOCALITY);
+    PREFETCH_W_SINGLE(ls + PREFETCH_SHIFT);
+    PREFETCH_W_SINGLE(ls + PREFETCH_SHIFT + WPL);
 #ifdef __VAES__
     aes_batch(key, x);
 #elif defined(__AVX2__)
-    aes_batch(key, ((__m128i*)x));
+    aes_batch(key, ((__m128i *)x));
 #else
     aes_batch(key, x);
 #endif
@@ -322,7 +329,7 @@ static void explode_scratchpad(const __m128i *state, __m128i *ls,
 #ifdef __VAES__
     aes_batch(key, x);
 #elif defined(__AVX2__)
-    aes_batch(key, ((__m128i*)x));
+    aes_batch(key, ((__m128i *)x));
 #else
     aes_batch(key, x);
 #endif
@@ -335,40 +342,40 @@ static void explode_scratchpad(const __m128i *state, __m128i *ls,
 static void implode_scratchpad(const __m128i *ls, __m128i *state,
                                const size_t memory) {
 #ifdef __VAES__
-  __m256i x[4];
+  __m256i x[4] __attribute__((aligned(128)));
   __m256i k[10];
 #elif defined(__AVX2__)
-  __m256i x[4];
+  __m256i x[4] __attribute__((aligned(128)));
   __m128i k[10];
 #else
-  __m128i x[8];
+  __m128i x[8] __attribute__((aligned(128)));
   __m128i k[10];
 #endif
 
   aes_genkey(state + 2, k);
 
 #ifdef __VAES__
-  const __m256i *key = __builtin_assume_aligned(k, 32);
+  const __m256i *key = k;
 #else
-  const __m128i *key = __builtin_assume_aligned(k, 16);
+  const __m128i *key = k;
 #endif
 
   memcpy(x, state + 4, 128);
 
   size_t i;
   for (i = 0; i < PREFETCH_SHIFT; i += WPL) {
-    __builtin_prefetch(ls + i, PF_TYPE_R, PF_LOCALITY);
+    PREFETCH_R_SINGLE(ls + i);
   }
 
   for (i = 0; i < memory - PREFETCH_SIZE_B; i += 128) {
-    __builtin_prefetch(ls + PREFETCH_SHIFT, PF_TYPE_R, PF_LOCALITY);
-    __builtin_prefetch(ls + PREFETCH_SHIFT + WPL, PF_TYPE_R, PF_LOCALITY);
+    PREFETCH_R_SINGLE(ls + PREFETCH_SHIFT);
+    PREFETCH_R_SINGLE(ls + PREFETCH_SHIFT + WPL);
 #ifdef __VAES__
-    xor_batch(x, ((__m256i*)ls));
+    xor_batch(x, ((__m256i *)ls));
     aes_batch(key, x);
 #elif defined(__AVX2__)
-    xor_batch(x, ((__m256i*)ls));
-    aes_batch(key, ((__m128i*)x));
+    xor_batch(x, ((__m256i *)ls));
+    aes_batch(key, ((__m128i *)x));
 #else
     xor_batch(x, ls);
     aes_batch(key, x);
@@ -379,11 +386,11 @@ static void implode_scratchpad(const __m128i *ls, __m128i *state,
 
   for (; i < memory; i += 128) {
 #ifdef __VAES__
-    xor_batch(x, ((__m256i*)ls));
+    xor_batch(x, ((__m256i *)ls));
     aes_batch(key, x);
 #elif defined(__AVX2__)
-    xor_batch(x, ((__m256i*)ls));
-    aes_batch(key, ((__m128i*)x));
+    xor_batch(x, ((__m256i *)ls));
+    aes_batch(key, ((__m128i *)x));
 #else
     xor_batch(x, ls);
     aes_batch(key, x);
@@ -398,42 +405,42 @@ static void implode_scratchpad(const __m128i *ls, __m128i *state,
 static void implode_scratchpad_half(const __m128i *ls, __m128i *state,
                                     const size_t memory) {
 #ifdef __VAES__
-  __m256i x[4];
+  __m256i x[4] __attribute__((aligned(128)));
   __m256i k[10];
 #elif defined(__AVX2__)
-  __m256i x[4];
+  __m256i x[4] __attribute__((aligned(128)));
   __m128i k[10];
 #else
-  __m128i x[8];
+  __m128i x[8] __attribute__((aligned(128)));
   __m128i k[10];
 #endif
 
   aes_genkey(state + 2, k);
 
 #ifdef __VAES__
-  const __m256i *key = __builtin_assume_aligned(k, 32);
+  const __m256i *key = k
 #else
-  const __m128i *key = __builtin_assume_aligned(k, 16);
+  const __m128i *key = k;
 #endif
 
-  memcpy(x, state + 4, 128);
+      memcpy(x, state + 4, 128);
 
   size_t i;
   for (i = 0; i < PREFETCH_SHIFT; i += WPL) {
-    __builtin_prefetch(ls + i, PF_TYPE_R, PF_LOCALITY);
+    PREFETCH_R_SINGLE(ls + i);
   }
 
   // First half is stored in memory.
   // The rest is unchanged by CN and can be calculated in place.
   for (i = 0; i < memory / 2 - PREFETCH_SIZE_B; i += 128) {
-    __builtin_prefetch(ls + PREFETCH_SHIFT, PF_TYPE_R, PF_LOCALITY);
-    __builtin_prefetch(ls + PREFETCH_SHIFT + WPL, PF_TYPE_R, PF_LOCALITY);
+    PREFETCH_R_SINGLE(ls + PREFETCH_SHIFT);
+    PREFETCH_R_SINGLE(ls + PREFETCH_SHIFT + WPL);
 #ifdef __VAES__
-    xor_batch(x, ((__m256i*)ls));
+    xor_batch(x, ((__m256i *)ls));
     aes_batch(key, x);
 #elif defined(__AVX2__)
-    xor_batch(x, ((__m256i*)ls));
-    aes_batch(key, ((__m128i*)x));
+    xor_batch(x, ((__m256i *)ls));
+    aes_batch(key, ((__m128i *)x));
 #else
     xor_batch(x, ls);
     aes_batch(key, x);
@@ -444,11 +451,11 @@ static void implode_scratchpad_half(const __m128i *ls, __m128i *state,
 
   for (; i < memory / 2; i += 128) {
 #ifdef __VAES__
-    xor_batch(x, ((__m256i*)ls));
+    xor_batch(x, ((__m256i *)ls));
     aes_batch(key, x);
 #elif defined(__AVX2__)
-    xor_batch(x, ((__m256i*)ls));
-    aes_batch(key, ((__m128i*)x));
+    xor_batch(x, ((__m256i *)ls));
+    aes_batch(key, ((__m128i *)x));
 #else
     xor_batch(x, ls);
     aes_batch(key, x);
@@ -458,31 +465,31 @@ static void implode_scratchpad_half(const __m128i *ls, __m128i *state,
   }
 
 #ifdef __VAES__
-  __m256i x2[4];
+  __m256i x2[4] __attribute__((aligned(128)));
   __m256i k2[10];
 #elif defined(__AVX2__)
-  __m256i x2[4];
+  __m256i x2[4] __attribute__((aligned(128)));
   __m128i k2[10];
 #else
-  __m128i x2[8];
+  __m128i x2[8] __attribute__((aligned(128)));
   __m128i k2[10];
 #endif
 
   aes_genkey(state, k2);
 #ifdef __VAES__
-  const __m256i *key2 = __builtin_assume_aligned(k2, 32);
+  const __m256i *key2 = k2;
 #else
-  const __m128i *key2 = __builtin_assume_aligned(k2, 16);
+  const __m128i *key2 = k2;
 #endif
   // Last x state from scratchpad explode is saved in the 128 bytes after
   // 1/2 of memory
   memcpy(x2, ls, 128);
 #ifdef __VAES__
-    aes_batch(key2, x2);
+  aes_batch(key2, x2);
 #elif defined(__AVX2__)
-    aes_batch(key2, ((__m128i*)x2));
+  aes_batch(key2, ((__m128i *)x2));
 #else
-    aes_batch(key2, x2);
+  aes_batch(key2, x2);
 #endif
 
   for (; i < memory; i += 128) {
@@ -494,8 +501,8 @@ static void implode_scratchpad_half(const __m128i *ls, __m128i *state,
 #elif defined(__AVX2__)
     xor_batch(x, x2);
 
-    aes_batch(key, ((__m128i*)x));
-    aes_batch(key2, ((__m128i*)x2));
+    aes_batch(key, ((__m128i *)x));
+    aes_batch(key2, ((__m128i *)x2));
 #else
     xor_batch(x, x2);
 
@@ -524,7 +531,7 @@ static void implode_scratchpad_half(const __m128i *ls, __m128i *state,
 #define AES_PF(suffix)                                                         \
   AES(suffix)                                                                  \
   const uint64_t idx2##suffix = cx##suffix[0] & mask;                          \
-  __builtin_prefetch(l##suffix + idx2##suffix, PF_TYPE_W, PF_LOCALITY);
+  PREFETCH_W((const char *)(l##suffix + idx2##suffix));
 
 #define TWEAK(suffix)                                                          \
   {                                                                            \
@@ -568,7 +575,7 @@ static void implode_scratchpad_half(const __m128i *ls, __m128i *state,
 
 #define POST_AES_PF(suffix)                                                    \
   POST_AES(suffix)                                                             \
-  __builtin_prefetch(l##suffix + idx##suffix, PF_TYPE_W, PF_LOCALITY);
+  PREFETCH_W((const char *)(l##suffix + idx##suffix));
 
 #define CRYPTONIGHT_INIT(suffix)                                               \
   uint8_t state##suffix[200] __attribute__((aligned(16)));                     \
