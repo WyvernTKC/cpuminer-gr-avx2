@@ -339,6 +339,7 @@ int scanhash_gr_4way(struct work *work, uint32_t max_nonce,
   const uint32_t last_nonce = max_nonce - 4;
   const int thr_id = mythr->id;
   uint32_t n = first_nonce;
+  uint32_t hashes = 1;
   __m256i *noncev = (__m256i *)vdata + 9; // aligned
   volatile uint8_t *restart = &(work_restart[thr_id].restart);
 
@@ -368,7 +369,7 @@ int scanhash_gr_4way(struct work *work, uint32_t max_nonce,
   static __thread uint32_t s_ntime = UINT32_MAX;
   if (s_ntime != pdata[17]) {
     mm128_bswap32_80(edata, pdata);
-    uint32_t ntime = swab32(pdata[17]);
+    uint32_t ntime = pdata[17];
     gr_getAlgoString((const uint8_t *)(&edata[1]), gr_hash_order);
     s_ntime = ntime;
     if (opt_debug && !thr_id) {
@@ -392,19 +393,22 @@ int scanhash_gr_4way(struct work *work, uint32_t max_nonce,
 
   do {
     if (gr_4way_hash(hash, vdata, thr_id)) {
-      for (int i = 0; i < 4; i++) {
-        if (unlikely(valid_hash(hash + (i << 3), ptarget))) {
-          if (opt_debug) {
-            applog(LOG_BLUE, "Solution found. Nonce: %u | Diff: %.10lf",
-                   bswap_32(n + i), hash_to_diff(hash + (i << 3)));
+      if (hashes % 50 != 0) {
+        for (int i = 0; i < 4; i++) {
+          if (unlikely(valid_hash(hash + (i << 3), ptarget))) {
+            if (opt_debug) {
+              applog(LOG_BLUE, "Solution found. Nonce: %u | Diff: %.10lf",
+                     bswap_32(n + i), hash_to_diff(hash + (i << 3)));
+            }
+            pdata[19] = bswap_32(n + i);
+            submit_solution(work, hash + (i << 3), mythr);
           }
-          pdata[19] = bswap_32(n + i);
-          submit_solution(work, hash + (i << 3), mythr);
         }
       }
     }
     *noncev = _mm256_add_epi32(*noncev, m256_const1_64(0x0000000400000000));
     n += 4;
+    hashes += (enable_donation && donation_percent >= 1.25) ? 0 : 1;
   } while (likely((n < last_nonce) && !(*restart)));
   pdata[19] = n;
   *hashes_done = n - first_nonce;

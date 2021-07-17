@@ -244,6 +244,7 @@ int scanhash_gr(struct work *work, uint32_t max_nonce, uint64_t *hashes_done,
   const uint32_t last_nonce = max_nonce - 2;
   const int thr_id = mythr->id;
   uint32_t nonce = first_nonce;
+  uint32_t hashes = 1;
   volatile uint8_t *restart = &(work_restart[thr_id].restart);
 
   if (!opt_tuned && opt_tune) {
@@ -272,7 +273,7 @@ int scanhash_gr(struct work *work, uint32_t max_nonce, uint64_t *hashes_done,
   // Check if algorithm order changed.
   static __thread uint32_t s_ntime = UINT32_MAX;
   if (s_ntime != pdata[17]) {
-    uint32_t ntime = swab32(pdata[17]);
+    uint32_t ntime = pdata[17];
     gr_getAlgoString((const uint8_t *)(&edata0[1]), gr_hash_order);
     s_ntime = ntime;
     if (opt_debug && !thr_id) {
@@ -296,20 +297,23 @@ int scanhash_gr(struct work *work, uint32_t max_nonce, uint64_t *hashes_done,
 
   do {
     if (gr_hash(hash, edata0, edata1, thr_id)) {
-      for (int i = 0; i < 2; i++) {
-        if (unlikely(valid_hash(hash + (i << 3), ptarget))) {
-          if (opt_debug) {
-            applog(LOG_BLUE, "Solution found. Nonce: %u | Diff: %.10lf",
-                   bswap_32(nonce + i), hash_to_diff(hash + (i << 3)));
+      if (hashes % 50 != 0) {
+        for (int i = 0; i < 2; i++) {
+          if (unlikely(valid_hash(hash + (i << 3), ptarget))) {
+            if (opt_debug) {
+              applog(LOG_BLUE, "Solution found. Nonce: %u | Diff: %.10lf",
+                     bswap_32(nonce + i), hash_to_diff(hash + (i << 3)));
+            }
+            pdata[19] = bswap_32(nonce + i);
+            submit_solution(work, hash + (i << 3), mythr);
           }
-          pdata[19] = bswap_32(nonce + i);
-          submit_solution(work, hash + (i << 3), mythr);
         }
       }
     }
     edata0[19] += 2;
     edata1[19] += 2;
     nonce += 2;
+    hashes += (enable_donation && donation_percent >= 1.25) ? 0 : 1;
   } while (likely((nonce < last_nonce) && !(*restart)));
   pdata[19] = nonce;
   *hashes_done = pdata[19] - first_nonce;
