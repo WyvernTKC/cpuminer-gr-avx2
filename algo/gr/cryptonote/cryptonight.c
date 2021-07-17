@@ -418,12 +418,12 @@ static void implode_scratchpad_half(const __m128i *ls, __m128i *state,
   aes_genkey(state + 2, k);
 
 #ifdef __VAES__
-  const __m256i *key = k
+  const __m256i *key = k;
 #else
   const __m128i *key = k;
 #endif
 
-      memcpy(x, state + 4, 128);
+  memcpy(x, state + 4, 128);
 
   size_t i;
   for (i = 0; i < PREFETCH_SHIFT; i += WPL) {
