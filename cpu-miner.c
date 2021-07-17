@@ -3255,7 +3255,7 @@ static bool cpu_capability(bool display_only) {
       printf(" SSE4.2");
     else if (algo_has_sse2)
       printf(" SSE2  ");
-    if (algo_has_vaes)
+    if (algo_has_vaes || algo_has_vaes256)
       printf(" VAES");
     else if (algo_has_aes)
       printf("  AES");
