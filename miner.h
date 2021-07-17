@@ -302,6 +302,7 @@ extern json_t *json_rpc_call(CURL *curl, const char *url, const char *userpass,
 extern void cbin2hex(char *out, const char *in, size_t len);
 void bin2hex(char *s, const unsigned char *p, size_t len);
 char *abin2hex(const unsigned char *p, size_t len);
+char *bebin2hex(const unsigned char *p, size_t len);
 bool hex2bin(unsigned char *p, const char *hexstr, size_t len);
 bool jobj_binary(const json_t *obj, const char *key, void *buf, size_t buflen);
 int varint_encode(unsigned char *p, uint64_t n);
@@ -647,7 +648,7 @@ Options:\n\
       --data-file       path and name of data file\n\
       --verify          enable additional time consuming start up tests\n\
   -V, --version         display version information and exit\n\
-  -d, --donation=VAL    donation value in %. Default is 1.75\n"
+  -d, --donation=VAL    donation value in %%. Default is 1.75\n"
 #ifdef __AES__
                             "\
   -y                    disable application of MSR mod on the system\n"

@@ -506,8 +506,10 @@ static bool work_decode(const json_t *val, struct work *work) {
 
   if (!allow_mininginfo)
     net_diff = algo_gate.calc_network_diff(work);
+  else
+    net_diff = hash_to_diff(work->target);
 
-  work->targetdiff = hash_to_diff(work->target);
+  work->targetdiff = net_diff;
   stratum_diff = last_targetdiff = work->targetdiff;
   work->sharediff = 0;
   algo_gate.decode_extra_data(work, &net_blocks);
@@ -539,12 +541,16 @@ static bool get_mininginfo(CURL *curl, struct work *work) {
   // "difficulty": 0.99607860999999998
   // "networkhashps": 56475980
   if (res) {
+    // net_diff is a global that is set from the work hash target by
+    // both getwork and GBT. Don't overwrite it, define a local to override
+    // the global.
+    double net_diff = 0.;
     json_t *key = json_object_get(res, "difficulty");
     if (key) {
       if (json_is_object(key))
         key = json_object_get(key, "proof-of-work");
       if (json_is_real(key))
-        net_diff = work->targetdiff = json_real_value(key);
+        net_diff = json_real_value(key);
     }
 
     key = json_object_get(res, "networkhashps");
@@ -912,6 +918,8 @@ static bool gbt_work_decode(const json_t *val, struct work *work) {
   }
   for (i = 0; i < ARRAY_SIZE(work->target); i++)
     work->target[7 - i] = be32dec(target + i);
+
+  net_diff = work->targetdiff = hash_to_diff(work->target);
 
   tmp = json_object_get(val, "workid");
   if (tmp) {
@@ -1492,7 +1500,8 @@ static int share_result(int result, struct work *work, const char *reason) {
   char bres[48];
   bool solved = false;
   bool stale = false;
-  char *acol = NULL, *bcol = NULL, *scol = NULL, *rcol = NULL;
+  char *acol, *bcol, *scol, *rcol;
+  acol = bcol = scol = rcol = "\0";
 
   pthread_mutex_lock(&stats_lock);
 
@@ -1527,7 +1536,7 @@ static int share_result(int result, struct work *work, const char *reason) {
     sprintf(sres, "S%d", stale_share_count);
     sprintf(rres, "R%d", rejected_share_count);
     if unlikely ((my_stats.net_diff > 0.) &&
-                 (my_stats.share_diff >= net_diff)) {
+                 (my_stats.share_diff >= my_stats.net_diff)) {
       solved = true;
       solved_block_count++;
       sprintf(bres, "BLOCK SOLVED %d", solved_block_count);
@@ -2378,9 +2387,9 @@ static void stratum_gen_work(struct stratum_ctx *sctx, struct work *g_work) {
     applog(LOG_BLUE, "New Work: Block %d, Net diff %.5g, Job %s",
            sctx->block_height, net_diff, g_work->job_id);
   else if (!opt_quiet) {
-    unsigned char *xnonce2str = abin2hex(g_work->xnonce2, g_work->xnonce2_len);
-    applog(LOG_INFO, "Extranonce2 %s, Block %d, Net Diff %.5g", xnonce2str,
-           sctx->block_height, net_diff);
+    unsigned char *xnonce2str = bebin2hex(g_work->xnonce2, g_work->xnonce2_len);
+    applog(LOG_INFO, "Extranonce2 %s, Block %d, Job %s", xnonce2str,
+           sctx->block_height, g_work->job_id);
     free(xnonce2str);
   }
 
