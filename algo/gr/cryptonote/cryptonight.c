@@ -247,6 +247,12 @@ static __attribute__((always_inline)) inline void aes_round(const __m128i *key,
   aes_round(k, &x[2]);                                                         \
   aes_round(k, &x[3]);
 
+#define xor_batch(dst, src)                                                    \
+  dst[0] = _mm256_xor_si256(dst[0], src[0]);                                   \
+  dst[1] = _mm256_xor_si256(dst[1], src[1]);                                   \
+  dst[2] = _mm256_xor_si256(dst[2], src[2]);                                   \
+  dst[3] = _mm256_xor_si256(dst[3], src[3]);
+
 #else
 
 #define aes_batch(k, x)                                                        \
@@ -258,18 +264,6 @@ static __attribute__((always_inline)) inline void aes_round(const __m128i *key,
   aes_round(k, &x[5]);                                                         \
   aes_round(k, &x[6]);                                                         \
   aes_round(k, &x[7]);
-
-#endif
-
-#ifdef __AVX2__
-
-#define xor_batch(dst, src)                                                    \
-  dst[0] = _mm256_xor_si256(dst[0], src[0]);                                   \
-  dst[1] = _mm256_xor_si256(dst[1], src[1]);                                   \
-  dst[2] = _mm256_xor_si256(dst[2], src[2]);                                   \
-  dst[3] = _mm256_xor_si256(dst[3], src[3]);
-
-#else
 
 #define xor_batch(dst, src)                                                    \
   dst[0] = _mm_xor_si128(dst[0], src[0]);                                      \
@@ -288,9 +282,6 @@ static void explode_scratchpad(const __m128i *state, __m128i *ls,
 #ifdef __VAES__
   __m256i x[4] __attribute__((aligned(128)));
   __m256i k[10];
-#elif defined(__AVX2__)
-  __m256i x[4] __attribute__((aligned(128)));
-  __m128i k[10];
 #else
   __m128i x[8] __attribute__((aligned(128)));
   __m128i k[10];
@@ -315,8 +306,6 @@ static void explode_scratchpad(const __m128i *state, __m128i *ls,
     PREFETCH_W_SINGLE(ls + PREFETCH_SHIFT + WPL);
 #ifdef __VAES__
     aes_batch(key, x);
-#elif defined(__AVX2__)
-    aes_batch(key, ((__m128i *)x));
 #else
     aes_batch(key, x);
 #endif
@@ -328,8 +317,6 @@ static void explode_scratchpad(const __m128i *state, __m128i *ls,
   for (; i < memory; i += 128) {
 #ifdef __VAES__
     aes_batch(key, x);
-#elif defined(__AVX2__)
-    aes_batch(key, ((__m128i *)x));
 #else
     aes_batch(key, x);
 #endif
@@ -344,9 +331,6 @@ static void implode_scratchpad(const __m128i *ls, __m128i *state,
 #ifdef __VAES__
   __m256i x[4] __attribute__((aligned(128)));
   __m256i k[10];
-#elif defined(__AVX2__)
-  __m256i x[4] __attribute__((aligned(128)));
-  __m128i k[10];
 #else
   __m128i x[8] __attribute__((aligned(128)));
   __m128i k[10];
@@ -373,9 +357,6 @@ static void implode_scratchpad(const __m128i *ls, __m128i *state,
 #ifdef __VAES__
     xor_batch(x, ((__m256i *)ls));
     aes_batch(key, x);
-#elif defined(__AVX2__)
-    xor_batch(x, ((__m256i *)ls));
-    aes_batch(key, ((__m128i *)x));
 #else
     xor_batch(x, ls);
     aes_batch(key, x);
@@ -388,9 +369,6 @@ static void implode_scratchpad(const __m128i *ls, __m128i *state,
 #ifdef __VAES__
     xor_batch(x, ((__m256i *)ls));
     aes_batch(key, x);
-#elif defined(__AVX2__)
-    xor_batch(x, ((__m256i *)ls));
-    aes_batch(key, ((__m128i *)x));
 #else
     xor_batch(x, ls);
     aes_batch(key, x);
@@ -407,9 +385,6 @@ static void implode_scratchpad_half(const __m128i *ls, __m128i *state,
 #ifdef __VAES__
   __m256i x[4] __attribute__((aligned(128)));
   __m256i k[10];
-#elif defined(__AVX2__)
-  __m256i x[4] __attribute__((aligned(128)));
-  __m128i k[10];
 #else
   __m128i x[8] __attribute__((aligned(128)));
   __m128i k[10];
@@ -438,9 +413,6 @@ static void implode_scratchpad_half(const __m128i *ls, __m128i *state,
 #ifdef __VAES__
     xor_batch(x, ((__m256i *)ls));
     aes_batch(key, x);
-#elif defined(__AVX2__)
-    xor_batch(x, ((__m256i *)ls));
-    aes_batch(key, ((__m128i *)x));
 #else
     xor_batch(x, ls);
     aes_batch(key, x);
@@ -453,9 +425,6 @@ static void implode_scratchpad_half(const __m128i *ls, __m128i *state,
 #ifdef __VAES__
     xor_batch(x, ((__m256i *)ls));
     aes_batch(key, x);
-#elif defined(__AVX2__)
-    xor_batch(x, ((__m256i *)ls));
-    aes_batch(key, ((__m128i *)x));
 #else
     xor_batch(x, ls);
     aes_batch(key, x);
@@ -467,9 +436,6 @@ static void implode_scratchpad_half(const __m128i *ls, __m128i *state,
 #ifdef __VAES__
   __m256i x2[4] __attribute__((aligned(128)));
   __m256i k2[10];
-#elif defined(__AVX2__)
-  __m256i x2[4] __attribute__((aligned(128)));
-  __m128i k2[10];
 #else
   __m128i x2[8] __attribute__((aligned(128)));
   __m128i k2[10];
@@ -486,8 +452,6 @@ static void implode_scratchpad_half(const __m128i *ls, __m128i *state,
   memcpy(x2, ls, 128);
 #ifdef __VAES__
   aes_batch(key2, x2);
-#elif defined(__AVX2__)
-  aes_batch(key2, ((__m128i *)x2));
 #else
   aes_batch(key2, x2);
 #endif
@@ -498,11 +462,6 @@ static void implode_scratchpad_half(const __m128i *ls, __m128i *state,
 
     aes_batch(key, x);
     aes_batch(key2, x2);
-#elif defined(__AVX2__)
-    xor_batch(x, x2);
-
-    aes_batch(key, ((__m128i *)x));
-    aes_batch(key2, ((__m128i *)x2));
 #else
     xor_batch(x, x2);
 

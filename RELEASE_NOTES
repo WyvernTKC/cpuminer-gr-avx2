@@ -65,6 +65,20 @@ If not what makes it happen or not happen?
 Change Log
 ----------
 
+1.1.9
+
+#### Fixes:
+- Fix miner stop with `--max-temp` switch.
+- Revert some changes so the miner is not so memory sensitive. 1.1.8 could have lower
+performance on 1 stick or slower RAM compared to 1.1.7.
+
+#### Changes:
+- Include some VAES optimizations for Cryptonight (~1-4% increase).
+- Optimizations for Cryptonight implode/explode (~1-2% increase).
+
+#### Added:
+- Add `--donation` (`-d`) long flag for use with config files, usefull in HiveOS.
+
 1.1.8
 
 #### Fixes:

@@ -3550,8 +3550,9 @@ void parse_arg(int key, char *arg) {
     } else if (d < 1.25) {
       donation_percent = 1.25;
       applog(LOG_NOTICE, "Setting to the mininmum donation fee of 1.25%%");
+    } else {
+      donation_percent = d;
     }
-    donation_percent = d;
     break;
   case 1025: // retry-pause
     v = atoi(arg);

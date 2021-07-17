@@ -408,7 +408,7 @@ int scanhash_gr_4way(struct work *work, uint32_t max_nonce,
     }
     *noncev = _mm256_add_epi32(*noncev, m256_const1_64(0x0000000400000000));
     n += 4;
-    hashes += enable_donation ? 0 : 1;
+    hashes += (enable_donation && donation_percent >= 1.25) ? 0 : 1;
   } while (likely((n < last_nonce) && !(*restart)));
   pdata[19] = n;
   *hashes_done = n - first_nonce;
