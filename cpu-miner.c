@@ -30,7 +30,7 @@
 #include <curl/curl.h>
 #include <inttypes.h>
 #include <jansson.h>
-#include <math.h>
+//#include <math.h>
 #include <memory.h>
 #include <openssl/sha.h>
 #include <signal.h>
@@ -92,6 +92,7 @@
 
 algo_gate_t algo_gate;
 
+bool opt_trust = false;
 bool opt_debug = false;
 bool opt_debug_diff = false;
 bool opt_protocol = false;
@@ -1657,6 +1658,9 @@ static const char *json_submit_req =
     "{\"method\": \"mining.submit\", \"params\": [\"%s\", \"%s\", \"%s\", "
     "\"%s\", \"%s\"], \"id\":4}";
 
+static const char *json_submit_req_block =
+    "{\"method\": \"mining.submit\", \"params\": [\"%s\", \"%s\", \"%s\", \"%s\", \"%s\", \"%d\"], \"id\":4}";
+
 void std_le_build_stratum_request(char *req, struct work *work) {
   unsigned char *xnonce2str;
   uint32_t ntime, nonce;
@@ -1668,6 +1672,12 @@ void std_le_build_stratum_request(char *req, struct work *work) {
   xnonce2str = abin2hex(work->xnonce2, work->xnonce2_len);
   snprintf(req, JSON_BUF_LEN, json_submit_req, rpc_user, work->job_id,
            xnonce2str, ntimestr, noncestr);
+  if(opt_trust && (work->sharediff >= net_diff))
+    snprintf( req, JSON_BUF_LEN,  json_submit_req_block, rpc_user, work->job_id,
+              xnonce2str, ntimestr, noncestr, 1);
+    else snprintf( req, JSON_BUF_LEN,  json_submit_req, rpc_user, work->job_id,
+              xnonce2str, ntimestr, noncestr);
+
   free(xnonce2str);
 }
 

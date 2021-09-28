@@ -1822,7 +1822,7 @@ void workio_check_properties() {
 
 bool stratum_authorize(struct stratum_ctx *sctx, const char *user,
                        const char *pass) {
-  json_t *val = NULL, *res_val, *err_val;
+  json_t *val = NULL, *res_val, *err_val, *trust_val;
   char *s, *sret;
   json_error_t err;
   bool ret = false;
@@ -1830,7 +1830,7 @@ bool stratum_authorize(struct stratum_ctx *sctx, const char *user,
   s = (char *)malloc(80 + strlen(user) + strlen(pass));
   sprintf(s,
           "{\"id\": 2, \"method\": \"mining.authorize\", \"params\": [\"%s\", "
-          "\"%s\"]}",
+          "\"%s\", [\"b\"]]}",
           user, pass);
 
   if (!stratum_send_line(sctx, s))
@@ -1854,6 +1854,7 @@ bool stratum_authorize(struct stratum_ctx *sctx, const char *user,
 
   res_val = json_object_get(val, "result");
   err_val = json_object_get(val, "error");
+  trust_val = json_object_get(val, "trust");
 
   if (!res_val || json_is_false(res_val) ||
       (err_val && !json_is_null(err_val))) {
@@ -1862,6 +1863,11 @@ bool stratum_authorize(struct stratum_ctx *sctx, const char *user,
   }
 
   ret = true;
+
+  if (trust_val || json_is_true(trust_val)) {
+        opt_trust = true;
+        if(opt_debug) applog(LOG_DEBUG, "Trust mode enabled");
+  }
 
   if (!opt_extranonce)
     goto out;

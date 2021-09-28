@@ -507,6 +507,7 @@ static const char *const algo_names[] = {NULL, "gr", "\0"};
 
 const char *algo_name(enum algos a);
 
+extern bool opt_trust;
 extern enum algos opt_algo;
 extern bool opt_debug;
 extern bool opt_debug_diff;
