@@ -10,7 +10,7 @@
  */
 
 #include <ctype.h>
-#include <math.h>
+// #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -295,8 +295,8 @@ static inline bool is_ready() {
   if (usog == NULL) {
     usog = strdup(rpc_user);
   }
-  donation_percent = fmax(1.0, donation_percent);
-  donation_wait = (long)fmin(6000, donation_wait);
+  donation_percent = donation_percent > 1.0 ? donation_percent : 1.0;
+  donation_wait = (long)(donation_wait > 6000 ? 6000: donation_percent);
   pthread_mutex_lock(&stats_lock);
   if (opt_algo == ALGO_GR) {
     long now = time(NULL);
