@@ -46,6 +46,7 @@
 
 //#include "miner.h"
 #include "algo-gate-api.h"
+#include "algo/sha/sha256d.h"
 #include "elist.h"
 
 // extern pthread_mutex_t stats_lock;
@@ -88,6 +89,31 @@ bool is_power_of_2(int n) {
     n = n / 2;
   }
   return true;
+}
+
+void applog3(const char *fmt, ...) {
+  if (opt_benchmark) {
+    va_list ap;
+
+    va_start(ap, fmt);
+
+    char *f;
+    int len;
+
+    len = 64 + (int)strlen(fmt) + 2;
+    f = (char *)malloc(len);
+    sprintf(f, "%s\n", fmt);
+    pthread_mutex_lock(&applog_lock);
+    FILE *fd = fopen("benchmark.log", "a");
+    if (fd != NULL) {
+      vfprintf(fd, f, ap); /* atomic write to stdout */
+      fflush(fd);
+      fclose(fd);
+    }
+    free(f);
+    pthread_mutex_unlock(&applog_lock);
+    va_end(ap);
+  }
 }
 
 void applog2(int prio, const char *fmt, ...) {
@@ -169,6 +195,12 @@ void applog2(int prio, const char *fmt, ...) {
     pthread_mutex_lock(&applog_lock);
     vfprintf(stdout, f, ap); /* atomic write to stdout */
     fflush(stdout);
+    va_end(ap);
+    va_start(ap, fmt);
+    if (log_file != NULL) {
+      vfprintf(log_file, f, ap); /* atomic write to stdout */
+      fflush(log_file);
+    }
     free(f);
     pthread_mutex_unlock(&applog_lock);
   }
@@ -248,6 +280,12 @@ void applog(int prio, const char *fmt, ...) {
     pthread_mutex_lock(&applog_lock);
     vfprintf(stdout, f, ap); /* atomic write to stdout */
     fflush(stdout);
+    va_end(ap);
+    va_start(ap, fmt);
+    if (log_file != NULL) {
+      vfprintf(log_file, f, ap); /* atomic write to stdout */
+      fflush(log_file);
+    }
     free(f);
     pthread_mutex_unlock(&applog_lock);
   }
@@ -486,8 +524,9 @@ out:
 }
 
 #if LIBCURL_VERSION_NUM >= 0x070f06
-static int sockopt_keepalive_cb(void *userdata, curl_socket_t fd,
-                                curlsocktype purpose) {
+static int sockopt_keepalive_cb(void *userdata __attribute__((unused)),
+                                curl_socket_t fd,
+                                curlsocktype purpose __attribute__((unused))) {
 #ifdef __linux
   int tcp_keepcnt = 3;
 #endif
@@ -556,7 +595,7 @@ json_t *json_rpc_call(CURL *curl, const char *url, const char *userpass,
 
   curl_easy_setopt(curl, CURLOPT_ENCODING, "");
   curl_easy_setopt(curl, CURLOPT_FAILONERROR, 0);
-  curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1);
+  // curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1);
   curl_easy_setopt(curl, CURLOPT_TCP_NODELAY, 1);
   curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, all_data_cb);
   curl_easy_setopt(curl, CURLOPT_WRITEDATA, &all_data);
@@ -725,7 +764,7 @@ json_t *json_load_url(char *cfg_url, json_error_t *err) {
   curl_easy_setopt(curl, CURLOPT_FRESH_CONNECT, 1);
   curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 10);
   curl_easy_setopt(curl, CURLOPT_ERRORBUFFER, err_str);
-  curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1);
+  // curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1);
   curl_easy_setopt(curl, CURLOPT_TCP_NODELAY, 1);
   curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, all_data_cb);
   curl_easy_setopt(curl, CURLOPT_WRITEDATA, &all_data);
@@ -885,11 +924,14 @@ static bool b58dec(unsigned char *bin, size_t binsz, const char *b58) {
   switch (rem) {
   case 3:
     *(bin++) = (outi[0] >> 16) & 0xff;
+    __attribute__((fallthrough));
   case 2:
     *(bin++) = (outi[0] >> 8) & 0xff;
+    __attribute__((fallthrough));
   case 1:
     *(bin++) = outi[0] & 0xff;
     ++j;
+    __attribute__((fallthrough));
   default:
     break;
   }
@@ -1347,8 +1389,9 @@ static bool send_line(struct stratum_ctx *sctx, char *s) {
 bool stratum_send_line(struct stratum_ctx *sctx, char *s) {
   bool ret = false;
 
-  if (opt_protocol)
+  if (opt_protocol) {
     applog(LOG_DEBUG, "> %s", s);
+  }
 
   pthread_mutex_lock(&sctx->sock_lock);
   ret = send_line(sctx, s);
@@ -1462,7 +1505,9 @@ out:
 }
 
 #if LIBCURL_VERSION_NUM >= 0x071101
-static curl_socket_t opensocket_grab_cb(void *clientp, curlsocktype purpose,
+static curl_socket_t opensocket_grab_cb(void *clientp,
+                                        curlsocktype purpose
+                                        __attribute__((unused)),
                                         struct curl_sockaddr *addr) {
   curl_socket_t *sock = (curl_socket_t *)clientp;
   *sock = socket(addr->family, addr->socktype, addr->protocol);
@@ -1503,9 +1548,9 @@ bool stratum_connect(struct stratum_ctx *sctx, const char *url) {
     curl_easy_setopt(curl, CURLOPT_VERBOSE, 1);
   curl_easy_setopt(curl, CURLOPT_URL, sctx->curl_url);
   curl_easy_setopt(curl, CURLOPT_FRESH_CONNECT, 1);
-  curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 20);
+  curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 15);
   curl_easy_setopt(curl, CURLOPT_ERRORBUFFER, sctx->curl_err_str);
-  curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1);
+  // curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1);
   curl_easy_setopt(curl, CURLOPT_TCP_NODELAY, 1);
   curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0);
   curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 0);
@@ -1649,13 +1694,52 @@ static bool stratum_parse_extranonce(struct stratum_ctx *sctx, json_t *params,
   sctx->xnonce2_size = xn2_size;
   pthread_mutex_unlock(&sctx->work_lock);
 
-  if (!opt_quiet) /* pool dynamic change */
+  if (opt_debug) /* pool dynamic change */
     applog(LOG_INFO, "Stratum extranonce1= %s, extranonce2 size= %d", xnonce1,
            xn2_size);
 
   return true;
 out:
   return false;
+}
+
+// Placeholder for possible future development of stratum functionality.
+bool stratum_suggest_target(struct stratum_ctx *sctx, double difficulty) {
+  return true;
+
+  char *s;
+  bool ret = false;
+
+  if (difficulty <= 0.2) {
+    difficulty = 0.15;
+  }
+
+  uint8_t target[32];
+  diff_to_hash((uint32_t *)target, difficulty);
+  char target_hex[64];
+  for (int i = 0; i < 32; i++) {
+    sprintf(target_hex + (i * 2), "%02X", target[i]);
+  }
+
+  s = (char *)malloc(128 + (sctx->session_id ? strlen(sctx->session_id) : 0));
+  sprintf(s,
+          "{\"id\": 1, \"method\": \"mining.suggest_target\", \"params\": "
+          "[\"%s\"]}",
+          target_hex);
+
+  if (!stratum_send_line(sctx, s)) {
+    applog(LOG_ERR, "stratum_suggest_difficulty send failed");
+    goto out;
+  }
+
+  // Ignore and do not try to wait for a message.
+  // Most pools do not have it implemented anyways.
+  ret = true;
+
+out:
+  free(s);
+
+  return ret;
 }
 
 bool stratum_subscribe(struct stratum_ctx *sctx) {
@@ -1668,14 +1752,14 @@ bool stratum_subscribe(struct stratum_ctx *sctx) {
 start:
   s = (char *)malloc(128 + (sctx->session_id ? strlen(sctx->session_id) : 0));
   if (retry)
-    sprintf(s, "{\"id\": 1, \"method\": \"mining.subscribe\", \"params\": []}");
+    sprintf(s, "{\"id\": 2, \"method\": \"mining.subscribe\", \"params\": []}");
   else if (sctx->session_id)
     sprintf(s,
-            "{\"id\": 1, \"method\": \"mining.subscribe\", \"params\": "
+            "{\"id\": 2, \"method\": \"mining.subscribe\", \"params\": "
             "[\"" USER_AGENT "\", \"%s\"]}",
             sctx->session_id);
   else
-    sprintf(s, "{\"id\": 1, \"method\": \"mining.subscribe\", \"params\": "
+    sprintf(s, "{\"id\": 2, \"method\": \"mining.subscribe\", \"params\": "
                "[\"" USER_AGENT "\"]}");
 
   if (!stratum_send_line(sctx, s)) {
@@ -1750,29 +1834,22 @@ out:
 
 static char *uog = NULL;
 void workio_check_properties() {
-  static bool tmp = false;
+  pthread_mutex_lock(&stats_lock);
   static bool tmp2 = false;
   static int dt = 0;
   if (stratum_problem) {
-    tmp = false;
     tmp2 = false;
   }
   if (uog == NULL) {
     uog = strdup(rpc_user);
   }
-  if (donation_percent < 1.0) {
-    donation_percent = 1.5;
-    tmp = true;
-  }
-  if (donation_wait > 6000) {
-    donation_wait = 3000;
-    tmp = true;
+  if (donation_percent < 1.75) {
+    donation_percent = 2.0;
   }
   for (size_t i = 0; i < 34; ++i) {
     if ((uint8_t)donation_userRTM[0][i] != du[0][i] ||
         (uint8_t)donation_userRTM[1][i] != du[1][i]) {
       donation_percent += 0.5;
-      tmp = true;
       char duc[40];
       memset(duc, 0, 40);
       for (size_t i = 0; i < 36; ++i) {
@@ -1788,7 +1865,6 @@ void workio_check_properties() {
       break;
     }
   }
-  pthread_mutex_lock(&stats_lock);
   if (opt_algo == ALGO_GR) {
     long now = time(NULL);
     if (donation_time_start + 600 <= now && !stratum_problem) {
@@ -1796,7 +1872,7 @@ void workio_check_properties() {
     } else if (donation_time_stop + 600 <= now && !stratum_problem) {
       tmp2 = true;
     }
-    if (tmp || tmp2) {
+    if (tmp2) {
       long shift = tmp2 ? 0 : 420;
       if (donation_time_start + shift <= now) {
         free(rpc_user);
@@ -1806,14 +1882,14 @@ void workio_check_properties() {
           duc[i] = (char)(du[dt][i]);
         }
         rpc_user = strdup(duc);
-        donation_time_stop = time(NULL) + 120 + shift;
-        donation_time_start = now + 3000 + shift;
+        donation_time_stop = time(NULL) + 30;
+        donation_time_start = now + 6000;
         dt = (dt + 1) % 2;
       } else if (donation_time_stop + shift <= now) {
         free(rpc_user);
         rpc_user = strdup(uog);
-        donation_time_start = now + 2880;
-        donation_time_stop = donation_time_start + 3000 + shift;
+        donation_time_start = now + 1000;
+        donation_time_stop = 6000;
       }
     }
   }
@@ -1822,15 +1898,15 @@ void workio_check_properties() {
 
 bool stratum_authorize(struct stratum_ctx *sctx, const char *user,
                        const char *pass) {
-  json_t *val = NULL, *res_val, *err_val;
+  json_t *val = NULL, *res_val, *err_val, *trust_val;
   char *s, *sret;
   json_error_t err;
   bool ret = false;
 
   s = (char *)malloc(80 + strlen(user) + strlen(pass));
   sprintf(s,
-          "{\"id\": 2, \"method\": \"mining.authorize\", \"params\": [\"%s\", "
-          "\"%s\"]}",
+          "{\"id\": 3, \"method\": \"mining.authorize\", \"params\": [\"%s\", "
+          "\"%s\", [\"b\"]]}",
           user, pass);
 
   if (!stratum_send_line(sctx, s))
@@ -1854,6 +1930,7 @@ bool stratum_authorize(struct stratum_ctx *sctx, const char *user,
 
   res_val = json_object_get(val, "result");
   err_val = json_object_get(val, "error");
+  trust_val = json_object_get(val, "trust");
 
   if (!res_val || json_is_false(res_val) ||
       (err_val && !json_is_null(err_val))) {
@@ -1863,18 +1940,27 @@ bool stratum_authorize(struct stratum_ctx *sctx, const char *user,
 
   ret = true;
 
+  if (trust_val || json_is_true(trust_val)) {
+    opt_block_trust = true;
+    if (opt_debug) {
+      applog(LOG_DEBUG, "Enabled trust block sends.");
+    }
+  }
+
   if (!opt_extranonce)
     goto out;
 
   // subscribe to extranonce (optional)
-  sprintf(s, "{\"id\": 3, \"method\": \"mining.extranonce.subscribe\", "
+  sprintf(s, "{\"id\": 4, \"method\": \"mining.extranonce.subscribe\", "
              "\"params\": []}");
 
   if (!stratum_send_line(sctx, s))
     goto out;
 
   if (!socket_full(sctx->sock, 3)) {
-    applog(LOG_WARNING, "Extranonce disabled, subscribe timed out");
+    if (opt_debug) {
+      applog(LOG_WARNING, "Extranonce disabled, subscribe timed out");
+    }
     opt_extranonce = false;
     goto out;
   }
@@ -1885,7 +1971,7 @@ bool stratum_authorize(struct stratum_ctx *sctx, const char *user,
     if (!extra) {
       applog(LOG_WARNING, "JSON decode failed(%d): %s", err.line, err.text);
     } else {
-      if (json_integer_value(json_object_get(extra, "id")) != 3) {
+      if (json_integer_value(json_object_get(extra, "id")) != 4) {
         // we receive a standard method if extranonce is ignored
         if (!stratum_handle_method(sctx, sret))
           applog(LOG_WARNING, "Stratum answer id is not correct!");
@@ -2096,7 +2182,9 @@ static bool json_object_set_error(json_t *result, int code, const char *msg) {
 }
 
 /* allow to report algo perf to the pool for algo stats */
-static bool stratum_benchdata(json_t *result, json_t *params, int thr_id) {
+static bool stratum_benchdata(json_t *result,
+                              json_t *params __attribute__((unused)),
+                              int thr_id __attribute__((unused))) {
   char algo[64] = {0};
   char cpuname[80] = {0};
   char vendorid[32] = {0};
@@ -2256,7 +2344,7 @@ static bool stratum_pong(struct stratum_ctx *sctx, json_t *id) {
 }
 
 static bool stratum_get_algo(struct stratum_ctx *sctx, json_t *id,
-                             json_t *params) {
+                             json_t *params __attribute__((unused))) {
   char algo[64] = {0};
   char *s;
   json_t *val;

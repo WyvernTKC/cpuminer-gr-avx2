@@ -13,6 +13,7 @@
 #include <stdio.h>
 #if defined(_WIN64) || defined(__WINDOWS__)
 #include <winsock2.h>
+
 #include <windows.h>
 #endif
 #include <stdlib.h>
@@ -42,7 +43,7 @@ typedef crypto_uint64 u64;
 #include IACA_MARKS
 #endif
 
-#define LENGTH (256)
+#define LENGTH2 (256)
 
 /* some sizes (number of bytes) */
 #define ROWS (8)
@@ -55,19 +56,17 @@ typedef crypto_uint64 u64;
 //#define ROUNDS1024 (14)
 
 //#if LENGTH<=256
-#define COLS (COLS512)
+#define COLS2 (COLS512)
 //#define SIZE (SIZE512)
-#define ROUNDS (ROUNDS512)
+#define ROUNDS2 (ROUNDS512)
 //#else
 //#define COLS (COLS1024)
 //#define SIZE (SIZE1024)
 //#define ROUNDS (ROUNDS1024)
 //#endif
 
-#ifndef ROTL64
-#define ROTL64(a, n)                                                           \
-  ((((a) << (n)) | ((a) >> (64 - (n)))) & li_64(ffffffffffffffff))
-#endif
+//#define ROTL64(a,n) ((((a)<<(n))|((a)>>(64-(n))))&li_64(ffffffffffffffff))
+#define ROTL64(a, n) rol64(a, n)
 
 #if (PLATFORM_BYTE_ORDER == IS_BIG_ENDIAN)
 #define EXT_BYTE(var, n) ((u8)((u64)(var) >> (8 * (7 - (n)))))
@@ -83,6 +82,8 @@ typedef crypto_uint64 u64;
    (ROTL64(a, 56) & li_64(FF000000FF000000)))
 #endif /* IS_LITTLE_ENDIAN */
 
+#ifndef GROESTL_DEFS
+#define GROESTL_DEFS
 typedef unsigned char BitSequence_gr;
 typedef unsigned long long DataLength_gr;
 typedef enum {
@@ -90,8 +91,13 @@ typedef enum {
   FAIL_GR = 1,
   BAD_HASHBITLEN_GR = 2
 } HashReturn_gr;
+#endif // GROESTL_DEFS
 
 #define SIZE256 (SIZE_512 / 16)
+
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 typedef struct {
   __attribute__((aligned(32))) __m128i chaining[SIZE256];
@@ -120,5 +126,9 @@ HashReturn_gr update_and_final_groestl256(hashState_groestl256 *, void *,
 
 int groestl256_full(hashState_groestl256 *ctx, void *output, const void *input,
                     DataLength_gr databitlen);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif // HASH_GROESTL256_H_

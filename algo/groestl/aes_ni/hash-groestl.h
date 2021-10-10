@@ -14,6 +14,7 @@
 #include <stdio.h>
 #if defined(_WIN64) || defined(__WINDOWS__)
 #include <winsock2.h>
+
 #include <windows.h>
 #endif
 #include <stdlib.h>
@@ -44,10 +45,8 @@
 #define ROUNDS (ROUNDS1024)
 //#endif
 
-#ifndef ROTL64
-#define ROTL64(a, n)                                                           \
-  ((((a) << (n)) | ((a) >> (64 - (n)))) & li_64(ffffffffffffffff))
-#endif
+//#define ROTL64(a,n) ((((a)<<(n))|((a)>>(64-(n))))&li_64(ffffffffffffffff))
+#define ROTL64(a, n) rol64(a, n)
 
 #if (PLATFORM_BYTE_ORDER == IS_BIG_ENDIAN)
 #define EXT_BYTE(var, n) ((u8)((u64)(var) >> (8 * (7 - (n)))))
@@ -63,6 +62,8 @@
    (ROTL64(a, 56) & li_64(FF000000FF000000)))
 #endif /* IS_LITTLE_ENDIAN */
 
+#ifndef GROESTL_DEFS
+#define GROESTL_DEFS
 typedef unsigned char BitSequence_gr;
 typedef unsigned long long DataLength_gr;
 typedef enum {
@@ -70,8 +71,13 @@ typedef enum {
   FAIL_GR = 1,
   BAD_HASHBITLEN_GR = 2
 } HashReturn_gr;
+#endif // GROESTL_DEFS
 
 #define SIZE512 (SIZE_1024 / 16)
+
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 typedef struct {
   __attribute__((aligned(64))) __m128i chaining[SIZE512];
@@ -94,5 +100,9 @@ HashReturn_gr final_groestl(hashState_groestl *, void *);
 HashReturn_gr update_and_final_groestl(hashState_groestl *, void *,
                                        const void *, DataLength_gr);
 int groestl512_full(hashState_groestl *, void *, const void *, uint64_t);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif // HASH_GROESTL_H_

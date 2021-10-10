@@ -7,9 +7,14 @@
 #include <stdio.h>
 #if defined(_WIN64) || defined(__WINDOWS__)
 #include <winsock2.h>
+
 #include <windows.h>
 #endif
 #include <stdlib.h>
+
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 #if defined(__AVX2__) && defined(__VAES__)
 
@@ -79,4 +84,9 @@ int groestl512_2way_full(groestl512_2way_context *, void *, const void *,
                          uint64_t);
 
 #endif // VAES
+
+#ifdef __cplusplus
+}
+#endif
+
 #endif // GROESTL512_HASH_4WAY_H__

@@ -1,19 +1,16 @@
 #!/bin/bash
 
-#if [ "$OS" = "Windows_NT" ]; then
-#    ./mingw64.sh
-#    exit 0
-#fi
-
-# Linux build
-
 make distclean || echo clean
 
 rm -f config.status
 ./autogen.sh || echo done
 
-#CFLAGS="-O3 -march=native -Wall" ./configure --with-curl --with-crypto=$HOME/usr
-CFLAGS="-O3 -march=native -mtune=native -Wall" ./configure --with-curl
+# For GCC-9 && GCC-8
+#CXXFLAGS="$CFLAGS -std=c++2a -fconcepts -Wno-ignored-attributes" \
+
+CFLAGS="-O3 -march=native -mtune=native" \
+CXXFLAGS="$CFLAGS -std=c++20 -Wno-ignored-attributes" \
+./configure --with-curl
 
 make -j $(nproc)
 

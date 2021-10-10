@@ -20,11 +20,15 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #if defined(__AVX2__)
 
-#include <immintrin.h>
 #include "algo/sha/sha3-defs.h"
 #include "simd-utils.h"
+#include <immintrin.h>
 
 /* The length of digests*/
 #define DIGEST_BIT_LEN_224 224
@@ -34,9 +38,10 @@
 
 /*********************************/
 /* The parameters of Luffa       */
-#define MSG_BLOCK_BIT_LEN 256  /*The bit length of a message block*/
-#define MSG_BLOCK_BYTE_LEN (MSG_BLOCK_BIT_LEN >> 3) /* The byte length
-                                                     * of a message block*/
+#define MSG_BLOCK_BIT_LEN 256 /*The bit length of a message block*/
+#define MSG_BLOCK_BYTE_LEN                                                     \
+  (MSG_BLOCK_BIT_LEN >> 3) /* The byte length                                  \
+                            * of a message block*/
 
 /* The number of blocks in Luffa */
 #define WIDTH_224 3
@@ -51,51 +56,56 @@
 #define LIMIT_512 128
 /*********************************/
 
-#if defined(__AVX512F__) && defined(__AVX512VL__) && defined(__AVX512DQ__) && defined(__AVX512BW__)
+#if defined(__AVX512F__) && defined(__AVX512VL__) && defined(__AVX512DQ__) &&  \
+    defined(__AVX512BW__)
 
 typedef struct {
-    uint32 buffer[8*4];
-    __m512i chainv[10];   /* Chaining values */
-    int hashbitlen;
-    int rembytes;
+  uint32 buffer[8 * 4];
+  __m512i chainv[10]; /* Chaining values */
+  int hashbitlen;
+  int rembytes;
 } luffa_4way_context __attribute((aligned(128)));
 
-int luffa_4way_init( luffa_4way_context *state, int hashbitlen );
-//int luffa_4way_update( luffa_4way_context *state, const void *data,
+int luffa_4way_init(luffa_4way_context *state, int hashbitlen);
+// int luffa_4way_update( luffa_4way_context *state, const void *data,
 //                       size_t len );
-//int luffa_4way_close( luffa_4way_context *state, void *hashval );
-int luffa_4way_update_close( luffa_4way_context *state, void *output,
-                                   const void *data, size_t inlen );
-int luffa512_4way_full( luffa_4way_context *state, void *output,
-                         const void *data, size_t inlen );
-int luffa512_4way_init( luffa_4way_context *state );
-int luffa512_4way_update( luffa_4way_context *state, const void *data,
-                       size_t len );
-int luffa512_4way_close( luffa_4way_context *state, void *hashval );
-int luffa512_4way_update_close( luffa_4way_context *state, void *output,
-                                const void *data, size_t inlen );
+// int luffa_4way_close( luffa_4way_context *state, void *hashval );
+int luffa_4way_update_close(luffa_4way_context *state, void *output,
+                            const void *data, size_t inlen);
+int luffa512_4way_full(luffa_4way_context *state, void *output,
+                       const void *data, size_t inlen);
+int luffa512_4way_init(luffa_4way_context *state);
+int luffa512_4way_update(luffa_4way_context *state, const void *data,
+                         size_t len);
+int luffa512_4way_close(luffa_4way_context *state, void *hashval);
+int luffa512_4way_update_close(luffa_4way_context *state, void *output,
+                               const void *data, size_t inlen);
 
-#define luffa_4way_update       luffa512_4way_update
-#define luffa_4way_close        luffa512_4way_close
+#define luffa_4way_update luffa512_4way_update
+#define luffa_4way_close luffa512_4way_close
 #define luffa_4way_update_close luffa512_4way_update_close
 
 #endif
 
 typedef struct {
-    uint32 buffer[8*2];
-    __m256i chainv[10];   /* Chaining values */
-    int hashbitlen;
-    int rembytes;
+  uint32 buffer[8 * 2];
+  __m256i chainv[10]; /* Chaining values */
+  int hashbitlen;
+  int rembytes;
 } luffa_2way_context __attribute((aligned(128)));
 
-int luffa_2way_init( luffa_2way_context *state, int hashbitlen );
-int luffa_2way_update( luffa_2way_context *state, const void *data,
-                       size_t len );
-int luffa_2way_close( luffa_2way_context *state, void *hashval );
-int luffa_2way_update_close( luffa_2way_context *state, void *output,
-                                   const void *data, size_t inlen );
-int luffa512_2way_full( luffa_2way_context *state, void *output,
-                         const void *data, size_t inlen );
+int luffa_2way_init(luffa_2way_context *state, int hashbitlen);
+int luffa_2way_update(luffa_2way_context *state, const void *data, size_t len);
+int luffa_2way_close(luffa_2way_context *state, void *hashval);
+int luffa_2way_update_close(luffa_2way_context *state, void *output,
+                            const void *data, size_t inlen);
+int luffa512_2way_full(luffa_2way_context *state, void *output,
+                       const void *data, size_t inlen);
 
 #endif
+
+#ifdef __cplusplus
+}
+#endif
+
 #endif

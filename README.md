@@ -48,40 +48,25 @@ Supported Algorithms
 Quick Setup
 -----------
 
-    ./cpiminer-INSTRUCTIONS -a gr -o stratum+tcp://r-pool.net:3008 -u RQKcAZBtsSacMUiGNnbk3h3KJAN94tstvt -p x
+      To add or use options from the miner, use included config.json file.
+      All options should be presented in JSON format like:
+      "long-flag-name": "Some_value"
 
-    -h                         -> Display full help and all available options.
-    Useful options:
-    -a gr                      -> Use GR algorithm.
-    -o stratum+tcp://URL:PORT  -> Your stratum URL. stratum+tcp://r-pool.net:3008
-    -u WALLET_ADDR.WORKER_NAME -> Your wallet address. You can add "." and some text to differentiate between different workers.
-    -p PASSWORD                -> Password to your user/worker on the pool. Most of the time "x" or not used is enough.
-    -t VAL                     -> Use VAL number of threads. If not set, miner defaults to all threads.
-    -d VAL                     -> Change dev fee percentage. Defaults to 1.75%.
-    -y                         -> Disable MSR mod. Defaults to enabled and can improve performance. Only supported on builds with AES instructions. Requires root privileges
-    --benchmark                -> 450s benchmark that measures average performance of the GR algorithm. Uses blocktimes from 16 days to determine rotation time ratio.
-    --no-tune                  -> Disable tuning of the miner.
-    --force-tune               -> Force tuning of the miner regardless if tune_config file is present.
-    --tune-config=FILE         -> Use already generated tuning configure file or point to where config file should be saved.
+      Some examples:
+      "tune-full": true
+      "tune-config": "some_filename"
+      "url": "stratum+tcp://YOUR_POOL_ADDRESS:PORT"
+      "user": "YOUR_WALLET"
 
-    AVX2+:
-    --tune-simple              -> Decrease complexity of the tuning process. It should take 54 minutes.
-    --tune-full                -> Increase complexity of the tuning process. It should take 115 minutes.
-
+For full miner option list and other tips please read the readme.txt file.
 
 Tuning
 ------
 Tuning starts automaticaly with the start of the miner. If previous tuning file `tune_config`
 exists (or `--tune-config=FILE` flag is used), it is used instead. This behavior
 can be overridden by `--no-tune` or `--force-tune`.
-On non-AVX2 CPUs default tuning process takes 35 minutes to finish.
-On AVX2 CPUs default tuning process takes 80 minutes to finish.
-
-
---tune-config:
-There is a folder tune_presets where community members contributed their tuning configs
-so users can start with something reasonable instead of tining it yourself.
-Tuning yourself is recommended for the most accurate and best performance!
+On non-AVX2 CPUs default tuning process takes ~69 minutes to finish.
+On AVX2 CPUs default tuning process takes ~155 minutes to finish.
 
 
 A small explanation of what tuning does. The traditional way of hashing would be,

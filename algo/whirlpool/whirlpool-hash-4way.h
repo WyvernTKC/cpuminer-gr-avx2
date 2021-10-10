@@ -48,38 +48,42 @@
 #ifndef WHIRLPOOL_HASH_4WAY_H__
 #define WHIRLPOOL_HASH_4WAY_H__
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #ifdef __AVX2__
 
-#include <stddef.h>
 #include "algo/sha/sph_types.h"
 #include "simd-utils.h"
+#include <stddef.h>
 
 /**
  * Output size (in bits) for WHIRLPOOL.
  */
-#define SPH_SIZE_whirlpool   512
+#define SPH_SIZE_whirlpool 512
 
 /**
  * Output size (in bits) for WHIRLPOOL-0.
  */
-#define SPH_SIZE_whirlpool0   512
+#define SPH_SIZE_whirlpool0 512
 
 /**
  * Output size (in bits) for WHIRLPOOL-1.
  */
-#define SPH_SIZE_whirlpool1   512
+#define SPH_SIZE_whirlpool1 512
 
 typedef struct {
-    __m256i buf[8] __attribute__ ((aligned (64)));
-    __m256i state[8];
-    sph_u64 count;
+  __m256i buf[8] __attribute__((aligned(64)));
+  __m256i state[8];
+  sph_u64 count;
 } whirlpool_4way_context;
 
-void whirlpool_4way_init( void *cc );
+void whirlpool_4way_init(void *cc);
 
-void whirlpool_4way( void *cc, const void *data, size_t len );
+void whirlpool_4way(void *cc, const void *data, size_t len);
 
-void whirlpool_4way_close( void *cc, void *dst );
+void whirlpool_4way_close(void *cc, void *dst);
 
 /**
  * WHIRLPOOL-0 uses the same structure than plain WHIRLPOOL.
@@ -88,9 +92,9 @@ typedef whirlpool_4way_context whirlpool0_4way_context;
 
 #define whirlpool0_4way_init whirlpool_4way_init
 
-void whirlpool0_4way( void *cc, const void *data, size_t len );
+void whirlpool0_4way(void *cc, const void *data, size_t len);
 
-void whirlpool0_4way_close( void *cc, void *dst );
+void whirlpool0_4way_close(void *cc, void *dst);
 
 /**
  * WHIRLPOOL-1 uses the same structure than plain WHIRLPOOL.
@@ -103,6 +107,10 @@ void whirlpool1_4way(void *cc, const void *data, size_t len);
 
 void whirlpool1_4way_close(void *cc, void *dst);
 
+#endif
+
+#ifdef __cplusplus
+}
 #endif
 
 #endif

@@ -51,7 +51,7 @@
  * ==========================(LICENSE BEGIN)============================
  *
  * Copyright (c) 2007-2010  Projet RNRT SAPHIR
- * 
+ *
  * Permission is hereby granted, free of charge, to any person obtaining
  * a copy of this software and associated documentation files (the
  * "Software"), to deal in the Software without restriction, including
@@ -59,10 +59,10 @@
  * distribute, sublicense, and/or sell copies of the Software, and to
  * permit persons to whom the Software is furnished to do so, subject to
  * the following conditions:
- * 
+ *
  * The above copyright notice and this permission notice shall be
  * included in all copies or substantial portions of the Software.
- * 
+ *
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
  * EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
  * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
@@ -77,106 +77,98 @@
  */
 
 #ifdef _MSC_VER
-#pragma warning (disable: 4146)
+#pragma warning(disable : 4146)
 #endif
 
 #undef SPH_XCAT
-#define SPH_XCAT(a, b)     SPH_XCAT_(a, b)
+#define SPH_XCAT(a, b) SPH_XCAT_(a, b)
 #undef SPH_XCAT_
-#define SPH_XCAT_(a, b)    a ## b
+#define SPH_XCAT_(a, b) a##b
 
 #undef SPH_BLEN
 #undef SPH_WLEN
 #if defined BE64 || defined LE64
-#define SPH_BLEN    128U
-#define SPH_WLEN      8U
+#define SPH_BLEN 128U
+#define SPH_WLEN 8U
 #else
-#define SPH_BLEN     64U
-#define SPH_WLEN      4U
+#define SPH_BLEN 64U
+#define SPH_WLEN 4U
 #endif
 
 #ifdef BLEN
 #undef SPH_BLEN
-#define SPH_BLEN    BLEN
+#define SPH_BLEN BLEN
 #endif
 
 #undef SPH_MAXPAD
 #if defined PLW1
-#define SPH_MAXPAD   (SPH_BLEN - SPH_WLEN)
+#define SPH_MAXPAD (SPH_BLEN - SPH_WLEN)
 #elif defined PLW4
-#define SPH_MAXPAD   (SPH_BLEN - (SPH_WLEN << 2))
+#define SPH_MAXPAD (SPH_BLEN - (SPH_WLEN << 2))
 #else
-#define SPH_MAXPAD   (SPH_BLEN - (SPH_WLEN << 1))
+#define SPH_MAXPAD (SPH_BLEN - (SPH_WLEN << 1))
 #endif
 
 #undef SPH_VAL
 #undef SPH_NO_OUTPUT
 #ifdef SVAL
-#define SPH_VAL         SVAL
-#define SPH_NO_OUTPUT   1
+#define SPH_VAL SVAL
+#define SPH_NO_OUTPUT 1
 #else
-#define SPH_VAL   sc->val
+#define SPH_VAL sc->val
 #endif
 
 #ifndef CLOSE_ONLY
 
 #ifdef SPH_UPTR
-static void
-SPH_XCAT(HASH, _short)( void *cc, const void *data, size_t len )
+static void SPH_XCAT(HASH, _short)(void *cc, const void *data, size_t len)
 #else
-void
-HASH ( void *cc, const void *data, size_t len )
+void HASH(void *cc, const void *data, size_t len)
 #endif
 {
-   SPH_XCAT( HASH, _context ) *sc;
-   __m256i *vdata = (__m256i*)data;
-   size_t ptr;
+  SPH_XCAT(HASH, _context) * sc;
+  __m256i *vdata = (__m256i *)data;
+  size_t ptr;
 
-   sc = cc;
-   ptr = (unsigned)sc->count & (SPH_BLEN - 1U);
-   while ( len > 0 )
-   {
-      size_t clen;
-      clen = SPH_BLEN - ptr;
-      if ( clen > len )
-         clen = len;
-      memcpy_256( sc->buf + (ptr>>3), vdata, clen>>3 );
-      vdata = vdata + (clen>>3);
-      ptr += clen;
-      len -= clen;
-      if ( ptr == SPH_BLEN )
-      {
-         RFUN( sc->buf, SPH_VAL );
-         ptr = 0;
-      }
-         sc->count += clen;
-   }
+  sc = cc;
+  ptr = (unsigned)sc->count & (SPH_BLEN - 1U);
+  while (len > 0) {
+    size_t clen;
+    clen = SPH_BLEN - ptr;
+    if (clen > len)
+      clen = len;
+    memcpy_256(sc->buf + (ptr >> 3), vdata, clen >> 3);
+    vdata = vdata + (clen >> 3);
+    ptr += clen;
+    len -= clen;
+    if (ptr == SPH_BLEN) {
+      RFUN(sc->buf, SPH_VAL);
+      ptr = 0;
+    }
+    sc->count += clen;
+  }
 }
 
 #ifdef SPH_UPTR
-void
-HASH (void *cc, const void *data, size_t len)
-{
-   SPH_XCAT(HASH, _context) *sc;
-   __m256i *vdata = (__m256i*)data;
-   unsigned ptr;
+void HASH(void *cc, const void *data, size_t len) {
+  SPH_XCAT(HASH, _context) * sc;
+  __m256i *vdata = (__m256i *)data;
+  unsigned ptr;
 
-   if ( len < (2 * SPH_BLEN) )
-   {
-      SPH_XCAT(HASH, _short)(cc, data, len);
-      return;
-   }
-   sc = cc;
-   ptr = (unsigned)sc->count & (SPH_BLEN - 1U);
-   if ( ptr > 0 )
-   {
-      unsigned t;
-      t = SPH_BLEN - ptr;
-      SPH_XCAT( HASH, _short )( cc, data, t );
-      vdata = vdata + (t>>3);
-      len -= t;
-   }
-   SPH_XCAT( HASH, _short )( cc, data, len );
+  if (len < (2 * SPH_BLEN)) {
+    SPH_XCAT(HASH, _short)(cc, data, len);
+    return;
+  }
+  sc = cc;
+  ptr = (unsigned)sc->count & (SPH_BLEN - 1U);
+  if (ptr > 0) {
+    unsigned t;
+    t = SPH_BLEN - ptr;
+    SPH_XCAT(HASH, _short)(cc, data, t);
+    vdata = vdata + (t >> 3);
+    len -= t;
+  }
+  SPH_XCAT(HASH, _short)(cc, data, len);
 }
 #endif
 
@@ -186,106 +178,101 @@ HASH (void *cc, const void *data, size_t len)
  * Perform padding and produce result. The context is NOT reinitialized
  * by this function.
  */
-static void
-SPH_XCAT( HASH, _addbits_and_close )(void *cc, 	unsigned ub, unsigned n,
-          void *dst, unsigned rnum )
-{
-    SPH_XCAT(HASH, _context) *sc;
-    unsigned ptr, u;
-    sc = cc;
-    ptr = (unsigned)sc->count & (SPH_BLEN - 1U);
+static void SPH_XCAT(HASH,
+                     _addbits_and_close)(void *cc,
+                                         unsigned ub __attribute__((unused)),
+                                         unsigned n __attribute__((unused)),
+                                         void *dst, unsigned rnum) {
+  SPH_XCAT(HASH, _context) * sc;
+  unsigned ptr, u;
+  sc = cc;
+  ptr = (unsigned)sc->count & (SPH_BLEN - 1U);
 
-//uint64_t *b= (uint64_t*)sc->buf;
-//uint64_t *s= (uint64_t*)sc->state;
-//printf("Vptr 1= %u\n", ptr);
-//printf("VBuf %016llx %016llx %016llx %016llx\n", b[0], b[4], b[8], b[12] );
-//printf("VBuf %016llx %016llx %016llx %016llx\n", b[16], b[20], b[24], b[28] );
+  // uint64_t *b= (uint64_t*)sc->buf;
+  // uint64_t *s= (uint64_t*)sc->state;
+  // printf("Vptr 1= %u\n", ptr);
+  // printf("VBuf %016llx %016llx %016llx %016llx\n", b[0], b[4], b[8], b[12] );
+  // printf("VBuf %016llx %016llx %016llx %016llx\n", b[16], b[20], b[24], b[28]
+  // );
 
 #ifdef PW01
-    sc->buf[ptr>>3] = _mm256_set1_epi64x( 0x100 >> 8 );
+  sc->buf[ptr >> 3] = _mm256_set1_epi64x(0x100 >> 8);
 //    sc->buf[ptr++] = 0x100 >> 8;
 #else
-// need to overwrite exactly one byte
-//    sc->buf[ptr>>3] = _mm256_set_epi64x( 0, 0, 0, 0x80 );
-    sc->buf[ptr>>3] = _mm256_set1_epi64x( 0x80 );
+  // need to overwrite exactly one byte
+  //    sc->buf[ptr>>3] = _mm256_set_epi64x( 0, 0, 0, 0x80 );
+  sc->buf[ptr >> 3] = _mm256_set1_epi64x(0x80);
 //    ptr++;
 #endif
-    ptr += 8;
+  ptr += 8;
 
-//printf("Vptr 2= %u\n", ptr);
-//printf("VBuf %016llx %016llx %016llx %016llx\n", b[0], b[4], b[8], b[12] );
-//printf("VBuf %016llx %016llx %016llx %016llx\n", b[16], b[20], b[24], b[28] );
+  // printf("Vptr 2= %u\n", ptr);
+  // printf("VBuf %016llx %016llx %016llx %016llx\n", b[0], b[4], b[8], b[12] );
+  // printf("VBuf %016llx %016llx %016llx %016llx\n", b[16], b[20], b[24], b[28]
+  // );
 
-    if ( ptr > SPH_MAXPAD )
-    {
-         memset_zero_256( sc->buf + (ptr>>3), (SPH_BLEN - ptr) >> 3 );
-         RFUN( sc->buf, SPH_VAL );
-         memset_zero_256( sc->buf, SPH_MAXPAD >> 3 );
-    }
-    else
-    {
-         memset_zero_256( sc->buf + (ptr>>3), (SPH_MAXPAD - ptr) >> 3 );
-    }
+  if (ptr > SPH_MAXPAD) {
+    memset_zero_256(sc->buf + (ptr >> 3), (SPH_BLEN - ptr) >> 3);
+    RFUN(sc->buf, SPH_VAL);
+    memset_zero_256(sc->buf, SPH_MAXPAD >> 3);
+  } else {
+    memset_zero_256(sc->buf + (ptr >> 3), (SPH_MAXPAD - ptr) >> 3);
+  }
 #if defined BE64
 #if defined PLW1
-    sc->buf[ SPH_MAXPAD>>3 ] =
-                 mm256_bswap_64( _mm256_set1_epi64x( sc->count << 3 ) );
+  sc->buf[SPH_MAXPAD >> 3] = mm256_bswap_64(_mm256_set1_epi64x(sc->count << 3));
 #elif defined PLW4
-    memset_zero_256( sc->buf + (SPH_MAXPAD>>3), ( 2 * SPH_WLEN ) >> 3 );
-    sc->buf[ (SPH_MAXPAD + 2 * SPH_WLEN ) >> 3 ] =
-                mm256_bswap_64( _mm256_set1_epi64x( sc->count >> 61 ) );
-    sc->buf[ (SPH_MAXPAD + 3 * SPH_WLEN ) >> 3 ] =
-                mm256_bswap_64( _mm256_set1_epi64x( sc->count << 3 ) );
+  memset_zero_256(sc->buf + (SPH_MAXPAD >> 3), (2 * SPH_WLEN) >> 3);
+  sc->buf[(SPH_MAXPAD + 2 * SPH_WLEN) >> 3] =
+      mm256_bswap_64(_mm256_set1_epi64x(sc->count >> 61));
+  sc->buf[(SPH_MAXPAD + 3 * SPH_WLEN) >> 3] =
+      mm256_bswap_64(_mm256_set1_epi64x(sc->count << 3));
 #else
-    sc->buf[ ( SPH_MAXPAD + 2 * SPH_WLEN ) >> 3 ] =
-               mm256_bswap_64( _mm256_set1_epi64x( sc->count >> 61 ) );
-    sc->buf[ ( SPH_MAXPAD + 3 * SPH_WLEN ) >> 3 ] =
-               mm256_bswap_64( _mm256_set1_epi64x( sc->count << 3 ) );
-#endif  // PLW
+  sc->buf[(SPH_MAXPAD + 2 * SPH_WLEN) >> 3] =
+      mm256_bswap_64(_mm256_set1_epi64x(sc->count >> 61));
+  sc->buf[(SPH_MAXPAD + 3 * SPH_WLEN) >> 3] =
+      mm256_bswap_64(_mm256_set1_epi64x(sc->count << 3));
+#endif // PLW
 #else  // LE64
 #if defined PLW1
-    sc->buf[ SPH_MAXPAD >> 3 ] = _mm256_set1_epi64x( sc->count << 3 );
+  sc->buf[SPH_MAXPAD >> 3] = _mm256_set1_epi64x(sc->count << 3);
 #elif defined PLW4
-    sc->buf[ SPH_MAXPAD >> 3 ] = _mm256_set1_epi64x( sc->count << 3 );
-    sc->buf[ ( SPH_MAXPAD + SPH_WLEN ) >> 3 ] =
-                       _mm256_set1_epi64x( c->count >> 61 );
-    memset_zero_256( sc->buf + ( ( SPH_MAXPAD + 2 * SPH_WLEN ) >> 3 ),
-                       2 * SPH_WLEN );
+  sc->buf[SPH_MAXPAD >> 3] = _mm256_set1_epi64x(sc->count << 3);
+  sc->buf[(SPH_MAXPAD + SPH_WLEN) >> 3] = _mm256_set1_epi64x(c->count >> 61);
+  memset_zero_256(sc->buf + ((SPH_MAXPAD + 2 * SPH_WLEN) >> 3), 2 * SPH_WLEN);
 #else
-    sc->buf[ SPH_MAXPAD >> 3 ] = _mm256_set1_epi64x( sc->count << 3 );
-    sc->buf[ ( SPH_MAXPAD + SPH_WLEN ) >> 3 ] =
-                          _mm256_set1_epi64x( sc->count >> 61 );
+  sc->buf[SPH_MAXPAD >> 3] = _mm256_set1_epi64x(sc->count << 3);
+  sc->buf[(SPH_MAXPAD + SPH_WLEN) >> 3] = _mm256_set1_epi64x(sc->count >> 61);
 #endif // PLW
 
 #endif // LE64
 
-//printf("Vptr 3= %u\n", ptr);
-//printf("VBuf   %016llx %016llx %016llx %016llx\n", b[0], b[4], b[8], b[12] );
-//printf("VBuf   %016llx %016llx %016llx %016llx\n", b[16], b[20], b[24], b[28] );
-    RFUN( sc->buf, SPH_VAL );
+  // printf("Vptr 3= %u\n", ptr);
+  // printf("VBuf   %016llx %016llx %016llx %016llx\n", b[0], b[4], b[8], b[12]
+  // ); printf("VBuf   %016llx %016llx %016llx %016llx\n", b[16], b[20], b[24],
+  // b[28] );
+  RFUN(sc->buf, SPH_VAL);
 
-//printf("Vptr after= %u\n", ptr);
-//printf("VState %016llx %016llx %016llx %016llx\n", s[0], s[4], s[8], s[12] );
-//printf("VState %016llx %016llx %016llx %016llx\n", s[16], s[20], s[24], s[28] );
+  // printf("Vptr after= %u\n", ptr);
+  // printf("VState %016llx %016llx %016llx %016llx\n", s[0], s[4], s[8], s[12]
+  // ); printf("VState %016llx %016llx %016llx %016llx\n", s[16], s[20], s[24],
+  // s[28] );
 
 #ifdef SPH_NO_OUTPUT
-    (void)dst;
-    (void)rnum;
-    (void)u;
+  (void)dst;
+  (void)rnum;
+  (void)u;
 #else
-    for ( u = 0; u < rnum; u ++ )
-    {
+  for (u = 0; u < rnum; u++) {
 #if defined BE64
-       ((__m256i*)dst)[u] = mm256_bswap_64( sc->val[u] );
-#else  // LE64
-       ((__m256i*)dst)[u] = sc->val[u];
+    ((__m256i *)dst)[u] = mm256_bswap_64(sc->val[u]);
+#else // LE64
+    ((__m256i *)dst)[u] = sc->val[u];
 #endif
-    }
+  }
 #endif
 }
 
-static void
-SPH_XCAT( HASH, _mdclose )( void *cc, void *dst, unsigned rnum )
-{
-   SPH_XCAT( HASH, _addbits_and_close )( cc, 0, 0, dst, rnum );
+static void SPH_XCAT(HASH, _mdclose)(void *cc, void *dst, unsigned rnum) {
+  SPH_XCAT(HASH, _addbits_and_close)(cc, 0, 0, dst, rnum);
 }

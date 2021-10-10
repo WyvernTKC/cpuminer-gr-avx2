@@ -47,7 +47,7 @@ Please include the following information:
 2. Exact command line (except user and pw) and intial output showing
    the above requested info.
 
-3. Additional program output showing any error messages or other
+3. Additional program output howing any error messages or other
    pertinent data.
 
 4. A clear description of the problem including history, scope,
@@ -64,6 +64,76 @@ If not what makes it happen or not happen?
 
 Change Log
 ----------
+
+1.2.0
+
+#### Windows Fixes:
+- Fix MSR setup.
+- Properly close/stop WinRing0 driver after closing the miner.
+- Fix problems with stratum switching while using SSL stratum.
+- Compiled binaries should now properly handle multi NUMA configurations.
+- Disable QuickEdit on Windows. Prevents user from accidentally freezing the miner.
+
+#### General Fixes:
+- Fix inaccurate Average hashrate counter that was displayed above each "Periodic Report".
+- Fix the problem of "Low difficulty share" in situations where the new block 
+  is found almost instantly.
+- Add Large Pages to different NUMA nodes if some have 0 or not enough memory (Linux).
+- Minor fixes.
+
+#### General Changes:
+- Linux binaries system main requirements: libssl-1.1, libcurl-4, glibc-2.16.
+- Added autodetect script to the linux and Windows binary packages.
+  They should start the best possible binary for the CPU used by the user.
+- Added default `config.json` file that is used to provide flags in one simple place.
+- Benchmark provides even more accurate results and takes into consideration
+  sub rotations.
+- Doing benchmark of the miner now creates `benchmark.log` file with results.
+- Automatically add lost shares to a new entry in "Periodic Report" 
+  instead of displaying a warning about share mismatch.
+- Remove some unused debug output.
+- Show progress of the tuning process in percent as well as 
+  tests_done / tests_total and estimate of time remaining.
+- Pass benchmark and tuning speed to the API.
+- Provide info about the rotation of the current block and a rough speed estimate.
+
+#### Algorithm Improvements:
+- General optimizations for GhostRider (~0-2% increase).
+- New tuning process (up to 15% increase, most noticeable on Intel and Zen/Zen+ CPUs):
+-- Dynamic thread usage - Especially useful for cache starved CPUs like Intels 
+   and mobile CPUs. Lifts the performance on the more cache-heavy rotations by
+   not using some threads while maintaining the best performance on rotations
+   not requiring that much cache.
+-- Different prefetch methods - This can bring more performance on CPUs with
+   higher overclocks and 2 sticks of RAM while maintaining proper performance
+   on CPUs that are underclocked and have 1 stick of RAM.
+-- Tune for 2 sub rotations in each rotation to maximize the performance.
+- Update algorithms with improvements from JDD cpuminer-opt 3.18.0
+
+#### Flags:
+- Add `--url-backup=URL:PORT` - enable backup/failover stratum for the user.
+- Add `--log=FILE` - simple log file of the miner output. Useful on Windows.
+- Remove `--tune-simple`.
+- Add missing `--no-msr` (`-y`) long flag.
+- All flags (like `-y` `--tune-full`) are available on all releases but won't 
+  do anything if they are not compatible. Should provide better universal 
+  usage and script creation.
+
+#### Compilation:
+- Fix compilation errors on systems with archaic kernels (CentOS 7, Fedora, Ubuntu).
+- Requires c++20 capable compiler. gcc-10 is recommended. gcc-8 minimum.
+- Compilation tested on: 
+-- CentOS 7, CentOS 8.4
+-- Fedora 24, Fedora 28, Fedora 34
+-- Ubuntu 16.04, Ubuntu 18.04, Ubuntu 20.04
+- Binaries tested on:
+-- CentOS 7 - Requires manual installation of libssl-1.1
+-- CentOS 8.4 - OK
+-- Fedora 24 - Requires manual installation of libssl-1.1 
+-- Fedora 28, 34 - OK
+-- Ubuntu 16.04 - Requires manual installation of libssl-1.1
+-- Ubuntu 18.04, 20.04 - OK
+
 
 1.1.9
 

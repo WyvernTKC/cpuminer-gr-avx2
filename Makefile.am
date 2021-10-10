@@ -1,4 +1,3 @@
-
 if WANT_JANSSON
 JANSSON_INCLUDES= -I$(top_srcdir)/compat/jansson
 else
@@ -7,7 +6,7 @@ endif
 
 EXTRA_DIST	= example-cfg.json nomacro.pl
 
-SUBDIRS		= compat
+SUBDIRS	= compat
 
 ALL_INCLUDES	= @PTHREAD_FLAGS@ -fno-strict-aliasing $(JANSSON_INCLUDES) -I.
 
@@ -22,7 +21,7 @@ cpuminer_SOURCES = \
   sysinfos.c \
   algo-gate-api.c \
   virtual_memory.c \
-  msr_mod.c \
+  msr_mod.cpp \
   crypto/c_keccak.c \
   algo/blake/sph_blake.c \
   algo/blake/blake512-hash-4way.c \
@@ -35,10 +34,9 @@ cpuminer_SOURCES = \
   algo/echo/aes_ni/hash.c \
 	algo/fugue/fugue-aesni.c \
 	algo/fugue/sph_fugue.c \
-  algo/gr/cryptonote/cryptonight.c \
   algo/gr/gr-gate.c \
-  algo/gr/gr.c \
-  algo/gr/gr-4way.c \
+  algo/gr/gr.cpp \
+  algo/gr/gr-4way.cpp \
   algo/groestl/groestl512-hash-4way.c \
   algo/groestl/sph_groestl.c \
   algo/groestl/aes_ni/hash-groestl.c \
@@ -51,8 +49,12 @@ cpuminer_SOURCES = \
   algo/keccak/keccak-hash-4way.c \
   algo/luffa/luffa_for_sse2.c \
   algo/luffa/luffa-hash-2way.c \
-  algo/sha/sph_sha2.c \
+  algo/sha/sha256d.c \
+  algo/sha/sha256-hash.c \
+  algo/sha/sha256-hash-opt.c \
   algo/sha/sha2.c \
+  algo/sha/sph_sha2.c \
+  algo/sha/sha256-hash-2way-ni.c \
 	algo/sha/sha256-hash-4way.c \
   algo/shabal/sph_shabal.c \
   algo/shabal/shabal-hash-4way.c \
@@ -90,12 +92,17 @@ if HAVE_WINDOWS
 endif
 
 cpuminer_LDFLAGS	= @LDFLAGS@
-cpuminer_LDADD	= @LIBCURL@ @JANSSON_LIBS@ @PTHREAD_LIBS@ @WS2_LIBS@ @NUMA_LIBS@ -lssl -lcrypto -lgmp -lm
+cpuminer_LDADD	= @LIBCURL@ @JANSSON_LIBS@ @PTHREAD_LIBS@ @WS2_LIBS@ @NUMA_LIBS@ -lssl -lcrypto
+#cpuminer_LDADD	= @LIBCURL@ @PTHREAD_LIBS@ @WS2_LIBS@ -lssl -lcrypto \
+#									/usr/lib/x86_64-linux-gnu/libjansson.a
+
 cpuminer_CPPFLAGS = @LIBCURL_CPPFLAGS@ $(ALL_INCLUDES)
-cpuminer_CFLAGS   = -Wno-pointer-sign -Wno-pointer-to-int-cast $(disable_flags)
+cpuminer_CFLAGS   = -Wno-pointer-sign $(disable_flags)
 
 if HAVE_WINDOWS
-cpuminer_CFLAGS += -Wl,--stack,10485760
+cpuminer_CFLAGS += -Wl,--stack,10485760 -Wno-pointer-to-int-cast
+else
+#cpuminer_LDADD += /usr/lib/x86_64-linux-gnu/libnuma.a
 endif
 
 if HAVE_WINDOWS

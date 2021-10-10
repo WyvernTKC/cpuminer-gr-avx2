@@ -90,9 +90,11 @@
 #define saes_u2(p) saes_b2w(p, saes_f3(p), saes_f2(p), p)
 #define saes_u3(p) saes_b2w(p, p, saes_f3(p), saes_f2(p))
 
-const uint32_t saes_table[4][256] = {saes_data(saes_u0), saes_data(saes_u1),
-                                     saes_data(saes_u2), saes_data(saes_u3)};
-__attribute__((aligned(16))) const uint8_t saes_sbox[256] = saes_data(saes_h0);
+alignas(64) constexpr uint32_t saes_table[4][256] = {
+    saes_data(saes_u0), saes_data(saes_u1), saes_data(saes_u2),
+    saes_data(saes_u3)};
+
+alignas(32) constexpr uint8_t saes_sbox[256] = saes_data(saes_h0);
 
 static __attribute__((always_inline)) inline uint32_t sub_word(uint32_t key) {
   return (saes_sbox[key >> 24] << 24) |

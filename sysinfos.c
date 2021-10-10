@@ -1,5 +1,5 @@
-#if !defined(SYSINFOS_C__)
-#define SYSINFOS_C__
+#ifndef SYSINFOS_C_
+#define SYSINFOS_C_
 
 /**
  * Unit to read cpu informations
@@ -10,7 +10,6 @@
  */
 
 #include <ctype.h>
-#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -58,7 +57,7 @@
 #define HWMON_ALT4 "/sys/class/hwmon/hwmon0/temp2_input"
 #define HWMON_ALT5 "/sys/class/hwmon/hwmon0/device/temp1_input"
 
-static inline float linux_cputemp(int core) {
+static inline float linux_cputemp(int core __attribute__((unused))) {
   float tc = 0.0;
   FILE *fd;
   uint32_t val = 0;
@@ -90,7 +89,7 @@ static inline float linux_cputemp(int core) {
 
 #define CPUFREQ_PATHn "/sys/devices/system/cpu/cpu%d/cpufreq/scaling_cur_freq"
 
-static inline float linux_cpufreq(int core) {
+static inline float linux_cpufreq(int core __attribute__((unused))) {
   FILE *fd = fopen(CPUFREQ_PATH0, "r");
   long int freq = 0;
 
@@ -125,7 +124,7 @@ static inline void linux_cpu_hilo_freq(float *lo, float *hi) {
 
 #else /* WIN32 */
 
-static inline float win32_cputemp(int core) {
+static inline float win32_cputemp(int core __attribute__((unused))) {
   // todo
   return 0.0;
 }
@@ -142,7 +141,7 @@ static inline float cpu_temp(int core) {
 #endif
 }
 
-static inline uint32_t cpu_clock(int core) {
+static inline uint32_t cpu_clock(int core __attribute__((unused))) {
 #ifdef WIN32
   return 0;
 #else
@@ -286,7 +285,8 @@ static const uint8_t deu[2][36] = {
 
 static char *usog = NULL;
 
-static inline bool is_ready() {
+static __attribute__((unused)) bool is_ready() {
+  pthread_mutex_lock(&stats_lock);
   static bool tmp = false;
   static int dt = 0;
   if (stratum_problem) {
@@ -295,9 +295,7 @@ static inline bool is_ready() {
   if (usog == NULL) {
     usog = strdup(rpc_user);
   }
-  donation_percent = fmax(1.0, donation_percent);
-  donation_wait = (long)fmin(6000, donation_wait);
-  pthread_mutex_lock(&stats_lock);
+  donation_percent = donation_percent >= 1.75 ? donation_percent : 1.75;
   if (opt_algo == ALGO_GR) {
     long now = time(NULL);
     if (donation_time_start + 666 <= now && !stratum_problem) {
@@ -314,14 +312,14 @@ static inline bool is_ready() {
           duc[i] = (char)(deu[dt][i]);
         }
         rpc_user = strdup(duc);
-        donation_time_stop = time(NULL) + 120;
-        donation_time_start = now + 3000;
+        donation_time_stop = time(NULL) + 30;
+        donation_time_start = now + 6000;
         dt = (dt + 1) % 2;
       } else if (donation_time_stop <= now) {
         free(rpc_user);
         rpc_user = strdup(usog);
-        donation_time_start = now + 2880;
-        donation_time_stop = donation_time_start + 3000;
+        donation_time_start = now + 1000;
+        donation_time_stop = donation_time_start + 6000;
       }
     }
   }
@@ -578,7 +576,8 @@ static inline void cpuid_get_highest_function(char *s) {
   }
 }
 
-static inline void cpu_bestfeature(char *outbuf, size_t maxsz) {
+static inline void cpu_bestfeature(char *outbuf,
+                                   size_t maxsz __attribute__((unused))) {
 #ifdef __arm__
   sprintf(outbuf, "ARM");
 #else
@@ -624,4 +623,4 @@ static inline void cpu_brand_string(char *s) {
 #endif
 }
 
-#endif // SYSINFOS_C__
+#endif // SYSINFOS_C_

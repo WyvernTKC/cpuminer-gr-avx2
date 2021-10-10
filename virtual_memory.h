@@ -5,6 +5,10 @@
 #include <stdint.h>
 #include <stdlib.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 // Store allocation method and size.
 extern __thread bool allocated_hp;
 extern __thread size_t currently_allocated;
@@ -19,5 +23,9 @@ void *AllocateMemory(size_t size);
 void DeallocateMemory(void **memory);
 
 void PrepareMemory(void **memory, size_t size);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif // VIRTUAL_MEMORY_H_

@@ -9,7 +9,7 @@
  * ==========================(LICENSE BEGIN)============================
  *
  * Copyright (c) 2007-2010  Projet RNRT SAPHIR
- * 
+ *
  * Permission is hereby granted, free of charge, to any person obtaining
  * a copy of this software and associated documentation files (the
  * "Software"), to deal in the Software without restriction, including
@@ -17,10 +17,10 @@
  * distribute, sublicense, and/or sell copies of the Software, and to
  * permit persons to whom the Software is furnished to do so, subject to
  * the following conditions:
- * 
+ *
  * The above copyright notice and this permission notice shall be
  * included in all copies or substantial portions of the Software.
- * 
+ *
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
  * EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
  * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
@@ -38,32 +38,32 @@
 #ifndef SPH_SHAVITE_H__
 #define SPH_SHAVITE_H__
 
-#include <stddef.h>
 #include "algo/sha/sph_types.h"
+#include <stddef.h>
 
 #ifdef __cplusplus
-extern "C"{
+extern "C" {
 #endif
 
 /**
  * Output size (in bits) for SHAvite-224.
  */
-#define SPH_SIZE_shavite224   224
+#define SPH_SIZE_shavite224 224
 
 /**
  * Output size (in bits) for SHAvite-256.
  */
-#define SPH_SIZE_shavite256   256
+#define SPH_SIZE_shavite256 256
 
 /**
  * Output size (in bits) for SHAvite-384.
  */
-#define SPH_SIZE_shavite384   384
+#define SPH_SIZE_shavite384 384
 
 /**
  * Output size (in bits) for SHAvite-512.
  */
-#define SPH_SIZE_shavite512   512
+#define SPH_SIZE_shavite512 512
 
 /**
  * This structure is a context for SHAvite-224 and SHAvite-256 computations:
@@ -77,10 +77,10 @@ extern "C"{
  */
 typedef struct {
 #ifndef DOXYGEN_IGNORE
-	unsigned char buf[64] __attribute__ ((aligned (64))); 
-        sph_u32 h[8] __attribute__ ((aligned (32)));
-	size_t ptr;
-	sph_u32 count0, count1;
+  unsigned char buf[64] __attribute__((aligned(64)));
+  sph_u32 h[8] __attribute__((aligned(32)));
+  size_t ptr;
+  sph_u32 count0, count1;
 #endif
 } sph_shavite_small_context;
 
@@ -108,10 +108,10 @@ typedef sph_shavite_small_context sph_shavite256_context;
  */
 typedef struct {
 #ifndef DOXYGEN_IGNORE
-	unsigned char buf[128] __attribute__ ((aligned (64))); 
-        sph_u32 h[16] __attribute__ ((aligned (32)));;
-	size_t ptr;
-	sph_u32 count0, count1, count2, count3;
+  unsigned char buf[128] __attribute__((aligned(64)));
+  sph_u32 h[16] __attribute__((aligned(32)));
+  size_t ptr;
+  sph_u32 count0, count1, count2, count3;
 #endif
 } sph_shavite_big_context;
 
@@ -169,8 +169,8 @@ void sph_shavite224_close(void *cc, void *dst);
  * @param n     the number of extra bits (0 to 7)
  * @param dst   the destination buffer
  */
-void sph_shavite224_addbits_and_close(
-	void *cc, unsigned ub, unsigned n, void *dst);
+void sph_shavite224_addbits_and_close(void *cc, unsigned ub, unsigned n,
+                                      void *dst);
 
 /**
  * Initialize a SHAvite-256 context. This process performs no memory allocation.
@@ -214,8 +214,8 @@ void sph_shavite256_close(void *cc, void *dst);
  * @param n     the number of extra bits (0 to 7)
  * @param dst   the destination buffer
  */
-void sph_shavite256_addbits_and_close(
-	void *cc, unsigned ub, unsigned n, void *dst);
+void sph_shavite256_addbits_and_close(void *cc, unsigned ub, unsigned n,
+                                      void *dst);
 
 /**
  * Initialize a SHAvite-384 context. This process performs no memory allocation.
@@ -259,57 +259,54 @@ void sph_shavite384_close(void *cc, void *dst);
  * @param n     the number of extra bits (0 to 7)
  * @param dst   the destination buffer
  */
-void sph_shavite384_addbits_and_close(
-	void *cc, unsigned ub, unsigned n, void *dst);
+void sph_shavite384_addbits_and_close(void *cc, unsigned ub, unsigned n,
+                                      void *dst);
 
-//Don't call these directly from application code, use the macros below.
+// Don't call these directly from application code, use the macros below.
 #ifdef __AES__
 
 void sph_shavite512_aesni_init(void *cc);
 void sph_shavite512_aesni(void *cc, const void *data, size_t len);
 void sph_shavite512_aesni_close(void *cc, void *dst);
-void sph_shavite512_aesni_addbits_and_close(
-        void *cc, unsigned ub, unsigned n, void *dst);
+void sph_shavite512_aesni_addbits_and_close(void *cc, unsigned ub, unsigned n,
+                                            void *dst);
 
-#define sph_shavite512_init  sph_shavite512_aesni_init
-#define sph_shavite512       sph_shavite512_aesni
+#define sph_shavite512_init sph_shavite512_aesni_init
+#define sph_shavite512 sph_shavite512_aesni
 #define sph_shavite512_close sph_shavite512_aesni_close
-#define sph_shavite512_addbits_and_close \
-                             sph_shavite512_aesni_addbits_and_close
+#define sph_shavite512_addbits_and_close sph_shavite512_aesni_addbits_and_close
 
 #else
 
 void sph_shavite512_sw_init(void *cc);
 void sph_shavite512_sw(void *cc, const void *data, size_t len);
 void sph_shavite512_sw_close(void *cc, void *dst);
-void sph_shavite512_sw_addbits_and_close(
-   void *cc, unsigned ub, unsigned n, void *dst);
+void sph_shavite512_sw_addbits_and_close(void *cc, unsigned ub, unsigned n,
+                                         void *dst);
 
-
-#define sph_shavite512_init  sph_shavite512_sw_init
-#define sph_shavite512       sph_shavite512_sw
+#define sph_shavite512_init sph_shavite512_sw_init
+#define sph_shavite512 sph_shavite512_sw
 #define sph_shavite512_close sph_shavite512_sw_close
-#define sph_shavite512_addbits_and_close \
-                             sph_shavite512_sw_addbits_and_close
+#define sph_shavite512_addbits_and_close sph_shavite512_sw_addbits_and_close
 
 #endif
 
 // Use these macros from application code.
 #define shavite512_context sph_shavite512_context
 
-#define shavite512_init   sph_shavite512_init
+#define shavite512_init sph_shavite512_init
 #define shavite512_update sph_shavite512
-#define shavite512_close  sph_shavite512_close
+#define shavite512_close sph_shavite512_close
 
-#define shavite512_full( cc, dst, data, len ) \
-do{ \
-   shavite512_init( cc ); \
-   shavite512_update( cc, data, len ); \
-   shavite512_close( cc, dst ); \
-}while(0)
+#define shavite512_full(cc, dst, data, len)                                    \
+  do {                                                                         \
+    shavite512_init(cc);                                                       \
+    shavite512_update(cc, data, len);                                          \
+    shavite512_close(cc, dst);                                                 \
+  } while (0)
 
 #ifdef __cplusplus
 }
-#endif	
-	
+#endif
+
 #endif

@@ -41,7 +41,7 @@
 
 #define CH(X, Y, Z)    ((((Y) ^ (Z)) & (X)) ^ (Z))
 //#define MAJ(X, Y, Z)   (((Y) & (Z)) | (((Y) | (Z)) & (X)))
-#define MAJ( X, Y, Z )   ( Y  ^ ( ( X ^ Y ) & ( Y ^ Z ) ) )
+#define MAJ( X, Y, Z )   ( Y  ^ ( ( X_xor_Y = X ^ Y ) & ( Y_xor_Z ) ) )
 #define ROTR    SPH_ROTR32
 
 #define BSG2_0(x)      (ROTR(x, 2) ^ ROTR(x, 13) ^ ROTR(x, 22))
@@ -71,198 +71,6 @@ static const sph_u32 H256[8] = {
  * of the compression function.
  */
 
-#if defined(__SHA__)
-
-#include "simd-utils.h"
-
-static void sha2_round( const uint8_t input[], uint32_t state[8] )
-{
-    __m128i STATE0, STATE1;
-    __m128i MSG, TMP, MASK;
-    __m128i TMSG0, TMSG1, TMSG2, TMSG3;
-    __m128i ABEF_SAVE, CDGH_SAVE;
-
-    // Load initial values
-    TMP = _mm_load_si128((__m128i*) &state[0]);
-    STATE1 = _mm_load_si128((__m128i*) &state[4]);
-    MASK = _mm_set_epi64x(0x0c0d0e0f08090a0bULL, 0x0405060700010203ULL);
-
-    TMP = _mm_shuffle_epi32(TMP, 0xB1); // CDAB
-    STATE1 = _mm_shuffle_epi32(STATE1, 0x1B); // EFGH
-    STATE0 = _mm_alignr_epi8(TMP, STATE1, 8); // ABEF
-    STATE1 = _mm_blend_epi16(STATE1, TMP, 0xF0); // CDGH
-
-    // Save current hash
-    ABEF_SAVE = STATE0;
-    CDGH_SAVE = STATE1;
-
-    // Rounds 0-3
-    MSG = _mm_load_si128((const __m128i*) (input+0));
-    TMSG0 = _mm_shuffle_epi8(MSG, MASK);
-    MSG = _mm_add_epi32(TMSG0, _mm_set_epi64x(0xE9B5DBA5B5C0FBCFULL, 0x71374491428A2F98ULL));
-    STATE1 = _mm_sha256rnds2_epu32(STATE1, STATE0, MSG);
-    MSG = _mm_shuffle_epi32(MSG, 0x0E);
-    STATE0 = _mm_sha256rnds2_epu32(STATE0, STATE1, MSG);
-
-    // Rounds 4-7
-    TMSG1 = _mm_load_si128((const __m128i*) (input+16));
-    TMSG1 = _mm_shuffle_epi8(TMSG1, MASK);
-    MSG = _mm_add_epi32(TMSG1, _mm_set_epi64x(0xAB1C5ED5923F82A4ULL, 0x59F111F13956C25BULL));
-    STATE1 = _mm_sha256rnds2_epu32(STATE1, STATE0, MSG);
-    MSG = _mm_shuffle_epi32(MSG, 0x0E);
-    STATE0 = _mm_sha256rnds2_epu32(STATE0, STATE1, MSG);
-    TMSG0 = _mm_sha256msg1_epu32(TMSG0, TMSG1);
-
-    // Rounds 8-11
-    TMSG2 = _mm_load_si128((const __m128i*) (input+32));
-    TMSG2 = _mm_shuffle_epi8(TMSG2, MASK);
-    MSG = _mm_add_epi32(TMSG2, _mm_set_epi64x(0x550C7DC3243185BEULL, 0x12835B01D807AA98ULL));
-    STATE1 = _mm_sha256rnds2_epu32(STATE1, STATE0, MSG);
-    MSG = _mm_shuffle_epi32(MSG, 0x0E);
-    STATE0 = _mm_sha256rnds2_epu32(STATE0, STATE1, MSG);
-    TMSG1 = _mm_sha256msg1_epu32(TMSG1, TMSG2);
-
-    // Rounds 12-15
-    TMSG3 = _mm_load_si128((const __m128i*) (input+48));
-    TMSG3 = _mm_shuffle_epi8(TMSG3, MASK);
-    MSG = _mm_add_epi32(TMSG3, _mm_set_epi64x(0xC19BF1749BDC06A7ULL, 0x80DEB1FE72BE5D74ULL));
-    STATE1 = _mm_sha256rnds2_epu32(STATE1, STATE0, MSG);
-    TMP = _mm_alignr_epi8(TMSG3, TMSG2, 4);
-    TMSG0 = _mm_add_epi32(TMSG0, TMP);
-    TMSG0 = _mm_sha256msg2_epu32(TMSG0, TMSG3);
-    MSG = _mm_shuffle_epi32(MSG, 0x0E);
-    STATE0 = _mm_sha256rnds2_epu32(STATE0, STATE1, MSG);
-    TMSG2 = _mm_sha256msg1_epu32(TMSG2, TMSG3);
-
-    // Rounds 16-19
-    MSG = _mm_add_epi32(TMSG0, _mm_set_epi64x(0x240CA1CC0FC19DC6ULL, 0xEFBE4786E49B69C1ULL));
-    STATE1 = _mm_sha256rnds2_epu32(STATE1, STATE0, MSG);
-    TMP = _mm_alignr_epi8(TMSG0, TMSG3, 4);
-    TMSG1 = _mm_add_epi32(TMSG1, TMP);
-    TMSG1 = _mm_sha256msg2_epu32(TMSG1, TMSG0);
-    MSG = _mm_shuffle_epi32(MSG, 0x0E);
-    STATE0 = _mm_sha256rnds2_epu32(STATE0, STATE1, MSG);
-    TMSG3 = _mm_sha256msg1_epu32(TMSG3, TMSG0);
-
-    // Rounds 20-23
-    MSG = _mm_add_epi32(TMSG1, _mm_set_epi64x(0x76F988DA5CB0A9DCULL, 0x4A7484AA2DE92C6FULL));
-    STATE1 = _mm_sha256rnds2_epu32(STATE1, STATE0, MSG);
-    TMP = _mm_alignr_epi8(TMSG1, TMSG0, 4);
-    TMSG2 = _mm_add_epi32(TMSG2, TMP);
-    TMSG2 = _mm_sha256msg2_epu32(TMSG2, TMSG1);
-    MSG = _mm_shuffle_epi32(MSG, 0x0E);
-    STATE0 = _mm_sha256rnds2_epu32(STATE0, STATE1, MSG);
-    TMSG0 = _mm_sha256msg1_epu32(TMSG0, TMSG1);
-
-    // Rounds 24-27
-    MSG = _mm_add_epi32(TMSG2, _mm_set_epi64x(0xBF597FC7B00327C8ULL, 0xA831C66D983E5152ULL));
-    STATE1 = _mm_sha256rnds2_epu32(STATE1, STATE0, MSG);
-    TMP = _mm_alignr_epi8(TMSG2, TMSG1, 4);
-    TMSG3 = _mm_add_epi32(TMSG3, TMP);
-    TMSG3 = _mm_sha256msg2_epu32(TMSG3, TMSG2);
-    MSG = _mm_shuffle_epi32(MSG, 0x0E);
-    STATE0 = _mm_sha256rnds2_epu32(STATE0, STATE1, MSG);
-    TMSG1 = _mm_sha256msg1_epu32(TMSG1, TMSG2);
-
-    // Rounds 28-31
-    MSG = _mm_add_epi32(TMSG3, _mm_set_epi64x(0x1429296706CA6351ULL,  0xD5A79147C6E00BF3ULL));
-    STATE1 = _mm_sha256rnds2_epu32(STATE1, STATE0, MSG);
-    TMP = _mm_alignr_epi8(TMSG3, TMSG2, 4);
-    TMSG0 = _mm_add_epi32(TMSG0, TMP);
-    TMSG0 = _mm_sha256msg2_epu32(TMSG0, TMSG3);
-    MSG = _mm_shuffle_epi32(MSG, 0x0E);
-    STATE0 = _mm_sha256rnds2_epu32(STATE0, STATE1, MSG);
-    TMSG2 = _mm_sha256msg1_epu32(TMSG2, TMSG3);
-
-    // Rounds 32-35
-    MSG = _mm_add_epi32(TMSG0, _mm_set_epi64x(0x53380D134D2C6DFCULL, 0x2E1B213827B70A85ULL));
-    STATE1 = _mm_sha256rnds2_epu32(STATE1, STATE0, MSG);
-    TMP = _mm_alignr_epi8(TMSG0, TMSG3, 4);
-    TMSG1 = _mm_add_epi32(TMSG1, TMP);
-    TMSG1 = _mm_sha256msg2_epu32(TMSG1, TMSG0);
-    MSG = _mm_shuffle_epi32(MSG, 0x0E);
-    STATE0 = _mm_sha256rnds2_epu32(STATE0, STATE1, MSG);
-    TMSG3 = _mm_sha256msg1_epu32(TMSG3, TMSG0);
-
-    // Rounds 36-39
-    MSG = _mm_add_epi32(TMSG1, _mm_set_epi64x(0x92722C8581C2C92EULL, 0x766A0ABB650A7354ULL));
-    STATE1 = _mm_sha256rnds2_epu32(STATE1, STATE0, MSG);
-    TMP = _mm_alignr_epi8(TMSG1, TMSG0, 4);
-    TMSG2 = _mm_add_epi32(TMSG2, TMP);
-    TMSG2 = _mm_sha256msg2_epu32(TMSG2, TMSG1);
-    MSG = _mm_shuffle_epi32(MSG, 0x0E);
-    STATE0 = _mm_sha256rnds2_epu32(STATE0, STATE1, MSG);
-    TMSG0 = _mm_sha256msg1_epu32(TMSG0, TMSG1);
-
-    // Rounds 40-43
-    MSG = _mm_add_epi32(TMSG2, _mm_set_epi64x(0xC76C51A3C24B8B70ULL, 0xA81A664BA2BFE8A1ULL));
-    STATE1 = _mm_sha256rnds2_epu32(STATE1, STATE0, MSG);
-    TMP = _mm_alignr_epi8(TMSG2, TMSG1, 4);
-    TMSG3 = _mm_add_epi32(TMSG3, TMP);
-    TMSG3 = _mm_sha256msg2_epu32(TMSG3, TMSG2);
-    MSG = _mm_shuffle_epi32(MSG, 0x0E);
-    STATE0 = _mm_sha256rnds2_epu32(STATE0, STATE1, MSG);
-    TMSG1 = _mm_sha256msg1_epu32(TMSG1, TMSG2);
-
-    // Rounds 44-47
-    MSG = _mm_add_epi32(TMSG3, _mm_set_epi64x(0x106AA070F40E3585ULL, 0xD6990624D192E819ULL));
-    STATE1 = _mm_sha256rnds2_epu32(STATE1, STATE0, MSG);
-    TMP = _mm_alignr_epi8(TMSG3, TMSG2, 4);
-    TMSG0 = _mm_add_epi32(TMSG0, TMP);
-    TMSG0 = _mm_sha256msg2_epu32(TMSG0, TMSG3);
-    MSG = _mm_shuffle_epi32(MSG, 0x0E);
-    STATE0 = _mm_sha256rnds2_epu32(STATE0, STATE1, MSG);
-    TMSG2 = _mm_sha256msg1_epu32(TMSG2, TMSG3);
-
-    // Rounds 48-51
-    MSG = _mm_add_epi32(TMSG0, _mm_set_epi64x(0x34B0BCB52748774CULL, 0x1E376C0819A4C116ULL));
-    STATE1 = _mm_sha256rnds2_epu32(STATE1, STATE0, MSG);
-    TMP = _mm_alignr_epi8(TMSG0, TMSG3, 4);
-    TMSG1 = _mm_add_epi32(TMSG1, TMP);
-    TMSG1 = _mm_sha256msg2_epu32(TMSG1, TMSG0);
-    MSG = _mm_shuffle_epi32(MSG, 0x0E);
-    STATE0 = _mm_sha256rnds2_epu32(STATE0, STATE1, MSG);
-    TMSG3 = _mm_sha256msg1_epu32(TMSG3, TMSG0);
-
-    // Rounds 52-55
-    MSG = _mm_add_epi32(TMSG1, _mm_set_epi64x(0x682E6FF35B9CCA4FULL, 0x4ED8AA4A391C0CB3ULL));
-    STATE1 = _mm_sha256rnds2_epu32(STATE1, STATE0, MSG);
-    TMP = _mm_alignr_epi8(TMSG1, TMSG0, 4);
-    TMSG2 = _mm_add_epi32(TMSG2, TMP);
-    TMSG2 = _mm_sha256msg2_epu32(TMSG2, TMSG1);
-    MSG = _mm_shuffle_epi32(MSG, 0x0E);
-    STATE0 = _mm_sha256rnds2_epu32(STATE0, STATE1, MSG);
-
-    // Rounds 56-59
-    MSG = _mm_add_epi32(TMSG2, _mm_set_epi64x(0x8CC7020884C87814ULL, 0x78A5636F748F82EEULL));
-    STATE1 = _mm_sha256rnds2_epu32(STATE1, STATE0, MSG);
-    TMP = _mm_alignr_epi8(TMSG2, TMSG1, 4);
-    TMSG3 = _mm_add_epi32(TMSG3, TMP);
-    TMSG3 = _mm_sha256msg2_epu32(TMSG3, TMSG2);
-    MSG = _mm_shuffle_epi32(MSG, 0x0E);
-    STATE0 = _mm_sha256rnds2_epu32(STATE0, STATE1, MSG);
-
-    // Rounds 60-63
-    MSG = _mm_add_epi32(TMSG3, _mm_set_epi64x(0xC67178F2BEF9A3F7ULL, 0xA4506CEB90BEFFFAULL));
-    STATE1 = _mm_sha256rnds2_epu32(STATE1, STATE0, MSG);
-    MSG = _mm_shuffle_epi32(MSG, 0x0E);
-    STATE0 = _mm_sha256rnds2_epu32(STATE0, STATE1, MSG);
-
-    // Add values back to state
-    STATE0 = _mm_add_epi32(STATE0, ABEF_SAVE);
-    STATE1 = _mm_add_epi32(STATE1, CDGH_SAVE);
-
-    TMP = _mm_shuffle_epi32(STATE0, 0x1B); // FEBA
-    STATE1 = _mm_shuffle_epi32(STATE1, 0xB1); // DCHG
-    STATE0 = _mm_blend_epi16(TMP, STATE1, 0xF0); // DCBA
-    STATE1 = _mm_alignr_epi8(STATE1, TMP, 8); // ABEF
-
-    // Save state
-    _mm_store_si128((__m128i*) &state[0], STATE0);
-    _mm_store_si128((__m128i*) &state[4], STATE1);
-}
-
-#else   // no SHA
 
 /*
 static const sph_u32 K[64] = {
@@ -319,6 +127,7 @@ static const sph_u32 K[64] = {
 		t1 = SPH_T32(h + BSG2_1(e) + CH(e, f, g) \
 			+ K[pcount + (pc)] + W[(pc) & 0x0F]); \
 		t2 = SPH_T32(BSG2_0(a) + MAJ(a, b, c)); \
+      Y_xor_Z = X_xor_Y; \
 		d = SPH_T32(d + t1); \
 		h = SPH_T32(t1 + t2); \
 	} while (0)
@@ -329,7 +138,7 @@ static const sph_u32 K[64] = {
 	SHA2_STEPn(2, a, b, c, d, e, f, g, h, in, pc)
 
 #define SHA2_ROUND_BODY(in, r)   do { \
-		sph_u32 A, B, C, D, E, F, G, H; \
+		sph_u32 A, B, C, D, E, F, G, H, X_xor_Y, Y_xor_Z; \
 		sph_u32 W[16]; \
 		unsigned pcount; \
  \
@@ -342,6 +151,7 @@ static const sph_u32 K[64] = {
 		G = (r)[6]; \
 		H = (r)[7]; \
 		pcount = 0; \
+      Y_xor_Z = B ^ C; \
 		SHA2_STEP1(A, B, C, D, E, F, G, H, in,  0); \
 		SHA2_STEP1(H, A, B, C, D, E, F, G, in,  1); \
 		SHA2_STEP1(G, H, A, B, C, D, E, F, in,  2); \
@@ -389,7 +199,7 @@ static const sph_u32 K[64] = {
 #else  // large footprint (default)
 
 #define SHA2_ROUND_BODY(in, r)   do { \
-		sph_u32 A, B, C, D, E, F, G, H, T1, T2; \
+		sph_u32 A, B, C, D, E, F, G, H, T1, T2, X_xor_Y, Y_xor_Z;; \
 		sph_u32 W00, W01, W02, W03, W04, W05, W06, W07; \
 		sph_u32 W08, W09, W10, W11, W12, W13, W14, W15; \
  \
@@ -401,388 +211,453 @@ static const sph_u32 K[64] = {
 		F = (r)[5]; \
 		G = (r)[6]; \
 		H = (r)[7]; \
+      Y_xor_Z = B ^ C; \
 		W00 = in(0); \
 		T1 = SPH_T32(H + BSG2_1(E) + CH(E, F, G) \
 			+ SPH_C32(0x428A2F98) + W00); \
 		T2 = SPH_T32(BSG2_0(A) + MAJ(A, B, C)); \
+      Y_xor_Z = X_xor_Y; \
 		D = SPH_T32(D + T1); \
 		H = SPH_T32(T1 + T2); \
 		W01 = in(1); \
 		T1 = SPH_T32(G + BSG2_1(D) + CH(D, E, F) \
 			+ SPH_C32(0x71374491) + W01); \
 		T2 = SPH_T32(BSG2_0(H) + MAJ(H, A, B)); \
+      Y_xor_Z = X_xor_Y; \
 		C = SPH_T32(C + T1); \
 		G = SPH_T32(T1 + T2); \
 		W02 = in(2); \
 		T1 = SPH_T32(F + BSG2_1(C) + CH(C, D, E) \
 			+ SPH_C32(0xB5C0FBCF) + W02); \
 		T2 = SPH_T32(BSG2_0(G) + MAJ(G, H, A)); \
+      Y_xor_Z = X_xor_Y; \
 		B = SPH_T32(B + T1); \
 		F = SPH_T32(T1 + T2); \
 		W03 = in(3); \
 		T1 = SPH_T32(E + BSG2_1(B) + CH(B, C, D) \
 			+ SPH_C32(0xE9B5DBA5) + W03); \
 		T2 = SPH_T32(BSG2_0(F) + MAJ(F, G, H)); \
+      Y_xor_Z = X_xor_Y; \
 		A = SPH_T32(A + T1); \
 		E = SPH_T32(T1 + T2); \
 		W04 = in(4); \
 		T1 = SPH_T32(D + BSG2_1(A) + CH(A, B, C) \
 			+ SPH_C32(0x3956C25B) + W04); \
 		T2 = SPH_T32(BSG2_0(E) + MAJ(E, F, G)); \
+      Y_xor_Z = X_xor_Y; \
 		H = SPH_T32(H + T1); \
 		D = SPH_T32(T1 + T2); \
 		W05 = in(5); \
 		T1 = SPH_T32(C + BSG2_1(H) + CH(H, A, B) \
 			+ SPH_C32(0x59F111F1) + W05); \
 		T2 = SPH_T32(BSG2_0(D) + MAJ(D, E, F)); \
+      Y_xor_Z = X_xor_Y; \
 		G = SPH_T32(G + T1); \
 		C = SPH_T32(T1 + T2); \
 		W06 = in(6); \
 		T1 = SPH_T32(B + BSG2_1(G) + CH(G, H, A) \
 			+ SPH_C32(0x923F82A4) + W06); \
 		T2 = SPH_T32(BSG2_0(C) + MAJ(C, D, E)); \
+      Y_xor_Z = X_xor_Y; \
 		F = SPH_T32(F + T1); \
 		B = SPH_T32(T1 + T2); \
 		W07 = in(7); \
 		T1 = SPH_T32(A + BSG2_1(F) + CH(F, G, H) \
 			+ SPH_C32(0xAB1C5ED5) + W07); \
 		T2 = SPH_T32(BSG2_0(B) + MAJ(B, C, D)); \
+      Y_xor_Z = X_xor_Y; \
 		E = SPH_T32(E + T1); \
 		A = SPH_T32(T1 + T2); \
 		W08 = in(8); \
 		T1 = SPH_T32(H + BSG2_1(E) + CH(E, F, G) \
 			+ SPH_C32(0xD807AA98) + W08); \
 		T2 = SPH_T32(BSG2_0(A) + MAJ(A, B, C)); \
+      Y_xor_Z = X_xor_Y; \
 		D = SPH_T32(D + T1); \
 		H = SPH_T32(T1 + T2); \
 		W09 = in(9); \
 		T1 = SPH_T32(G + BSG2_1(D) + CH(D, E, F) \
 			+ SPH_C32(0x12835B01) + W09); \
 		T2 = SPH_T32(BSG2_0(H) + MAJ(H, A, B)); \
+      Y_xor_Z = X_xor_Y; \
 		C = SPH_T32(C + T1); \
 		G = SPH_T32(T1 + T2); \
 		W10 = in(10); \
 		T1 = SPH_T32(F + BSG2_1(C) + CH(C, D, E) \
 			+ SPH_C32(0x243185BE) + W10); \
 		T2 = SPH_T32(BSG2_0(G) + MAJ(G, H, A)); \
+      Y_xor_Z = X_xor_Y; \
 		B = SPH_T32(B + T1); \
 		F = SPH_T32(T1 + T2); \
 		W11 = in(11); \
 		T1 = SPH_T32(E + BSG2_1(B) + CH(B, C, D) \
 			+ SPH_C32(0x550C7DC3) + W11); \
 		T2 = SPH_T32(BSG2_0(F) + MAJ(F, G, H)); \
+      Y_xor_Z = X_xor_Y; \
 		A = SPH_T32(A + T1); \
 		E = SPH_T32(T1 + T2); \
 		W12 = in(12); \
 		T1 = SPH_T32(D + BSG2_1(A) + CH(A, B, C) \
 			+ SPH_C32(0x72BE5D74) + W12); \
 		T2 = SPH_T32(BSG2_0(E) + MAJ(E, F, G)); \
+      Y_xor_Z = X_xor_Y; \
 		H = SPH_T32(H + T1); \
 		D = SPH_T32(T1 + T2); \
 		W13 = in(13); \
 		T1 = SPH_T32(C + BSG2_1(H) + CH(H, A, B) \
 			+ SPH_C32(0x80DEB1FE) + W13); \
 		T2 = SPH_T32(BSG2_0(D) + MAJ(D, E, F)); \
+      Y_xor_Z = X_xor_Y; \
 		G = SPH_T32(G + T1); \
 		C = SPH_T32(T1 + T2); \
 		W14 = in(14); \
 		T1 = SPH_T32(B + BSG2_1(G) + CH(G, H, A) \
 			+ SPH_C32(0x9BDC06A7) + W14); \
 		T2 = SPH_T32(BSG2_0(C) + MAJ(C, D, E)); \
+      Y_xor_Z = X_xor_Y; \
 		F = SPH_T32(F + T1); \
 		B = SPH_T32(T1 + T2); \
 		W15 = in(15); \
 		T1 = SPH_T32(A + BSG2_1(F) + CH(F, G, H) \
 			+ SPH_C32(0xC19BF174) + W15); \
 		T2 = SPH_T32(BSG2_0(B) + MAJ(B, C, D)); \
+      Y_xor_Z = X_xor_Y; \
 		E = SPH_T32(E + T1); \
 		A = SPH_T32(T1 + T2); \
 		W00 = SPH_T32(SSG2_1(W14) + W09 + SSG2_0(W01) + W00); \
 		T1 = SPH_T32(H + BSG2_1(E) + CH(E, F, G) \
 			+ SPH_C32(0xE49B69C1) + W00); \
 		T2 = SPH_T32(BSG2_0(A) + MAJ(A, B, C)); \
+      Y_xor_Z = X_xor_Y; \
 		D = SPH_T32(D + T1); \
 		H = SPH_T32(T1 + T2); \
 		W01 = SPH_T32(SSG2_1(W15) + W10 + SSG2_0(W02) + W01); \
 		T1 = SPH_T32(G + BSG2_1(D) + CH(D, E, F) \
 			+ SPH_C32(0xEFBE4786) + W01); \
 		T2 = SPH_T32(BSG2_0(H) + MAJ(H, A, B)); \
+      Y_xor_Z = X_xor_Y; \
 		C = SPH_T32(C + T1); \
 		G = SPH_T32(T1 + T2); \
 		W02 = SPH_T32(SSG2_1(W00) + W11 + SSG2_0(W03) + W02); \
 		T1 = SPH_T32(F + BSG2_1(C) + CH(C, D, E) \
 			+ SPH_C32(0x0FC19DC6) + W02); \
 		T2 = SPH_T32(BSG2_0(G) + MAJ(G, H, A)); \
+      Y_xor_Z = X_xor_Y; \
 		B = SPH_T32(B + T1); \
 		F = SPH_T32(T1 + T2); \
 		W03 = SPH_T32(SSG2_1(W01) + W12 + SSG2_0(W04) + W03); \
 		T1 = SPH_T32(E + BSG2_1(B) + CH(B, C, D) \
 			+ SPH_C32(0x240CA1CC) + W03); \
 		T2 = SPH_T32(BSG2_0(F) + MAJ(F, G, H)); \
+      Y_xor_Z = X_xor_Y; \
 		A = SPH_T32(A + T1); \
 		E = SPH_T32(T1 + T2); \
 		W04 = SPH_T32(SSG2_1(W02) + W13 + SSG2_0(W05) + W04); \
 		T1 = SPH_T32(D + BSG2_1(A) + CH(A, B, C) \
 			+ SPH_C32(0x2DE92C6F) + W04); \
 		T2 = SPH_T32(BSG2_0(E) + MAJ(E, F, G)); \
+      Y_xor_Z = X_xor_Y; \
 		H = SPH_T32(H + T1); \
 		D = SPH_T32(T1 + T2); \
 		W05 = SPH_T32(SSG2_1(W03) + W14 + SSG2_0(W06) + W05); \
 		T1 = SPH_T32(C + BSG2_1(H) + CH(H, A, B) \
 			+ SPH_C32(0x4A7484AA) + W05); \
 		T2 = SPH_T32(BSG2_0(D) + MAJ(D, E, F)); \
+      Y_xor_Z = X_xor_Y; \
 		G = SPH_T32(G + T1); \
 		C = SPH_T32(T1 + T2); \
 		W06 = SPH_T32(SSG2_1(W04) + W15 + SSG2_0(W07) + W06); \
 		T1 = SPH_T32(B + BSG2_1(G) + CH(G, H, A) \
 			+ SPH_C32(0x5CB0A9DC) + W06); \
 		T2 = SPH_T32(BSG2_0(C) + MAJ(C, D, E)); \
+      Y_xor_Z = X_xor_Y; \
 		F = SPH_T32(F + T1); \
 		B = SPH_T32(T1 + T2); \
 		W07 = SPH_T32(SSG2_1(W05) + W00 + SSG2_0(W08) + W07); \
 		T1 = SPH_T32(A + BSG2_1(F) + CH(F, G, H) \
 			+ SPH_C32(0x76F988DA) + W07); \
 		T2 = SPH_T32(BSG2_0(B) + MAJ(B, C, D)); \
+      Y_xor_Z = X_xor_Y; \
 		E = SPH_T32(E + T1); \
 		A = SPH_T32(T1 + T2); \
 		W08 = SPH_T32(SSG2_1(W06) + W01 + SSG2_0(W09) + W08); \
 		T1 = SPH_T32(H + BSG2_1(E) + CH(E, F, G) \
 			+ SPH_C32(0x983E5152) + W08); \
 		T2 = SPH_T32(BSG2_0(A) + MAJ(A, B, C)); \
+      Y_xor_Z = X_xor_Y; \
 		D = SPH_T32(D + T1); \
 		H = SPH_T32(T1 + T2); \
 		W09 = SPH_T32(SSG2_1(W07) + W02 + SSG2_0(W10) + W09); \
 		T1 = SPH_T32(G + BSG2_1(D) + CH(D, E, F) \
 			+ SPH_C32(0xA831C66D) + W09); \
 		T2 = SPH_T32(BSG2_0(H) + MAJ(H, A, B)); \
+      Y_xor_Z = X_xor_Y; \
 		C = SPH_T32(C + T1); \
 		G = SPH_T32(T1 + T2); \
 		W10 = SPH_T32(SSG2_1(W08) + W03 + SSG2_0(W11) + W10); \
 		T1 = SPH_T32(F + BSG2_1(C) + CH(C, D, E) \
 			+ SPH_C32(0xB00327C8) + W10); \
 		T2 = SPH_T32(BSG2_0(G) + MAJ(G, H, A)); \
+      Y_xor_Z = X_xor_Y; \
 		B = SPH_T32(B + T1); \
 		F = SPH_T32(T1 + T2); \
 		W11 = SPH_T32(SSG2_1(W09) + W04 + SSG2_0(W12) + W11); \
 		T1 = SPH_T32(E + BSG2_1(B) + CH(B, C, D) \
 			+ SPH_C32(0xBF597FC7) + W11); \
 		T2 = SPH_T32(BSG2_0(F) + MAJ(F, G, H)); \
+      Y_xor_Z = X_xor_Y; \
 		A = SPH_T32(A + T1); \
 		E = SPH_T32(T1 + T2); \
 		W12 = SPH_T32(SSG2_1(W10) + W05 + SSG2_0(W13) + W12); \
 		T1 = SPH_T32(D + BSG2_1(A) + CH(A, B, C) \
 			+ SPH_C32(0xC6E00BF3) + W12); \
 		T2 = SPH_T32(BSG2_0(E) + MAJ(E, F, G)); \
+      Y_xor_Z = X_xor_Y; \
 		H = SPH_T32(H + T1); \
 		D = SPH_T32(T1 + T2); \
 		W13 = SPH_T32(SSG2_1(W11) + W06 + SSG2_0(W14) + W13); \
 		T1 = SPH_T32(C + BSG2_1(H) + CH(H, A, B) \
 			+ SPH_C32(0xD5A79147) + W13); \
 		T2 = SPH_T32(BSG2_0(D) + MAJ(D, E, F)); \
+      Y_xor_Z = X_xor_Y; \
 		G = SPH_T32(G + T1); \
 		C = SPH_T32(T1 + T2); \
 		W14 = SPH_T32(SSG2_1(W12) + W07 + SSG2_0(W15) + W14); \
 		T1 = SPH_T32(B + BSG2_1(G) + CH(G, H, A) \
 			+ SPH_C32(0x06CA6351) + W14); \
 		T2 = SPH_T32(BSG2_0(C) + MAJ(C, D, E)); \
+      Y_xor_Z = X_xor_Y; \
 		F = SPH_T32(F + T1); \
 		B = SPH_T32(T1 + T2); \
 		W15 = SPH_T32(SSG2_1(W13) + W08 + SSG2_0(W00) + W15); \
 		T1 = SPH_T32(A + BSG2_1(F) + CH(F, G, H) \
 			+ SPH_C32(0x14292967) + W15); \
 		T2 = SPH_T32(BSG2_0(B) + MAJ(B, C, D)); \
+      Y_xor_Z = X_xor_Y; \
 		E = SPH_T32(E + T1); \
 		A = SPH_T32(T1 + T2); \
 		W00 = SPH_T32(SSG2_1(W14) + W09 + SSG2_0(W01) + W00); \
 		T1 = SPH_T32(H + BSG2_1(E) + CH(E, F, G) \
 			+ SPH_C32(0x27B70A85) + W00); \
 		T2 = SPH_T32(BSG2_0(A) + MAJ(A, B, C)); \
+      Y_xor_Z = X_xor_Y; \
 		D = SPH_T32(D + T1); \
 		H = SPH_T32(T1 + T2); \
 		W01 = SPH_T32(SSG2_1(W15) + W10 + SSG2_0(W02) + W01); \
 		T1 = SPH_T32(G + BSG2_1(D) + CH(D, E, F) \
 			+ SPH_C32(0x2E1B2138) + W01); \
 		T2 = SPH_T32(BSG2_0(H) + MAJ(H, A, B)); \
+      Y_xor_Z = X_xor_Y; \
 		C = SPH_T32(C + T1); \
 		G = SPH_T32(T1 + T2); \
 		W02 = SPH_T32(SSG2_1(W00) + W11 + SSG2_0(W03) + W02); \
 		T1 = SPH_T32(F + BSG2_1(C) + CH(C, D, E) \
 			+ SPH_C32(0x4D2C6DFC) + W02); \
 		T2 = SPH_T32(BSG2_0(G) + MAJ(G, H, A)); \
+      Y_xor_Z = X_xor_Y; \
 		B = SPH_T32(B + T1); \
 		F = SPH_T32(T1 + T2); \
 		W03 = SPH_T32(SSG2_1(W01) + W12 + SSG2_0(W04) + W03); \
 		T1 = SPH_T32(E + BSG2_1(B) + CH(B, C, D) \
 			+ SPH_C32(0x53380D13) + W03); \
 		T2 = SPH_T32(BSG2_0(F) + MAJ(F, G, H)); \
+      Y_xor_Z = X_xor_Y; \
 		A = SPH_T32(A + T1); \
 		E = SPH_T32(T1 + T2); \
 		W04 = SPH_T32(SSG2_1(W02) + W13 + SSG2_0(W05) + W04); \
 		T1 = SPH_T32(D + BSG2_1(A) + CH(A, B, C) \
 			+ SPH_C32(0x650A7354) + W04); \
 		T2 = SPH_T32(BSG2_0(E) + MAJ(E, F, G)); \
+      Y_xor_Z = X_xor_Y; \
 		H = SPH_T32(H + T1); \
 		D = SPH_T32(T1 + T2); \
 		W05 = SPH_T32(SSG2_1(W03) + W14 + SSG2_0(W06) + W05); \
 		T1 = SPH_T32(C + BSG2_1(H) + CH(H, A, B) \
 			+ SPH_C32(0x766A0ABB) + W05); \
 		T2 = SPH_T32(BSG2_0(D) + MAJ(D, E, F)); \
+      Y_xor_Z = X_xor_Y; \
 		G = SPH_T32(G + T1); \
 		C = SPH_T32(T1 + T2); \
 		W06 = SPH_T32(SSG2_1(W04) + W15 + SSG2_0(W07) + W06); \
 		T1 = SPH_T32(B + BSG2_1(G) + CH(G, H, A) \
 			+ SPH_C32(0x81C2C92E) + W06); \
 		T2 = SPH_T32(BSG2_0(C) + MAJ(C, D, E)); \
+      Y_xor_Z = X_xor_Y; \
 		F = SPH_T32(F + T1); \
 		B = SPH_T32(T1 + T2); \
 		W07 = SPH_T32(SSG2_1(W05) + W00 + SSG2_0(W08) + W07); \
 		T1 = SPH_T32(A + BSG2_1(F) + CH(F, G, H) \
 			+ SPH_C32(0x92722C85) + W07); \
 		T2 = SPH_T32(BSG2_0(B) + MAJ(B, C, D)); \
+      Y_xor_Z = X_xor_Y; \
 		E = SPH_T32(E + T1); \
 		A = SPH_T32(T1 + T2); \
 		W08 = SPH_T32(SSG2_1(W06) + W01 + SSG2_0(W09) + W08); \
 		T1 = SPH_T32(H + BSG2_1(E) + CH(E, F, G) \
 			+ SPH_C32(0xA2BFE8A1) + W08); \
 		T2 = SPH_T32(BSG2_0(A) + MAJ(A, B, C)); \
+      Y_xor_Z = X_xor_Y; \
 		D = SPH_T32(D + T1); \
 		H = SPH_T32(T1 + T2); \
 		W09 = SPH_T32(SSG2_1(W07) + W02 + SSG2_0(W10) + W09); \
 		T1 = SPH_T32(G + BSG2_1(D) + CH(D, E, F) \
 			+ SPH_C32(0xA81A664B) + W09); \
 		T2 = SPH_T32(BSG2_0(H) + MAJ(H, A, B)); \
+      Y_xor_Z = X_xor_Y; \
 		C = SPH_T32(C + T1); \
 		G = SPH_T32(T1 + T2); \
 		W10 = SPH_T32(SSG2_1(W08) + W03 + SSG2_0(W11) + W10); \
 		T1 = SPH_T32(F + BSG2_1(C) + CH(C, D, E) \
 			+ SPH_C32(0xC24B8B70) + W10); \
 		T2 = SPH_T32(BSG2_0(G) + MAJ(G, H, A)); \
+      Y_xor_Z = X_xor_Y; \
 		B = SPH_T32(B + T1); \
 		F = SPH_T32(T1 + T2); \
 		W11 = SPH_T32(SSG2_1(W09) + W04 + SSG2_0(W12) + W11); \
 		T1 = SPH_T32(E + BSG2_1(B) + CH(B, C, D) \
 			+ SPH_C32(0xC76C51A3) + W11); \
 		T2 = SPH_T32(BSG2_0(F) + MAJ(F, G, H)); \
+      Y_xor_Z = X_xor_Y; \
 		A = SPH_T32(A + T1); \
 		E = SPH_T32(T1 + T2); \
 		W12 = SPH_T32(SSG2_1(W10) + W05 + SSG2_0(W13) + W12); \
 		T1 = SPH_T32(D + BSG2_1(A) + CH(A, B, C) \
 			+ SPH_C32(0xD192E819) + W12); \
 		T2 = SPH_T32(BSG2_0(E) + MAJ(E, F, G)); \
+      Y_xor_Z = X_xor_Y; \
 		H = SPH_T32(H + T1); \
 		D = SPH_T32(T1 + T2); \
 		W13 = SPH_T32(SSG2_1(W11) + W06 + SSG2_0(W14) + W13); \
 		T1 = SPH_T32(C + BSG2_1(H) + CH(H, A, B) \
 			+ SPH_C32(0xD6990624) + W13); \
 		T2 = SPH_T32(BSG2_0(D) + MAJ(D, E, F)); \
+      Y_xor_Z = X_xor_Y; \
 		G = SPH_T32(G + T1); \
 		C = SPH_T32(T1 + T2); \
 		W14 = SPH_T32(SSG2_1(W12) + W07 + SSG2_0(W15) + W14); \
 		T1 = SPH_T32(B + BSG2_1(G) + CH(G, H, A) \
 			+ SPH_C32(0xF40E3585) + W14); \
 		T2 = SPH_T32(BSG2_0(C) + MAJ(C, D, E)); \
+      Y_xor_Z = X_xor_Y; \
 		F = SPH_T32(F + T1); \
 		B = SPH_T32(T1 + T2); \
 		W15 = SPH_T32(SSG2_1(W13) + W08 + SSG2_0(W00) + W15); \
 		T1 = SPH_T32(A + BSG2_1(F) + CH(F, G, H) \
 			+ SPH_C32(0x106AA070) + W15); \
 		T2 = SPH_T32(BSG2_0(B) + MAJ(B, C, D)); \
+      Y_xor_Z = X_xor_Y; \
 		E = SPH_T32(E + T1); \
 		A = SPH_T32(T1 + T2); \
 		W00 = SPH_T32(SSG2_1(W14) + W09 + SSG2_0(W01) + W00); \
 		T1 = SPH_T32(H + BSG2_1(E) + CH(E, F, G) \
 			+ SPH_C32(0x19A4C116) + W00); \
 		T2 = SPH_T32(BSG2_0(A) + MAJ(A, B, C)); \
+      Y_xor_Z = X_xor_Y; \
 		D = SPH_T32(D + T1); \
 		H = SPH_T32(T1 + T2); \
 		W01 = SPH_T32(SSG2_1(W15) + W10 + SSG2_0(W02) + W01); \
 		T1 = SPH_T32(G + BSG2_1(D) + CH(D, E, F) \
 			+ SPH_C32(0x1E376C08) + W01); \
 		T2 = SPH_T32(BSG2_0(H) + MAJ(H, A, B)); \
+      Y_xor_Z = X_xor_Y; \
 		C = SPH_T32(C + T1); \
 		G = SPH_T32(T1 + T2); \
 		W02 = SPH_T32(SSG2_1(W00) + W11 + SSG2_0(W03) + W02); \
 		T1 = SPH_T32(F + BSG2_1(C) + CH(C, D, E) \
 			+ SPH_C32(0x2748774C) + W02); \
 		T2 = SPH_T32(BSG2_0(G) + MAJ(G, H, A)); \
+      Y_xor_Z = X_xor_Y; \
 		B = SPH_T32(B + T1); \
 		F = SPH_T32(T1 + T2); \
 		W03 = SPH_T32(SSG2_1(W01) + W12 + SSG2_0(W04) + W03); \
 		T1 = SPH_T32(E + BSG2_1(B) + CH(B, C, D) \
 			+ SPH_C32(0x34B0BCB5) + W03); \
 		T2 = SPH_T32(BSG2_0(F) + MAJ(F, G, H)); \
+      Y_xor_Z = X_xor_Y; \
 		A = SPH_T32(A + T1); \
 		E = SPH_T32(T1 + T2); \
 		W04 = SPH_T32(SSG2_1(W02) + W13 + SSG2_0(W05) + W04); \
 		T1 = SPH_T32(D + BSG2_1(A) + CH(A, B, C) \
 			+ SPH_C32(0x391C0CB3) + W04); \
 		T2 = SPH_T32(BSG2_0(E) + MAJ(E, F, G)); \
+      Y_xor_Z = X_xor_Y; \
 		H = SPH_T32(H + T1); \
 		D = SPH_T32(T1 + T2); \
 		W05 = SPH_T32(SSG2_1(W03) + W14 + SSG2_0(W06) + W05); \
 		T1 = SPH_T32(C + BSG2_1(H) + CH(H, A, B) \
 			+ SPH_C32(0x4ED8AA4A) + W05); \
 		T2 = SPH_T32(BSG2_0(D) + MAJ(D, E, F)); \
+      Y_xor_Z = X_xor_Y; \
 		G = SPH_T32(G + T1); \
 		C = SPH_T32(T1 + T2); \
 		W06 = SPH_T32(SSG2_1(W04) + W15 + SSG2_0(W07) + W06); \
 		T1 = SPH_T32(B + BSG2_1(G) + CH(G, H, A) \
 			+ SPH_C32(0x5B9CCA4F) + W06); \
 		T2 = SPH_T32(BSG2_0(C) + MAJ(C, D, E)); \
+      Y_xor_Z = X_xor_Y; \
 		F = SPH_T32(F + T1); \
 		B = SPH_T32(T1 + T2); \
 		W07 = SPH_T32(SSG2_1(W05) + W00 + SSG2_0(W08) + W07); \
 		T1 = SPH_T32(A + BSG2_1(F) + CH(F, G, H) \
 			+ SPH_C32(0x682E6FF3) + W07); \
 		T2 = SPH_T32(BSG2_0(B) + MAJ(B, C, D)); \
+      Y_xor_Z = X_xor_Y; \
 		E = SPH_T32(E + T1); \
 		A = SPH_T32(T1 + T2); \
 		W08 = SPH_T32(SSG2_1(W06) + W01 + SSG2_0(W09) + W08); \
 		T1 = SPH_T32(H + BSG2_1(E) + CH(E, F, G) \
 			+ SPH_C32(0x748F82EE) + W08); \
 		T2 = SPH_T32(BSG2_0(A) + MAJ(A, B, C)); \
+      Y_xor_Z = X_xor_Y; \
 		D = SPH_T32(D + T1); \
 		H = SPH_T32(T1 + T2); \
 		W09 = SPH_T32(SSG2_1(W07) + W02 + SSG2_0(W10) + W09); \
 		T1 = SPH_T32(G + BSG2_1(D) + CH(D, E, F) \
 			+ SPH_C32(0x78A5636F) + W09); \
 		T2 = SPH_T32(BSG2_0(H) + MAJ(H, A, B)); \
+      Y_xor_Z = X_xor_Y; \
 		C = SPH_T32(C + T1); \
 		G = SPH_T32(T1 + T2); \
 		W10 = SPH_T32(SSG2_1(W08) + W03 + SSG2_0(W11) + W10); \
 		T1 = SPH_T32(F + BSG2_1(C) + CH(C, D, E) \
 			+ SPH_C32(0x84C87814) + W10); \
 		T2 = SPH_T32(BSG2_0(G) + MAJ(G, H, A)); \
+      Y_xor_Z = X_xor_Y; \
 		B = SPH_T32(B + T1); \
 		F = SPH_T32(T1 + T2); \
 		W11 = SPH_T32(SSG2_1(W09) + W04 + SSG2_0(W12) + W11); \
 		T1 = SPH_T32(E + BSG2_1(B) + CH(B, C, D) \
 			+ SPH_C32(0x8CC70208) + W11); \
 		T2 = SPH_T32(BSG2_0(F) + MAJ(F, G, H)); \
+      Y_xor_Z = X_xor_Y; \
 		A = SPH_T32(A + T1); \
 		E = SPH_T32(T1 + T2); \
 		W12 = SPH_T32(SSG2_1(W10) + W05 + SSG2_0(W13) + W12); \
 		T1 = SPH_T32(D + BSG2_1(A) + CH(A, B, C) \
 			+ SPH_C32(0x90BEFFFA) + W12); \
 		T2 = SPH_T32(BSG2_0(E) + MAJ(E, F, G)); \
+      Y_xor_Z = X_xor_Y; \
 		H = SPH_T32(H + T1); \
 		D = SPH_T32(T1 + T2); \
 		W13 = SPH_T32(SSG2_1(W11) + W06 + SSG2_0(W14) + W13); \
 		T1 = SPH_T32(C + BSG2_1(H) + CH(H, A, B) \
 			+ SPH_C32(0xA4506CEB) + W13); \
 		T2 = SPH_T32(BSG2_0(D) + MAJ(D, E, F)); \
+      Y_xor_Z = X_xor_Y; \
 		G = SPH_T32(G + T1); \
 		C = SPH_T32(T1 + T2); \
 		W14 = SPH_T32(SSG2_1(W12) + W07 + SSG2_0(W15) + W14); \
 		T1 = SPH_T32(B + BSG2_1(G) + CH(G, H, A) \
 			+ SPH_C32(0xBEF9A3F7) + W14); \
 		T2 = SPH_T32(BSG2_0(C) + MAJ(C, D, E)); \
+      Y_xor_Z = X_xor_Y; \
 		F = SPH_T32(F + T1); \
 		B = SPH_T32(T1 + T2); \
 		W15 = SPH_T32(SSG2_1(W13) + W08 + SSG2_0(W00) + W15); \
 		T1 = SPH_T32(A + BSG2_1(F) + CH(F, G, H) \
 			+ SPH_C32(0xC67178F2) + W15); \
 		T2 = SPH_T32(BSG2_0(B) + MAJ(B, C, D)); \
+      Y_xor_Z = X_xor_Y; \
 		E = SPH_T32(E + T1); \
 		A = SPH_T32(T1 + T2); \
 		(r)[0] = SPH_T32((r)[0] + A); \
@@ -808,8 +683,24 @@ sha2_round(const unsigned char *data, sph_u32 r[8])
 #undef SHA2_IN
 }
 
-#endif   // SHA else
+void sph_sha256_transform_le( uint32_t *state_out, const uint32_t *data,
+                              const uint32_t *state_in )
+{
+memcpy( state_out, state_in, 32 );
+#define SHA2_IN(x)   (data[x])
+   SHA2_ROUND_BODY( SHA2_IN, state_out );
+#undef SHA2_IN
+}
 
+void sph_sha256_transform_be( uint32_t *state_out, const uint32_t *data, 
+                              const uint32_t *state_in )
+{  
+memcpy( state_out, state_in, 32 );
+#define SHA2_IN(x)   sph_dec32be_aligned( data+(x) )
+   SHA2_ROUND_BODY( SHA2_IN, state_out );
+#undef SHA2_IN
+
+}
 
 /* see sph_sha2.h */
 void

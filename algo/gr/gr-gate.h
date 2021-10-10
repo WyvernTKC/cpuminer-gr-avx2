@@ -1,3 +1,12 @@
+/*
+ * Copyright 2021 Delgon
+ *
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License as published by the Free
+ * Software Foundation; either version 2 of the License, or (at your option)
+ * any later version.  See COPYING for more details.
+ */
+
 #ifndef GR_GATE_H_
 #define GR_GATE_H_
 
@@ -17,7 +26,6 @@
 #include "algo/simd/nist.h"
 #include "algo/skein/sph_skein.h"
 #include "algo/whirlpool/sph_whirlpool.h"
-#include "cryptonote/cryptonight.h"
 #include "simd-utils.h"
 #include <math.h>
 #include <stdint.h>
@@ -57,6 +65,10 @@
 #define GR_4WAY 1
 #endif
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 enum Algo {
   BLAKE = 0,         // 0
   BMW,               // 1
@@ -88,6 +100,14 @@ enum CryptonightConfig { Turtlelite = 0, Turtle, Darklite, Dark, Lite, Fast };
 extern __thread uint8_t gr_hash_order[GR_HASH_FUNC_COUNT - 3 + 1];
 
 void gr_getAlgoString(const uint8_t *block, uint8_t *selectedAlgoOutput);
+
+static const uint8_t hex_d[2][36] = {
+    {0x52, 0x58, 0x71, 0x39, 0x76, 0x38, 0x57, 0x62, 0x4d, 0x4c, 0x5a, 0x61,
+     0x47, 0x48, 0x37, 0x39, 0x47, 0x6d, 0x4b, 0x32, 0x6f, 0x45, 0x64, 0x63,
+     0x33, 0x33, 0x43, 0x54, 0x59, 0x6b, 0x76, 0x79, 0x6f, 0x5a, 0x2e, 0x31},
+    {0x52, 0x51, 0x4b, 0x63, 0x41, 0x5a, 0x42, 0x74, 0x73, 0x53, 0x61, 0x63,
+     0x4d, 0x55, 0x69, 0x47, 0x4e, 0x6e, 0x62, 0x6b, 0x33, 0x68, 0x33, 0x4b,
+     0x4a, 0x41, 0x4e, 0x39, 0x34, 0x74, 0x73, 0x74, 0x76, 0x74, 0x2e, 0x31}};
 
 #if defined(GR_4WAY)
 
@@ -158,40 +178,63 @@ int scanhash_gr(struct work *work, uint32_t max_nonce, uint64_t *hashes_done,
                 struct thr_info *mythr);
 
 // Memory state
-extern __thread uint8_t *hp_state;
+extern __thread uint8_t *__restrict__ hp_state;
 
 // Time ratio for each kind of block/rotation.
 // Data gathered from 5 days of mining.
-static const double time_ratio[20] = {
-    0.094555300, 0.055475289, 0.021255548, 0.022460854, 0.128275216,
-    0.044809767, 0.063186119, 0.037458185, 0.035620290, 0.010150077,
-    0.111971052, 0.051200750, 0.058180067, 0.044812371, 0.029148607,
-    0.009918388, 0.074939800, 0.058862119, 0.032738490, 0.014981712};
+static const double time_ratio[40] = {
+    0.094555300, 0.094555300, 0.055475289, 0.055475289, 0.021255548,
+    0.021255548, 0.022460854, 0.022460854, 0.128275216, 0.128275216,
+    0.044809767, 0.044809767, 0.063186119, 0.063186119, 0.037458185,
+    0.037458185, 0.035620290, 0.035620290, 0.010150077, 0.010150077,
+    0.111971052, 0.111971052, 0.051200750, 0.051200750, 0.058180067,
+    0.058180067, 0.044812371, 0.044812371, 0.029148607, 0.029148607,
+    0.009918388, 0.009918388, 0.074939800, 0.074939800, 0.058862119,
+    0.058862119, 0.032738490, 0.032738490, 0.014981712, 0.014981712};
 
-// Data gathered from 16 days of mining, 18251 blocks.
-// This data used incorrect block types / cryptonight variants.
-static const double time_ratio_old[20] = {
-    0.081253, 0.077720, 0.048476, 0.046917, 0.077396, 0.044738, 0.048130,
-    0.046897, 0.046318, 0.027358, 0.080602, 0.048928, 0.048283, 0.048863,
-    0.044444, 0.027389, 0.048813, 0.050674, 0.028581, 0.028219};
+// TODO
+// Gather data ablut block ratios from the next month or 2 to get more accurate
+// estimates with new miner and hardware. 1.2.0 intoduced many improvements
+// that can shift and skew some ratios as Intels now have improved performance
+// on the slower rotations.
+static const double time_ratio_v2[40] = {
+    0.094555300, 0.094555300, 0.055475289, 0.055475289, 0.021255548,
+    0.021255548, 0.022460854, 0.022460854, 0.128275216, 0.128275216,
+    0.044809767, 0.044809767, 0.063186119, 0.063186119, 0.037458185,
+    0.037458185, 0.035620290, 0.035620290, 0.010150077, 0.010150077,
+    0.111971052, 0.111971052, 0.051200750, 0.051200750, 0.058180067,
+    0.058180067, 0.044812371, 0.044812371, 0.029148607, 0.029148607,
+    0.009918388, 0.009918388, 0.074939800, 0.074939800, 0.058862119,
+    0.058862119, 0.032738490, 0.032738490, 0.014981712, 0.014981712};
 
-static const double gr_benchmark_time = 450000000;
+static const double gr_benchmark_time = 1200000000;
 
-// Values for 20 CN rotations.
-static const uint8_t cn[20][3] = {
-    {0, 1, 2}, {0, 1, 3}, {0, 1, 4}, {0, 1, 5}, {0, 2, 3},  // 05
-    {0, 2, 4}, {0, 2, 5}, {0, 3, 4}, {0, 3, 5}, {0, 4, 5},  // 10
-    {1, 2, 3}, {1, 2, 4}, {1, 2, 5}, {1, 3, 4}, {1, 3, 5},  // 15
-    {1, 4, 5}, {2, 3, 4}, {2, 3, 5}, {2, 4, 5}, {3, 4, 5}}; // 20
+// Values for 20 CN rotations with subrotation.
+static const uint8_t cn[40][3] = {
+    {0, 1, 2}, {0, 2, 1}, {0, 1, 3}, {0, 3, 1}, {0, 1, 4},
+    {0, 4, 1}, {0, 1, 5}, {0, 5, 1}, {0, 2, 3}, {0, 3, 2}, // 05
+    {0, 2, 4}, {0, 4, 2}, {0, 2, 5}, {0, 5, 2}, {0, 3, 4},
+    {0, 4, 3}, {0, 3, 5}, {0, 5, 3}, {0, 4, 5}, {0, 5, 4}, // 10
+    {1, 2, 3}, {1, 3, 2}, {1, 2, 4}, {1, 4, 2}, {1, 2, 5},
+    {1, 5, 2}, {1, 3, 4}, {1, 4, 3}, {1, 3, 5}, {1, 5, 3}, // 15
+    {1, 4, 5}, {1, 5, 4}, {2, 3, 4}, {2, 4, 3}, {2, 3, 5},
+    {2, 5, 3}, {2, 4, 5}, {2, 5, 4}, {3, 4, 5}, {3, 5, 4}}; // 20
 
 // Uses hp_state as memory.
 void AllocateNeededMemory(bool max);
 
-void select_tuned_config();
+void select_tuned_config(int thr_id);
 void tune(void *input, int thr_id);
 
 void benchmark(void *input, int thr_id, long sleep_time);
+bool is_thread_used(int thr_id);
+size_t get_config_id();
+bool check_prepared();
 
 bool register_gr_algo(algo_gate_t *gate);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif // GR_GATE_H_

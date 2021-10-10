@@ -35,6 +35,8 @@ $ sudo apt-get install build-essential automake libssl-dev libcurl4-openssl-dev 
 CentOS/Fedora:
 $ sudo yum install automake libcurl-devel openssl-devel jansson-devel gmp-devel zlib-devel numactl-devel make gcc gcc-c++ kernel-devel git
 
+Make sure gcc version is above 8. It is required for c++20 support.
+
 SHA support on AMD Ryzen CPUs requires gcc version 5 or higher and
 openssl 1.1.0e or higher. Add one of the following to CFLAGS for SHA
 support depending on your CPU and compiler version:
@@ -77,7 +79,10 @@ $ ./build.sh to build on Linux or execute the following commands.
 or 
 
 $ ./autogen.sh
-$ CFLAGS="-O3 -march=native -Wall" ./configure --with-curl
+For GCC-10+:
+$ CFLAGS="-O3 -march=native -mtune=native" CXXFLAGS="$CFLAGS -std=c++20 -Wno-ignored-attributes" ./configure --with-curl
+For GCC-8 && GCC-9:
+$ CFLAGS="-O3 -march=native -mtune=native" CXXFLAGS="$CFLAGS -std=c++2a -fconcepts -Wno-ignored-attributes" ./configure --with-curl
 $ make -j n
 
 n is the number of threads.

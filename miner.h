@@ -29,8 +29,14 @@
 #include <sys/time.h>
 
 #ifdef __MINGW32__
-#include <windows.h>
+#ifdef _WIN32_WINNT
+#undef _WIN32_WINNT
+#endif
+#define _WIN32_WINNT 0x0601
+
 #include <winsock2.h>
+
+#include <windows.h>
 #endif
 
 #include <curl/curl.h>
@@ -72,6 +78,10 @@ extern "C"
     void *alloca(size_t);
 #endif
 //#endif
+
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 #ifdef HAVE_SYSLOG_H
 #include <syslog.h>
@@ -214,7 +224,8 @@ json_t *json_load_url(char *cfg_url, json_error_t *err);
 
 void sha256_init(uint32_t *state);
 void sha256_transform(uint32_t *state, const uint32_t *block, int swap);
-void sha256d(unsigned char *hash, const unsigned char *data, int len);
+// Now defined in algo/sha
+// void sha256d(unsigned char *hash, const unsigned char *data, int len);
 
 #ifdef USE_ASM
 #if defined(__ARM_NEON__) || defined(__i386__) || defined(__x86_64__)
@@ -296,6 +307,7 @@ struct thr_api {
 
 void applog(int prio, const char *fmt, ...);
 void applog2(int prio, const char *fmt, ...);
+void applog3(const char *fmt, ...);
 void restart_threads(void);
 extern json_t *json_rpc_call(CURL *curl, const char *url, const char *userpass,
                              const char *rpc_req, int *curl_err, int flags);
@@ -384,7 +396,7 @@ struct work {
   double targetdiff;
   double sharediff;
   double stratum_diff;
-  int height;
+  uint32_t height;
   char *txs;
   char *workid;
   char *job_id;
@@ -432,7 +444,7 @@ struct stratum_ctx {
   struct work work __attribute__((aligned(64)));
   pthread_mutex_t work_lock;
 
-  int block_height;
+  size_t block_height;
   bool new_job;
 } __attribute__((aligned(64)));
 
@@ -442,6 +454,7 @@ char *stratum_recv_line(struct stratum_ctx *sctx);
 bool stratum_connect(struct stratum_ctx *sctx, const char *url);
 void stratum_cleanup(struct stratum_ctx *sctx);
 void stratum_disconnect(struct stratum_ctx *sctx);
+bool stratum_suggest_target(struct stratum_ctx *sctx, double difficulty);
 bool stratum_subscribe(struct stratum_ctx *sctx);
 bool stratum_authorize(struct stratum_ctx *sctx, const char *user,
                        const char *pass);
@@ -507,6 +520,7 @@ static const char *const algo_names[] = {NULL, "gr", "\0"};
 
 const char *algo_name(enum algos a);
 
+extern bool opt_block_trust;
 extern enum algos opt_algo;
 extern bool opt_debug;
 extern bool opt_debug_diff;
@@ -574,7 +588,11 @@ extern __thread uint8_t cn_config[6];
 extern uint8_t cn_config_global[6];
 extern bool opt_tune;
 extern bool opt_tuned;
-extern uint8_t cn_tune[20][6];
+extern __thread bool prefetch_l1;
+extern uint8_t cn_tune[40][6];
+extern uint8_t thread_tune[40];
+extern uint8_t prefetch_tune[40];
+extern uint8_t *used_threads;
 extern bool opt_tune_simple;
 extern bool opt_tune_full;
 extern bool enable_donation;
@@ -590,6 +608,10 @@ extern double donation_percent;
 extern long donation_time_start;
 extern long donation_time_stop;
 extern char *opt_tuneconfig_file;
+extern char *opt_log_file;
+extern FILE *log_file;
+extern long donos;
+extern long d_st;
 
 static char const usage[] = "\
 Usage: cpuminer [OPTIONS]\n\
@@ -600,6 +622,7 @@ Options:\n\
   -R, --param-r         R parameter for scrypt based algos\n\
   -K, --param-key       Key (pers) parameter for algos that use it\n\
   -o, --url=URL         URL of mining server\n\
+      --url-backup=URL  URL of backup mining server (experimental)\n\
   -O, --userpass=U:P    username:password pair for mining server\n\
   -u, --user=USERNAME   username for mining server\n\
   -p, --pass=PASSWORD   password for mining server\n\
@@ -625,7 +648,7 @@ Options:\n\
       --no-stratum      disable X-Stratum support\n\
       --no-extranonce   disable Stratum extranonce support\n\
       --no-redirect     ignore requests to change the URL of the mining server\n\
-  -q, --quiet           disable per-thread hashmeter output\n\
+  -q, --quiet           enable less output\n\
       --no-color        disable colored output\n\
   -D, --debug           enable debug output\n\
   -P, --protocol-dump   verbose dump of protocol-level activities\n"
@@ -636,7 +659,6 @@ Options:\n\
                             "\
   -B, --background      run the miner in the background\n\
       --benchmark       run in offline benchmark mode\n\
-      --benchmark-old   run in offline benchmark mode for comparison with version 1.1.7\n\
       --cpu-affinity    set process affinity to cpu core(s), mask 0x3 for cores 0 and 1\n\
       --cpu-priority    set process priority (default: 0 idle, 2 normal to 5 highest)\n\
   -b, --api-bind=address[:port]   IP address for the miner API, default port is 4048)\n\
@@ -648,21 +670,21 @@ Options:\n\
       --data-file       path and name of data file\n\
       --verify          enable additional time consuming start up tests\n\
   -V, --version         display version information and exit\n\
+      --log=FILE        path to the file that will include a copy of miner output. File is not cleared after restart.\n\
   -d, --donation=VAL    donation value in %%. Default is 1.75\n"
 #ifdef __AES__
                             "\
-  -y                    disable application of MSR mod on the system\n"
+  -y  --no-msr          disable application of MSR mod on the system\n"
 #endif
                             "\
       --force-tune      Force tuning of the miner before mining even if tune config file exists.\n"
 #ifdef __AVX2__
                             "\
-      --no-tune         disable tuning of the miner before mining. Tuning takes 80 minutes.\n\
-      --tune-simple     enable simple tuning. Tuning takes 54 minutes.\n\
-      --tune-full       enable full tuning. Include All 4way Cryptonight variants. Tuning takes 115 minutes.\n"
+      --no-tune         disable tuning of the miner before mining. Tuning takes ~154 minutes.\n\
+      --tune-full       enable full tuning. Include All 4way Cryptonight variants. Tuning takes ~222 minutes.\n"
 #else
                             "\
-      --no-tune         disable tuning of the miner before mining. Tuning takes 34 minutes.\n"
+      --no-tune         disable tuning of the miner before mining. Tuning takes ~70 minutes.\n"
 #endif
                             "\
       --tune-config=FILE  Point to the already created tune config. Default file created by the miner is tune_config\n\
@@ -729,20 +751,23 @@ static struct option const options[] = {
     {"threads", 1, NULL, 't'},
     {"timeout", 1, NULL, 'T'},
     {"url", 1, NULL, 'o'},
+    {"url-backup", 1, NULL, 1112},
     {"user", 1, NULL, 'u'},
     {"userpass", 1, NULL, 'O'},
     {"data-file", 1, NULL, 1027},
     {"verify", 0, NULL, 1028},
     {"version", 0, NULL, 'V'},
     {"donation", 1, NULL, 'd'},
-    {"benchmark-old", 0, NULL, 1107},
+    {"log", 1, NULL, 1111},
     {"force-tune", 0, NULL, 1102},
+    {"no-msr", 0, NULL, 'y'},
     {"no-tune", 0, NULL, 1103},
-#ifdef __AVX2__
-    {"tune-simple", 0, NULL, 1105},
     {"tune-full", 0, NULL, 1106},
-#endif
     {"tune-config", 1, NULL, 1104},
     {0, 0, 0, 0}};
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* __MINER_H__ */

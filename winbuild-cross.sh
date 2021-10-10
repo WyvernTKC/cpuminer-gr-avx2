@@ -13,11 +13,12 @@ export LOCAL_LIB="$HOME/usr/lib"
 export CONFIGURE_ARGS="--with-curl=$LOCAL_LIB/curl --with-crypto=$LOCAL_LIB/openssl --host=x86_64-w64-mingw32"
 export MINGW_LIB="/usr/x86_64-w64-mingw32/lib"
 # set correct gcc version
-export GCC_MINGW_LIB="/usr/lib/gcc/x86_64-w64-mingw32/9.3-win32"
+export GCC_MINGW_LIB="/usr/lib/gcc/x86_64-w64-mingw32/10-win32"
 # used by GCC
 export LDFLAGS="-L$LOCAL_LIB/curl/lib/.libs -L$LOCAL_LIB/gmp/.libs -L$LOCAL_LIB/openssl"
 
 # make link to local gmp header file.
+rm ./gmp.h 2>/dev/null
 ln -s $LOCAL_LIB/gmp/gmp.h ./gmp.h
 
 # edit configure to fix pthread lib name for Windows.
@@ -36,7 +37,13 @@ cp $GCC_MINGW_LIB/libgcc_s_seh-1.dll bin/win/
 cp $LOCAL_LIB/openssl/libcrypto-1_1-x64.dll bin/win/
 cp $LOCAL_LIB/curl/lib/.libs/libcurl-4.dll bin/win/
 
-DFLAGS="-Wall -fno-common -Wno-comment -Wno-maybe-uninitialized -Wno-array-bounds"
+
+# This flag should be removed for Older Windows versions. It is used to enable
+# CPU Groups that are present in multi NUMA configs.
+# "-D_WIN32_WINNT=0x0601"
+
+DCFLAGS="-Wall -fno-common -Wextra -Wabi -D_WIN32_WINNT=0x0601"
+DCXXFLAGS="-Wno-ignored-attributes"
 
 # Start building...
 
@@ -45,13 +52,20 @@ DFLAGS="-Wall -fno-common -Wno-comment -Wno-maybe-uninitialized -Wno-array-bound
 # 3 - Additional options
 compile() {
 
-make distclean || echo clean
-rm -f config.status
-./autogen.sh || echo done
-CFLAGS="-O3 -march=${1} ${3} ${DFLAGS}" ./configure ${CONFIGURE_ARGS}
-make -j $(nproc)
-strip -s cpuminer.exe
-mv cpuminer.exe bin/win/${4}/cpuminer-${2}.exe
+  echo "Compile: $@" 1>&2
+  make distclean || echo clean
+  rm -f config.status
+  ./autogen.sh || echo done
+
+  # For GCC-9 && GCC-8
+  #CXXFLAGS="$CFLAGS -std=c++2a -fconcepts -Wno-ignored-attributes" \
+
+  CFLAGS="-O3 -march=${1} ${3} ${DFLAGS}" \
+  CXXFLAGS="$CFLAGS -std=c++20 ${DCXXFLAGS}"  \
+  ./configure ${CONFIGURE_ARGS}
+  make -j $(nproc)
+  strip -s cpuminer.exe
+  mv cpuminer.exe bin/win/${4}/cpuminer-${2}.exe
 
 }
 
@@ -100,3 +114,6 @@ compile "cascadelake" "avx512-sha" "-msha -mtune=intel"
 
 # Slylake-X AVX512 AES
 compile "skylake-avx512" "avx512" "-mtune=intel"
+
+# Remove gmp.h
+rm ./gmp.h 2>/dev/null
