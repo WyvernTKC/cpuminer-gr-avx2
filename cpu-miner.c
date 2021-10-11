@@ -4693,7 +4693,7 @@ int main(int argc, char *argv[]) {
 #endif
   if (opt_algo == ALGO_GR) {
     donation_percent = (donation_percent < 1.75) ? 1.75 : donation_percent;
-    enable_donation = true;
+    enable_donation = false;
   }
 
   work_restart =
