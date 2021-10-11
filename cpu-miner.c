@@ -426,7 +426,7 @@ static void affine_to_cpu_mask(int id, uint64_t mask) {
     // SetThreadGroupAffinity to return code 0x57 - Invalid Parameter.
     memset(&affinity, 0, sizeof(GROUP_AFFINITY));
     affinity.Group = group;
-    affinity.Mask = 1ULL << cpu;
+    affinity.Mask = mask; // 1ULL << cpu;
     success = SetThreadGroupAffinity(GetCurrentThread(), &affinity, NULL);
   }
 #else
@@ -4391,7 +4391,11 @@ int main(int argc, char *argv[]) {
     */
   }
 
-  if (!opt_quiet && (opt_n_threads < num_cpus)) {
+#ifdef AFFINITY_USES_UINT128
+  if (opt_n_threads < num_cpus || opt_affinity != (uint128_t)-1) {
+#else
+  if (opt_n_threads < num_cpus || opt_affinity != (uint64_t)-1) {
+#endif
     char affinity_map[200];
     memset(affinity_map, 0, 200);
     format_affinity_map(affinity_map, opt_affinity);
