@@ -349,6 +349,8 @@ static void print_stats(const char *prefix, bool total) {
     applog(total ? LOG_NOTICE : LOG_BLUE,
            "%s\t%.2lf H/s\t-> %.2lf H/s per thread.", prefix, hashrate,
            hashrate / opt_n_threads);
+    applog3("%s\t%.2lf H/s\t-> %.2lf H/s per thread.", prefix, hashrate,
+            hashrate / opt_n_threads);
   } else {
     applog(total ? LOG_NOTICE : LOG_BLUE,
            "%s\t%.2lf H/s\t-> %.2lf H/s per thread.", prefix, hashrate,
