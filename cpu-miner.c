@@ -3435,7 +3435,7 @@ static void show_credits() {
   printf("     A CPU miner with multi algo support and optimized for CPUs\n");
   printf("     with AVX512, SHA and VAES extensions by JayDDee.\n");
   printf("     with Ghostrider Algo by Ausminer & Delgon.\n");
-  printf("    Hacked by Matt ")
+  printf("    Hacked by Matt ");
 }
 
 #define check_cpu_capability() cpu_capability(false)
