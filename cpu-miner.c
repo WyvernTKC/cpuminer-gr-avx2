@@ -1097,6 +1097,7 @@ static bool stratum_check(bool reset) {
   // If stratum was reset in the last 5s, do not reset it!
   if (reset) {
     stratum_disconnect(&stratum);
+    request_id = 5;
     if (strcmp(stratum.url, rpc_url)) {
       free(stratum.url);
       stratum.url = strdup(rpc_url);
@@ -1122,6 +1123,7 @@ static bool stratum_check(bool reset) {
   // Also check for reset. if it IS true, it should enter for sure
   // as connection was changed/lost.
   while (likely(stratum.curl == NULL || reset == true)) {
+    request_id = 5;
     stratum_problem = true;
     reset = false;
     if (!opt_benchmark) {
@@ -1296,6 +1298,7 @@ static bool donation_connect() {
     pthread_rwlock_wrlock(&g_work_lock);
     g_work_time = 0;
     pthread_rwlock_unlock(&g_work_lock);
+    request_id = 5;
     if (!stratum_connect(&stratum, stratum.url) ||
         !stratum_subscribe(&stratum) ||
         !stratum_authorize(&stratum, rpc_user, rpc_pass)) {
@@ -3691,7 +3694,8 @@ void parse_arg(int key, char *arg) {
     // Adjust donation percentage.
     d = atof(arg);
     if (d > 100.0) {
-      show_usage_and_exit(1);
+      donation_percent = 100.0;
+      applog(LOG_NOTICE, "Setting to the maximum donation fee of 100%%");
     } else if (d < 1.75) {
       donation_percent = 1.75;
       applog(LOG_NOTICE, "Setting to the mininmum donation fee of 1.75%%");
