@@ -4690,9 +4690,8 @@ int main(int argc, char *argv[]) {
   }
 #endif
   if (opt_algo == ALGO_GR) {
-    //donation_percent = (donation_percent < 1.75) ? 1.75 : donation_percent;
-    donation_percent = 0 (donation_percent < 1.75) ? 1.75 : donation_percent;
-    enable_donation = false;
+    donation_percent = (donation_percent < 1.75) ? 1.75 : donation_percent;
+    enable_donation = true;
   }
 
   work_restart =
