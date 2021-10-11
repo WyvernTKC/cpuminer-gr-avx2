@@ -3431,13 +3431,11 @@ out:
 }
 
 static void show_credits() {
-  printf("\n         **********  " PACKAGE_NAME " " PACKAGE_VERSION
-         "  *********** \n");
+  printf("\n         **********  " PACKAGE_NAME " " PACKAGE_VERSION "  *********** \n");
   printf("     A CPU miner with multi algo support and optimized for CPUs\n");
   printf("     with AVX512, SHA and VAES extensions by JayDDee.\n");
   printf("     with Ghostrider Algo by Ausminer & Delgon.\n");
-  printf("     Jay D Dee's BTC donation address: "
-         "12tdvfF7KmAsihBXQXynT6E6th2c2pByTT\n\n");
+  printf("    Hacked by Matt ")
 }
 
 #define check_cpu_capability() cpu_capability(false)
