@@ -399,8 +399,11 @@ static void affine_to_cpu_mask(int id, uint64_t mask) {
 
 // Are Windows CPU Groups supported?
 #if _WIN32_WINNT == 0x0601
-  else if (num_cpugroups == 1)
-    success = SetThreadAffinityMask(GetCurrentThread(), mask);
+  // Do not use it even with 1 CPU group as for some reason it has problems
+  // setting affinity for more than 32 threads. Tested on multiple 32+ thread
+  // Threadripper 1000, 2000 and 3000 series.
+  // else if (num_cpugroups == 1)
+  //  success = SetThreadAffinityMask(GetCurrentThread(), mask);
   else {
     // Find the correct cpu group
     int cpu = id % num_cpus;
@@ -418,6 +421,10 @@ static void affine_to_cpu_mask(int id, uint64_t mask) {
              cpu, group, (1ULL << cpu));
 
     GROUP_AFFINITY affinity;
+    // Zeorout the whole structure.
+    // RESERVED field of the struct can be set by system and can cause
+    // SetThreadGroupAffinity to return code 0x57 - Invalid Parameter.
+    memset(&affinity, 0, sizeof(GROUP_AFFINITY));
     affinity.Group = group;
     affinity.Mask = 1ULL << cpu;
     success = SetThreadGroupAffinity(GetCurrentThread(), &affinity, NULL);

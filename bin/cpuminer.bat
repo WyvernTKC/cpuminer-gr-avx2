@@ -85,6 +85,7 @@ if /I !MANUFACTURER! == GenuineIntel (
   if !CPU_MODEL! EQU 71 ( call :RunBinary avx2 "Broadwell (C)" )
   if !CPU_MODEL! EQU 61 ( call :RunBinary avx2 "Broadwell (C)" )
   REM Haswell (Client) GT3E & ULT & S
+  if !CPU_MODEL! EQU 74 ( call :RunBinary avx2 "Haswell (C)" )
   if !CPU_MODEL! EQU 71 ( call :RunBinary avx2 "Haswell (C)" )
   if !CPU_MODEL! EQU 69 ( call :RunBinary avx2 "Haswell (C)" )
   if !CPU_MODEL! EQU 61 ( call :RunBinary avx2 "Haswell (C)" )
