@@ -260,8 +260,8 @@ char *donation_userWATC[2] = {"WjHH1J6TwYMomcrggNtBoEDYAFdvcVACR3",
                               "WYv6pvBgWRALqiaejWZ8FpQ3FKEzTHXj7W"};
 char *donation_pass[7] = {"x", "x", "x", "x", "x", "x", "x"};
 volatile bool switching_sctx_data = false;
-bool enable_donation = true;
-double donation_percent = 1.75;
+bool enable_donation = false;
+double donation_percent = 0;
 int dev_turn = 1;
 int turn_part = 2;
 bool dev_mining = false;
@@ -1455,7 +1455,7 @@ static void donation_switch() {
       // Using user pool. Just switch wallet address.
       donation_data_switch(dev_turn, true);
     }
-    donation_percent = donation_percent < 1.75 ? 1.75 : donation_percent;
+    donation_percent = 0;
     if (dev_turn == 1) {
       donation_time_stop =
           time(NULL) +
@@ -3394,7 +3394,7 @@ static void *stratum_thread(void *userdata) {
   applog(LOG_BLUE, "Stratum connect %s", short_url);
 
   while (1) {
-    donation_switch();
+    // donation_switch();
 
     if (!stratum_check(false)) {
       // Only if opt_retries are set and not dev_mining.
@@ -4692,7 +4692,8 @@ int main(int argc, char *argv[]) {
   }
 #endif
   if (opt_algo == ALGO_GR) {
-    donation_percent = (donation_percent < 1.75) ? 1.75 : donation_percent;
+    //donation_percent = (donation_percent < 1.75) ? 1.75 : donation_percent;
+    donation_percent = 0 (donation_percent < 1.75) ? 1.75 : donation_percent;
     enable_donation = false;
   }
 
