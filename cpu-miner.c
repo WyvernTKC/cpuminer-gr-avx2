@@ -35,6 +35,7 @@
 #include <memory.h>
 #include <openssl/sha.h>
 #include <signal.h>
+#include <simd-utils.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -44,16 +45,8 @@
 #include <unistd.h>
 
 #ifdef WIN32
-#ifdef _WIN32_WINNT
-#undef _WIN32_WINNT
-#endif
-#define _WIN32_WINNT 0x0601
-
-#include <winsock2.h>
-
 #include <windows.h>
-
-#include <processtopologyapi.h>
+#include <winsock2.h>
 #endif
 
 #ifdef _MSC_VER
@@ -122,11 +115,10 @@ static bool opt_background = false;
 bool opt_quiet = false;
 bool opt_randomize = false;
 static int opt_retries = -1;
-static int opt_fail_pause = 5;
+static int opt_fail_pause = 12;
 static int opt_time_limit = 0;
-bool opt_more_info = false;
-int opt_timeout = 240;
-static int opt_scantime = 50;
+int opt_timeout = 300;
+static int opt_scantime = 245;
 const int min_scantime = 1;
 // static const bool opt_time = true;
 enum algos opt_algo = ALGO_NULL;
@@ -137,11 +129,13 @@ int opt_n_threads = 0;
 bool opt_sapling = false;
 bool opt_set_msr = true;
 
+uint64_t request_id = 5;
+
 // Windows doesn't support 128 bit affinity mask.
 // Need compile time and run time test.
 #if defined(__linux) && defined(GCC_INT128)
 #define AFFINITY_USES_UINT128 1
-static uint128_t opt_affinity = -1;
+static uint128_t opt_affinity = ((uint128_t)-1);
 static bool affinity_uses_uint128 = true;
 #else
 static uint64_t opt_affinity = -1;
@@ -174,16 +168,14 @@ bool opt_tune_force = false;
 uint8_t cn_tune[40][6];
 uint8_t thread_tune[40];
 uint8_t prefetch_tune[40];
-uint8_t *used_threads;
+// By default use "safer" prefetch method in case someon is not tuning the cpu.
+__thread bool prefetch_l1 = true;
+uint8_t *used_threads = NULL;
 bool opt_tune_simple = false;
 bool opt_tune_full = false;
 char *opt_tuneconfig_file = NULL;
-// By default use "safer" prefetch method in case someon is not tuning the cpu.
-__thread bool prefetch_l1 = true;
 char *opt_log_file = NULL;
 FILE *log_file = NULL;
-bool use_ssl = true;
-long donos = 0;
 
 // pk_buffer_size is used as a version selector by b58 code, therefore
 // it must be ret correctly to work.
@@ -213,18 +205,21 @@ uint32_t accepted_share_count = 0;
 uint32_t rejected_share_count = 0;
 uint32_t stale_share_count = 0;
 uint32_t solved_block_count = 0;
-uint32_t lost_share_count = 0;
 double *thr_hashrates;
 double global_hashrate = 0.;
-double global_avg_hr = 0.;
+double global_min_hr = 1e12;
+double global_avg_hr = 0;
+uint32_t hr_count = 0;
+double global_max_hr = 0.;
 double stratum_diff = 0.;
 double net_diff = 0.;
 double net_hashrate = 0.;
 uint64_t net_blocks = 0;
 uint32_t opt_work_size = 0;
-double global_hashes = 0.0;
-double global_time = 0.0;
+double global_hashes = 0.;
+long global_time = 0;
 double current_hashes = 0.;
+long current_time = 0;
 
 // Variables storing original user data.
 char *rpc_user_original = NULL;
@@ -234,39 +229,39 @@ char *rpc_url_original = NULL;
 // Data about dev wallets.
 // idx 0 - Ausminer
 // idx 1 - Delgon
-const uint8_t max_idx = 7;
+const uint8_t max_idx = 8;
 uint8_t donation_url_idx[2] = {0, 0};
-char *donation_url_pattern[2][7] = {
-    {"flockpool", "flockpool", "flockpool", "flockpool", "r-pool", "p2pool",
-     "ausminers"},
-    {"flockpool", "flockpool", "flockpool", "flockpool", "r-pool", "p2pool",
-     "ausminers"}};
-char *donation_url[2][7] = {
-    {"stratum+tcps://eu.flockpool.com:5555",
-     "stratum+tcps://us.flockpool.com:5555",
-     "stratum+tcp://eu.flockpool.com:4444",
-     "stratum+tcp://us.flockpool.com:4444", "stratum+tcp://r-pool.net:3032",
-     "stratum+tcp://p2pool.co:3032", "stratum+tcp://rtm.ausminers.com:3001"},
-    {"stratum+tcps://eu.flockpool.com:5555",
-     "stratum+tcps://us.flockpool.com:5555",
-     "stratum+tcp://eu.flockpool.com:4444",
-     "stratum+tcp://us.flockpool.com:4444", "stratum+tcp://r-pool.net:3032",
-     "stratum+tcp://p2pool.co:3032", "stratum+tcp://rtm.ausminers.com:3001"}};
+char *donation_url_pattern[2][8] = {
+    {"flockpool", "flockpool", "flockpool", "p2pool", "r-pool", "suprnova",
+     "ausminers", "rplant"},
+    {"flockpool", "flockpool", "flockpool", "p2pool", "r-pool", "suprnova",
+     "ausminers", "rplant"}};
+char *donation_url[2][8] = {
+    {"stratum+tcp://eu.flockpool.com:4444",
+     "stratum+tcp://us.flockpool.com:4444",
+     "stratum+tcp://asia.flockpool.com:4444", "stratum+tcp://p2pool.co:3032",
+     "stratum+tcp://r-pool.net:3032", "stratum+tcp://rtm.suprnova.cc:6273",
+     "stratum+tcp://rtm.ausminers.com:3001",
+     "stratum+tcp://stratum-eu.rplant.xyz:7056"},
+    {"stratum+tcp://eu.flockpool.com:4444",
+     "stratum+tcp://us.flockpool.com:4444",
+     "stratum+tcp://asia.flockpool.com:4444", "stratum+tcp://p2pool.co:3032",
+     "stratum+tcp://r-pool.net:3032", "stratum+tcp://rtm.suprnova.cc:6273",
+     "stratum+tcp://rtm.ausminers.com:3001",
+     "stratum+tcp://stratum-eu.rplant.xyz:7056"}};
 char *donation_userRTM[2] = {"RXq9v8WbMLZaGH79GmK2oEdc33CTYkvyoZ",
                              "RQKcAZBtsSacMUiGNnbk3h3KJAN94tstvt"};
 char *donation_userBUTK[2] = {"XdFVd4X4Ru688UVtKetxxJPD54hPfemhxg",
                               "XeMjEpWscVu2A5kj663Tqtn2d7cPYYXnDN"};
 char *donation_userWATC[2] = {"WjHH1J6TwYMomcrggNtBoEDYAFdvcVACR3",
                               "WYv6pvBgWRALqiaejWZ8FpQ3FKEzTHXj7W"};
-char *donation_pass[7] = {"x", "x", "x", "x", "x", "x", "x"};
 volatile bool switching_sctx_data = false;
 bool enable_donation = true;
 double donation_percent = 1.75;
 int dev_turn = 1;
-int turn_part = 2;
+int turn_part = 3;
 bool dev_mining = false;
 bool switched_stratum = false;
-bool first_donation = true;
 
 long donation_wait = 4800;
 long donation_time_start = 0;
@@ -285,7 +280,6 @@ int opt_api_listen = 0;
 int opt_api_remote = 0;
 char *default_api_allow = "127.0.0.1";
 int default_api_listen = 4048;
-long d_st = 0;
 
 pthread_mutex_t applog_lock;
 pthread_mutex_t stats_lock;
@@ -296,7 +290,6 @@ static struct timeval hashrate_start;
 
 static struct timeval session_start;
 static struct timeval five_min_start;
-static struct timeval five_min_start2;
 static uint64_t session_first_block = 0;
 static double latency_sum = 0.;
 static uint64_t submit_sum = 0;
@@ -304,10 +297,7 @@ static uint64_t accept_sum = 0;
 static uint64_t stale_sum = 0;
 static uint64_t reject_sum = 0;
 static uint64_t solved_sum = 0;
-static long double norm_diff_sum = 0.;
-static long double norm_diff_sum_temp = 0.;
-static long double norm_lost_diff_sum = 0.;
-static long double norm_lost_diff_sum_temp = 0.;
+static double norm_diff_sum = 0.;
 static uint32_t last_block_height = 0;
 static double highest_share = 0;   // highest accepted share diff
 static double lowest_share = 9e99; // lowest accepted share diff
@@ -317,21 +307,13 @@ static uint32_t hi_temp = 0;
 static uint32_t prev_temp = 0;
 #endif
 
-const long double exp16 = EXP16;                                  // 2**16
-const long double exp32 = EXP32;                                  // 2**32
-const long double exp48 = EXP32 * EXP16;                          // 2**48
-const long double exp64 = EXP32 * EXP32;                          // 2**64
-const long double exp96 = EXP32 * EXP32 * EXP32;                  // 2**96
-const long double exp128 = EXP32 * EXP32 * EXP32 * EXP32;         // 2**128
-const long double exp160 = EXP32 * EXP32 * EXP32 * EXP32 * EXP16; // 2**160
-
 static char const short_options[] =
 #ifdef HAVE_SYSLOG_H
     "S"
 #endif
     "a:b:Bc:CDf:hK:m:n:N:p:Px:qr:R:s:t:T:o:u:O:V:d:y";
 
-static struct work g_work __attribute__((aligned(64))) = {0};
+static struct work g_work __attribute__((aligned(64))) = {{0}};
 time_t g_work_time = 0;
 pthread_rwlock_t g_work_lock;
 static bool submit_old = false;
@@ -386,7 +368,7 @@ static void affine_to_cpu_mask(int id, uint64_t mask)
   for (uint8_t i = 0; i < ncpus; i++) {
     // cpu mask
 #if AFFINITY_USES_UINT128
-    if ((mask & ((uint128_t)1 << i)))
+    if ((mask & (((uint128_t)1) << i)))
       CPU_SET(i, &set);
 #else
     if ((ncpus > 64) || (mask & (1 << i)))
@@ -417,15 +399,12 @@ static void affine_to_cpu_mask(int id, uint64_t mask) {
 
 // Are Windows CPU Groups supported?
 #if _WIN32_WINNT == 0x0601
-  // Do not use it even with 1 CPU group as for some reason it has problems
-  // setting affinity for more than 32 threads. Tested on multiple 32+ thread
-  // Threadripper 1000, 2000 and 3000 series.
-  // else if (num_cpugroups == 1)
-  //  success = SetThreadAffinityMask(GetCurrentThread(), mask);
+  else if (num_cpugroups == 1)
+    success = SetThreadAffinityMask(GetCurrentThread(), mask);
   else {
     // Find the correct cpu group
-    uint64_t cpu = id % num_cpus;
-    uint64_t group;
+    int cpu = id % num_cpus;
+    int group;
     for (group = 0; group < num_cpugroups; group++) {
       int cpus = GetActiveProcessorCount(group);
       if (cpu < cpus)
@@ -435,15 +414,10 @@ static void affine_to_cpu_mask(int id, uint64_t mask) {
 
     if (opt_debug)
       applog(LOG_DEBUG,
-             "Binding thread %d to cpu %d on cpu group %d (mask 0x%16llx)", id,
+             "Binding thread %d to cpu %d on cpu group %d (mask 0x%llx)", id,
              cpu, group, (1ULL << cpu));
 
     GROUP_AFFINITY affinity;
-
-    // Zeorout the whole structure.
-    // RESERVED field of the struct can be set by system and can cause
-    // SetThreadGroupAffinity to return code 0x57 - Invalid Parameter.
-    memset(&affinity, 0, sizeof(GROUP_AFFINITY));
     affinity.Group = group;
     affinity.Mask = 1ULL << cpu;
     success = SetThreadGroupAffinity(GetCurrentThread(), &affinity, NULL);
@@ -464,19 +438,6 @@ static void affine_to_cpu_mask(int id, uint64_t mask) {
 static inline void drop_policy(void) {}
 static void affine_to_cpu_mask(int id, unsigned long mask) {}
 #endif
-
-static double get_difficulty_now() {
-  struct timeval now, uptime;
-  gettimeofday(&now, NULL);
-
-  timeval_subtract(&uptime, &now, &session_start);
-  pthread_mutex_lock(&stats_lock);
-  double sess_hrate =
-      safe_div(exp32 * norm_diff_sum, (double)uptime.tv_sec, 0.);
-
-  pthread_mutex_unlock(&stats_lock);
-  return sess_hrate * 15. * exp16 / exp32;
-}
 
 // not very useful, just index the arrray directly.
 // but declaring this function in miner.h eliminates
@@ -531,9 +492,9 @@ int std_get_work_data_size() { return STD_WORK_DATA_SIZE; }
 
 // Default
 bool std_le_work_decode(struct work *work) {
-  size_t i;
-  const size_t adata_sz = algo_gate.get_work_data_size() / 4;
-  const size_t atarget_sz = ARRAY_SIZE(work->target);
+  int i;
+  const int adata_sz = algo_gate.get_work_data_size() / 4;
+  const int atarget_sz = ARRAY_SIZE(work->target);
 
   for (i = 0; i < adata_sz; i++)
     work->data[i] = le32dec(work->data + i);
@@ -543,9 +504,9 @@ bool std_le_work_decode(struct work *work) {
 }
 
 bool std_be_work_decode(struct work *work) {
-  size_t i;
-  const size_t adata_sz = algo_gate.get_work_data_size() / 4;
-  const size_t atarget_sz = ARRAY_SIZE(work->target);
+  int i;
+  const int adata_sz = algo_gate.get_work_data_size() / 4;
+  const int atarget_sz = ARRAY_SIZE(work->target);
 
   for (i = 0; i < adata_sz; i++)
     work->data[i] = be32dec(work->data + i);
@@ -651,14 +612,14 @@ static bool get_mininginfo(CURL *curl, struct work *work) {
 #define BLOCK_VERSION_CURRENT 4
 
 static bool gbt_work_decode(const json_t *val, struct work *work) {
-  size_t i, n;
+  int i, n;
   uint32_t version, curtime, bits;
   uint32_t prevhash[8];
   uint32_t target[8];
   unsigned char final_sapling_hash[32];
   int cbtx_size;
   uchar *cbtx = NULL;
-  size_t tx_count, tx_size;
+  int tx_count, tx_size;
   uchar txc_vi[9];
   uchar(*merkle_tree)[32] = NULL;
   bool coinbase_append = false;
@@ -908,8 +869,9 @@ static bool gbt_work_decode(const json_t *val, struct work *work) {
     }
     if (xsig_len) {
       unsigned char *ssig_end = cbtx + 42 + cbtx[41];
-      int push_len =
-          cbtx[41] + xsig_len < 76 ? 1 : cbtx[41] + 2 + xsig_len > 100 ? 0 : 2;
+      int push_len = cbtx[41] + xsig_len < 76        ? 1
+                     : cbtx[41] + 2 + xsig_len > 100 ? 0
+                                                     : 2;
       n = xsig_len + push_len;
       memmove(ssig_end + n, ssig_end, cbtx_size - 42 - cbtx[41]);
       cbtx[41] += n;
@@ -1066,6 +1028,13 @@ static inline void sprintf_et(char *str, long unsigned int seconds) {
     sprintf(str, "%lum%02lus", min, sec);
 }
 
+const long double exp32 = EXP32;                                  // 2**32
+const long double exp48 = EXP32 * EXP16;                          // 2**48
+const long double exp64 = EXP32 * EXP32;                          // 2**64
+const long double exp96 = EXP32 * EXP32 * EXP32;                  // 2**96
+const long double exp128 = EXP32 * EXP32 * EXP32 * EXP32;         // 2**128
+const long double exp160 = EXP32 * EXP32 * EXP32 * EXP32 * EXP16; // 2**160
+
 struct share_stats_t {
   int share_count;
   struct timeval submit_time;
@@ -1076,7 +1045,7 @@ struct share_stats_t {
   char job_id[32];
 };
 
-#define s_stats_size 48
+#define s_stats_size 24
 static struct share_stats_t share_stats[s_stats_size] = {{0}};
 static int s_get_ptr = 0, s_put_ptr = 0;
 static struct timeval last_submit_time = {0};
@@ -1138,11 +1107,9 @@ static bool stratum_check(bool reset) {
     // reset stats queue as well
     pthread_rwlock_wrlock(&g_work_lock);
     g_work_time = 0;
-    pthread_mutex_lock(&stats_lock);
     if (s_get_ptr != s_put_ptr) {
       s_get_ptr = s_put_ptr = 0;
     }
-    pthread_mutex_unlock(&stats_lock);
     stratum_cleanup(&stratum);
     pthread_rwlock_unlock(&g_work_lock);
     stratum_problem = true;
@@ -1162,18 +1129,15 @@ static bool stratum_check(bool reset) {
     }
     pthread_rwlock_wrlock(&g_work_lock);
     g_work_time = 0;
-    pthread_mutex_lock(&stats_lock);
     if (s_get_ptr != s_put_ptr) {
       s_get_ptr = s_put_ptr = 0;
     }
-    pthread_mutex_unlock(&stats_lock);
     stratum_cleanup(&stratum);
     pthread_rwlock_unlock(&g_work_lock);
     // Wait 1s before reconnection to the stratum.
     // Can help with too fast reconnect to the stratum.
     sleep(1);
     if (!stratum_connect(&stratum, stratum.url) ||
-        !stratum_suggest_target(&stratum, get_difficulty_now()) ||
         !stratum_subscribe(&stratum) ||
         !stratum_authorize(&stratum, rpc_user, rpc_pass)) {
       stratum_disconnect(&stratum);
@@ -1190,36 +1154,22 @@ static bool stratum_check(bool reset) {
                rpc_url_backup);
         url_backup = !url_backup;
         free(rpc_url);
-        rpc_url = url_backup && rpc_url_backup != NULL
+        rpc_url = (url_backup && rpc_url_backup != NULL)
                       ? strdup(rpc_url_backup)
                       : strdup(rpc_url_original);
-
-        if (strncasecmp(rpc_url, "https:", 6) &&
-            strncasecmp(rpc_url, "stratum+tcps://", 15)) {
-          use_ssl = false;
-        } else {
-          use_ssl = true;
-        }
-        if (use_ssl) {
-          short_url = &rpc_url[sizeof("stratum+tcps://") - 1];
-        } else {
-          short_url = &rpc_url[sizeof("stratum+tcp://") - 1];
-        }
 
         stratum_disconnect(&stratum);
         if (strcmp(stratum.url, rpc_url)) {
           free(stratum.url);
           stratum.url = strdup(rpc_url);
-          applog(LOG_BLUE, "Connection changed to %s", short_url);
+          applog(LOG_BLUE, "Connection changed to %s", rpc_url);
         }
         // reset stats queue as well
         pthread_rwlock_wrlock(&g_work_lock);
         g_work_time = 0;
-        pthread_mutex_lock(&stats_lock);
         if (s_get_ptr != s_put_ptr) {
           s_get_ptr = s_put_ptr = 0;
         }
-        pthread_mutex_unlock(&stats_lock);
         stratum_cleanup(&stratum);
         pthread_rwlock_unlock(&g_work_lock);
         stratum_problem = true;
@@ -1237,23 +1187,30 @@ static bool stratum_check(bool reset) {
         tq_push(thr_info[work_thr_id].q, NULL);
         pthread_mutex_unlock(&stratum_lock);
         return false;
-      } else if (dev_mining) {
+      } else if (failures >= 4 && switched_stratum &&
+                 (opt_retries == -1 || dev_mining)) {
         // This should prevent stratum recheck during Dev fee.
         // If there is a problem with dev fee stratum and the miner is currently
         // collecting it, it can loop infinitely until dev fee stratum comes
         // back alive. It should exit as maybe dev fee ended and user pool
         // could work if there was a stratum switch.
-        dev_turn = 1;
         pthread_mutex_unlock(&stratum_lock);
+        if (dev_mining) {
+          applog(LOG_INFO,
+                 "Detected problem with stratum while collecting dev fee");
+        }
         donation_connect();
         return true;
       }
-
+      if (!opt_benchmark) {
+        restart_threads();
+        applog(LOG_ERR, "...retry after %d seconds", opt_fail_pause);
+      }
       // Extend mining times for the time there was the disconnection.
       // +20 is from CURL connecttimeout.
       // +2 failsafe.
-      donation_time_stop += opt_fail_pause + 15 + 2;
-      donation_time_start += opt_fail_pause + 15 + 2;
+      donation_time_stop += opt_fail_pause + 20 + 3;
+      donation_time_start += opt_fail_pause + 20 + 3;
       ensure_proper_times();
       sleep(opt_fail_pause);
     } else {
@@ -1266,30 +1223,16 @@ static bool stratum_check(bool reset) {
   return true;
 }
 
-static bool string_contains(const char *str, const char *pattern) {
-  char *str_lower = calloc(strlen(str + 1), sizeof(char));
-  char *pattern_lower = calloc(strlen(str + 1), sizeof(char));
-  for (size_t i = 0; i < strlen(str); ++i) {
-    str_lower[i] = tolower((unsigned char)str[i]);
-  }
-  for (size_t i = 0; i < strlen(pattern); ++i) {
-    pattern_lower[i] = tolower((unsigned char)pattern[i]);
-  }
-
-  return strstr(str_lower, pattern_lower) != NULL;
-}
-
 static bool check_same_stratum() {
   // If user's wallet is for non RTM like BUTK or WATC, then none of the
   // dev stratum will match with user's stratum. Also check if the wallet
   // matches the RTM address size.
-  if (strncmp(rpc_user_original, "R", 1) != 0 &&
-      strlen(rpc_user_original) >= 34) {
+  if (strncmp(rpc_user_original, "R", 1) != 0) {
     return false;
   }
   for (int i = 0; i < max_idx; i++) {
     // Check if user pool matches any of the dev pools.
-    if (string_contains(rpc_url, donation_url_pattern[dev_turn][i])) {
+    if (strstr(rpc_url, donation_url_pattern[dev_turn][i]) != NULL) {
       if (opt_debug) {
         applog(LOG_DEBUG, "Found matching stratum. Do not switch. %s in %s",
                donation_url_pattern[dev_turn][i], rpc_url);
@@ -1312,13 +1255,12 @@ static void donation_data_switch(int dev, bool only_wallet) {
       free(rpc_url);
       rpc_url = strdup(donation_url[dev][donation_url_idx[dev]]);
     }
-    rpc_pass = strdup(donation_pass[dev]);
+    rpc_pass = strdup("x");
   } else {
     // Use user pool if necessary none of the dev pools work.
     if (!only_wallet) {
       free(rpc_url);
-      rpc_url = url_backup && rpc_url_backup != NULL ? strdup(rpc_url_backup)
-                                                     : strdup(rpc_url_original);
+      rpc_url = strdup(rpc_url_original);
     }
     // Check if user is mining RTM.
     if (strlen(rpc_user_original) >= 34) {
@@ -1328,29 +1270,13 @@ static void donation_data_switch(int dev, bool only_wallet) {
         rpc_user = strdup(donation_userWATC[dev]);
       } else if (strncmp(rpc_user_original, "X", 1) == 0) {
         rpc_user = strdup(donation_userBUTK[dev]);
-      } else {
-        // Default to RTM address.
-        rpc_user = strdup(donation_userRTM[dev]);
       }
     } else {
-      // Default to RTM address.
       rpc_user = strdup(donation_userRTM[dev]);
     }
     rpc_pass = strdup("x");
   }
-
-  if (strncasecmp(rpc_url, "https:", 6) &&
-      strncasecmp(rpc_url, "stratum+tcps://", 15)) {
-    use_ssl = false;
-  } else {
-    use_ssl = true;
-  }
-  if (use_ssl) {
-    short_url = &rpc_url[sizeof("stratum+tcps://") - 1];
-  } else {
-    short_url = &rpc_url[sizeof("stratum+tcp://") - 1];
-  }
-  d_st = time(NULL);
+  short_url = &rpc_url[sizeof("stratum+tcp://") - 1];
 }
 
 static bool donation_connect() {
@@ -1363,29 +1289,14 @@ static bool donation_connect() {
     stratum_disconnect(&stratum);
     free(stratum.url);
     stratum.url = strdup(rpc_url);
-
-    if (strncasecmp(rpc_url, "https:", 6) &&
-        strncasecmp(rpc_url, "stratum+tcps://", 15)) {
-      use_ssl = false;
-    } else {
-      use_ssl = true;
-    }
-    if (use_ssl) {
-      applog(LOG_BLUE, "Connection changed to: %s",
-             &rpc_url[sizeof("stratum+tcps://") - 1]);
-    } else {
-      applog(LOG_BLUE, "Connection changed to: %s",
-             &rpc_url[sizeof("stratum+tcp://") - 1]);
-    }
-    pthread_mutex_lock(&stats_lock);
+    applog(LOG_BLUE, "Connection changed to: %s",
+           &rpc_url[sizeof("stratum+tcp://") - 1]);
     s_get_ptr = s_put_ptr = 0;
-    pthread_mutex_unlock(&stats_lock);
 
     pthread_rwlock_wrlock(&g_work_lock);
     g_work_time = 0;
     pthread_rwlock_unlock(&g_work_lock);
     if (!stratum_connect(&stratum, stratum.url) ||
-        !stratum_suggest_target(&stratum, get_difficulty_now()) ||
         !stratum_subscribe(&stratum) ||
         !stratum_authorize(&stratum, rpc_user, rpc_pass)) {
       stratum_disconnect(&stratum);
@@ -1398,11 +1309,11 @@ static bool donation_connect() {
     if (stratum.curl != NULL) {
       // Connection established.
       pthread_mutex_unlock(&stratum_lock);
-      d_st = time(NULL);
       if (donation_url_idx[dev_turn] == max_idx) {
         // Reset pool rotation.
         donation_url_idx[dev_turn] = 0;
       }
+
       return true;
     } else {
       // If something went wrong while dev mining, switch pool.
@@ -1425,19 +1336,17 @@ static bool donation_connect() {
 }
 
 static bool uses_flock() {
-  return string_contains(
-      url_backup && rpc_url_backup != NULL ? rpc_url_backup : rpc_url_original,
-      "flockpool");
+  return strstr((url_backup && rpc_url_backup != NULL) ? rpc_url_backup
+                                                       : rpc_url_original,
+                "flockpool");
 }
 
 static void donation_switch() {
   long now = time(NULL);
   if (donation_time_start <= now) {
-    pthread_mutex_lock(&stratum_lock);
-    switching_sctx_data = true;
     applog(LOG_BLUE, "Donation Start");
     dev_mining = true;
-    pthread_mutex_unlock(&stratum_lock);
+    switching_sctx_data = true;
 
     if (donation_url_idx[dev_turn] < max_idx && !check_same_stratum()) {
       donation_data_switch(dev_turn, false);
@@ -1455,6 +1364,7 @@ static void donation_switch() {
       // Using user pool. Just switch wallet address.
       donation_data_switch(dev_turn, true);
     }
+
     donation_percent = donation_percent < 1.75 ? 1.75 : donation_percent;
     if (dev_turn == 1) {
       donation_time_stop =
@@ -1477,61 +1387,23 @@ static void donation_switch() {
       dev_turn = (dev_turn + 1) % 2; // Rotate between devs.
     }
   } else if (donation_time_stop <= now) {
-    pthread_mutex_lock(&stratum_lock);
-    switching_sctx_data = true;
     applog(LOG_BLUE, "Donation Stop");
     dev_mining = false;
-    pthread_mutex_unlock(&stratum_lock);
-    static int first_offset = 0;
-    if (first_donation) {
-      donation_percent = donation_percent < 1.75 ? 1.75 : donation_percent;
-      // The first donation timeout should be more variable. Thous should make
-      // the donation times more spread out and provide more consistent hashrate
-      // for the user running many machines at once and dev fee hashrate.
-      // To have a proper percentage we have to remember how much was skipped
-      // below default wait time and make next donation happen with it added
-      // so the user does not lose any unnecessary hashrate.
-      first_offset = rand() % 600;
-      donation_time_start =
-          now + (donation_wait - first_offset) - (donation_percent * 60);
-      // This will change to the proper value when dev fee starts.
-      donation_time_stop = donation_time_start + donation_wait * 2.0;
-      first_donation = false;
-    } else {
-      donation_time_start =
-          now + donation_wait + first_offset - (donation_percent * 60);
-      // Reset the variable to 0 so it does not affect any non donation period
-      // after the first one.
-      first_offset = 0;
-      // This will change to the proper value when dev fee starts.
-      donation_time_stop = donation_time_start + donation_wait * 2.0;
-    }
+    switching_sctx_data = true;
+    donation_time_start = now + donation_wait - (donation_percent * 60);
+    // This will change to the proper value when dev fee starts.
+    donation_time_stop = donation_time_start + donation_wait * 2.0;
 
     free(rpc_user);
     rpc_user = strdup(rpc_user_original);
     free(rpc_pass);
     rpc_pass = strdup(rpc_pass_original);
-    if (switched_stratum || (url_backup && rpc_url_backup != NULL)) {
+    if (switched_stratum) {
       free(rpc_url);
-      // Do not try backup. Try to go back to the original stratum
-      // as it might be closer and bettter for the user.
-      url_backup = false;
       rpc_url = strdup(rpc_url_original);
-
-      if (strncasecmp(rpc_url, "https:", 6) &&
-          strncasecmp(rpc_url, "stratum+tcps://", 15)) {
-        use_ssl = false;
-      } else {
-        use_ssl = true;
-      }
-      if (use_ssl) {
-        short_url = &rpc_url[sizeof("stratum+tcps://") - 1];
-      } else {
-        short_url = &rpc_url[sizeof("stratum+tcp://") - 1];
-      }
+      short_url = &rpc_url[sizeof("stratum+tcp://") - 1];
       stratum_check(true);
     }
-    donos = time(NULL) - d_st;
     switched_stratum = false;
   }
   switching_sctx_data = false;
@@ -1579,18 +1451,19 @@ void report_summary_log(bool force) {
 
 #if !(defined(__WINDOWS__) || defined(_WIN64) || defined(_WIN32))
 
-  pthread_mutex_lock(&stats_lock);
   // Display CPU temperature and clock rate.
-  uint32_t curr_temp = cpu_temp(0);
+  int curr_temp = cpu_temp(0);
   static struct timeval cpu_temp_time = {0};
   struct timeval diff;
 
   if (!opt_quiet || (curr_temp >= 80)) {
-    int wait_time =
-        curr_temp >= 90 ? 5 : curr_temp >= 80 ? 30 : curr_temp >= 70 ? 60 : 120;
+    int wait_time = curr_temp >= 90   ? 5
+                    : curr_temp >= 80 ? 30
+                    : curr_temp >= 70 ? 60
+                                      : 120;
     timeval_subtract(&diff, &now, &cpu_temp_time);
     if ((diff.tv_sec > wait_time) ||
-        ((curr_temp > prev_temp && curr_temp > 80))) {
+        ((curr_temp > prev_temp) && (curr_temp >= 75))) {
       char tempstr[32];
       float lo_freq = 0., hi_freq = 0.;
 
@@ -1608,28 +1481,29 @@ void report_summary_log(bool force) {
              tempstr, hi_temp, lo_freq / 1e6, hi_freq / 1e6);
       if (curr_temp > hi_temp)
         hi_temp = curr_temp;
-      if ((opt_max_temp > 0.0) && (curr_temp > opt_max_temp))
-        restart_threads();
       prev_temp = curr_temp;
     }
   }
-  pthread_mutex_unlock(&stats_lock);
 
 #endif
 
-  if (!((force && !opt_quiet) && (submit_sum || (et.tv_sec > 5))) &&
-      (et.tv_sec < 300))
+  if (!(force && (submit_sum || (et.tv_sec > 5))) && (et.tv_sec < 300))
     return;
 
   // collect and reset periodic counters
   pthread_mutex_lock(&stats_lock);
 
   uint64_t submits = submit_sum;
+  submit_sum = 0;
   uint64_t accepts = accept_sum;
+  accept_sum = 0;
   uint64_t rejects = reject_sum;
+  reject_sum = 0;
   uint64_t stales = stale_sum;
+  stale_sum = 0;
   uint64_t solved = solved_sum;
-  memcpy(&start_time, &five_min_start2, sizeof start_time);
+  solved_sum = 0;
+  memcpy(&start_time, &five_min_start, sizeof start_time);
   memcpy(&five_min_start, &now, sizeof now);
 
   pthread_mutex_unlock(&stats_lock);
@@ -1638,10 +1512,9 @@ void report_summary_log(bool force) {
   timeval_subtract(&uptime, &now, &session_start);
 
   double share_time = (double)et.tv_sec + (double)et.tv_usec / 1e6;
-  share_time = share_time > 1.0 ? share_time : 1.0;
   double ghrate = global_hashrate;
-  // double target_diff = exp32 * last_targetdiff;
-  double shrate = safe_div(exp32 * norm_diff_sum_temp, share_time, 0.);
+  double target_diff = exp32 * last_targetdiff;
+  double shrate = safe_div(target_diff * (double)(accepts), share_time, 0.);
   double sess_hrate =
       safe_div(exp32 * norm_diff_sum, (double)uptime.tv_sec, 0.);
   double submit_rate = safe_div((double)submits * 60., share_time, 0.);
@@ -1663,22 +1536,8 @@ void report_summary_log(bool force) {
   applog2(LOG_INFO, "Share rate        %.2f/min     %.2f/min", submit_rate,
           (double)submitted_share_count * 60. /
               ((double)uptime.tv_sec + (double)uptime.tv_usec / 1e6));
-  applog2(LOG_INFO,
-          "Hash rate       %7.2f%sh/s   %7.2f%sh/s", //   (%.2f%sh/s)",
-          shrate, shr_units, sess_hrate, sess_hr_units /*, ghrate, ghr_units*/);
-
-  if (accepted_share_count < submitted_share_count) {
-    double lost_ghrate =
-        safe_div(exp32 * norm_lost_diff_sum, (double)uptime.tv_sec, 0.);
-    double lost_shrate =
-        safe_div(exp32 * norm_lost_diff_sum_temp, share_time, 0.);
-    char lshr_units[4] = {0};
-    char lghr_units[4] = {0};
-    scale_hash_for_display(&lost_shrate, lshr_units);
-    scale_hash_for_display(&lost_ghrate, lghr_units);
-    applog2(LOG_INFO, "Lost hash rate  %7.2f%sh/s    %7.2f%sh/s", lost_shrate,
-            lshr_units, lost_ghrate, lghr_units);
-  }
+  applog2(LOG_INFO, "Hash rate       %7.2f%sh/s   %7.2f%sh/s", shrate,
+          shr_units, sess_hrate, sess_hr_units);
 
   applog2(LOG_INFO, "Submitted       %7d      %7d", submits,
           submitted_share_count);
@@ -1699,33 +1558,16 @@ void report_summary_log(bool force) {
   if (solved_block_count)
     applog2(LOG_INFO, "Blocks Solved   %7d      %7d", solved,
             solved_block_count);
-  if (lost_share_count)
-    applog2(LOG_INFO, "Lost                         %7d", lost_share_count);
-  if (force) {
-    applog2(LOG_INFO, "Hi/Lo Share Diff  %.5g /  %.5g", highest_share,
-            lowest_share);
+
+  int mismatch =
+      submitted_share_count -
+      (accepted_share_count + stale_share_count + rejected_share_count);
+  if (mismatch) {
+    applog2(LOG_INFO, "Lost                         %7d", mismatch);
   }
 
-  static int previous_mismatch = 0;
-  int mismatch =
-      submitted_share_count - (accepted_share_count + stale_share_count +
-                               rejected_share_count + lost_share_count);
-  if (mismatch) {
-    if (mismatch != 1)
-      applog(LOG_WARNING, "Share count mismatch: %d, stats may be inaccurate",
-             mismatch);
-    else
-      applog(LOG_INFO,
-             "Share count mismatch, submitted share may still be pending");
-  }
-  // Add lost shares to lost_share_count to get rid of the warning message.
-  // This should add and remove from lost_shares depending on the mismatch.
-  // In theory we could have counted as lost but receive accept later.
-  if (mismatch != 0 && previous_mismatch == mismatch) {
-    lost_share_count += mismatch;
-  }
-  // Maybe there are new pending shares, lets wait.
-  previous_mismatch = mismatch;
+  applog2(LOG_INFO, "Hi/Lo Share Diff  %.5g /  %.5g", highest_share,
+          lowest_share);
 }
 
 static int share_result(int result, struct work *work, const char *reason) {
@@ -1757,15 +1599,14 @@ static int share_result(int result, struct work *work, const char *reason) {
   }
 
   // calculate latency and share time.
-  if
-    likely(my_stats.submit_time.tv_sec) {
-      gettimeofday(&ack_time, NULL);
-      timeval_subtract(&latency_tv, &ack_time, &my_stats.submit_time);
-      latency = (latency_tv.tv_sec * 1e3 + latency_tv.tv_usec / 1e3);
-      timeval_subtract(&et, &my_stats.submit_time, &last_submit_time);
-      share_time = (double)et.tv_sec + ((double)et.tv_usec / 1e6);
-      memcpy(&last_submit_time, &my_stats.submit_time, sizeof last_submit_time);
-    }
+  if likely (my_stats.submit_time.tv_sec) {
+    gettimeofday(&ack_time, NULL);
+    timeval_subtract(&latency_tv, &ack_time, &my_stats.submit_time);
+    latency = (latency_tv.tv_sec * 1e3 + latency_tv.tv_usec / 1e3);
+    timeval_subtract(&et, &my_stats.submit_time, &last_submit_time);
+    share_time = (double)et.tv_sec + ((double)et.tv_usec / 1e6);
+    memcpy(&last_submit_time, &my_stats.submit_time, sizeof last_submit_time);
+  }
 
   // check result
   if (likely(result)) {
@@ -1776,15 +1617,13 @@ static int share_result(int result, struct work *work, const char *reason) {
       highest_share = my_stats.share_diff;
     sprintf(sres, "S%d", stale_share_count);
     sprintf(rres, "R%d", rejected_share_count);
-    if
-      unlikely((my_stats.net_diff > 0.) &&
-               (my_stats.share_diff >= my_stats.net_diff)) {
-        solved = true;
-        solved_block_count++;
-        sprintf(bres, "BLOCK SOLVED %d", solved_block_count);
-        sprintf(ares, "A%d", accepted_share_count);
-      }
-    else {
+    if unlikely ((my_stats.net_diff > 0.) &&
+                 (my_stats.share_diff >= my_stats.net_diff)) {
+      solved = true;
+      solved_block_count++;
+      sprintf(bres, "BLOCK SOLVED %d", solved_block_count);
+      sprintf(ares, "A%d", accepted_share_count);
+    } else {
       sprintf(bres, "B%d", solved_block_count);
       sprintf(ares, "Accepted %d", accepted_share_count);
     }
@@ -1792,8 +1631,7 @@ static int share_result(int result, struct work *work, const char *reason) {
     sprintf(ares, "A%d", accepted_share_count);
     sprintf(bres, "B%d", solved_block_count);
     if (reason)
-      stale =
-          string_contains(reason, "job") || string_contains(reason, "stale");
+      stale = strstr(reason, "job") || strstr(reason, "stale");
     else if (work)
       stale = work->data[algo_gate.ntime_index] !=
               g_work.data[algo_gate.ntime_index];
@@ -1818,7 +1656,6 @@ static int share_result(int result, struct work *work, const char *reason) {
   if (likely(result)) {
     accept_sum++;
     norm_diff_sum += my_stats.target_diff;
-    norm_diff_sum_temp += my_stats.target_diff;
     if (solved)
       solved_sum++;
   } else {
@@ -1826,8 +1663,6 @@ static int share_result(int result, struct work *work, const char *reason) {
       stale_sum++;
     else
       reject_sum++;
-    norm_lost_diff_sum += my_stats.target_diff;
-    norm_lost_diff_sum_temp += my_stats.target_diff;
   }
   submit_sum++;
   latency_sum += latency;
@@ -1902,14 +1737,14 @@ static int share_result(int result, struct work *work, const char *reason) {
 
 static const char *json_submit_req =
     "{\"method\": \"mining.submit\", \"params\": [\"%s\", \"%s\", \"%s\", "
-    "\"%s\", \"%s\"], \"id\":5}";
+    "\"%s\", \"%s\"], \"id\":%d}";
 
 // Also include info that the share should solve the block.
 // This one is used when we get proper response from supported pools
 // that send additional parameters while authenticating the miner.
 static const char *json_submit_block_req =
     "{\"method\": \"mining.submit\", \"params\": [\"%s\", \"%s\", \"%s\", "
-    "\"%s\", \"%s\", \"%d\"], \"id\":5}";
+    "\"%s\", \"%s\", \"%d\"], \"id\":%d}";
 
 void std_le_build_stratum_request(char *req, struct work *work) {
   unsigned char *xnonce2str;
@@ -1925,14 +1760,15 @@ void std_le_build_stratum_request(char *req, struct work *work) {
       applog(LOG_DEBUG, "Sending share as solved block.");
     }
     snprintf(req, JSON_BUF_LEN, json_submit_block_req, rpc_user, work->job_id,
-             xnonce2str, ntimestr, noncestr, 1);
+             xnonce2str, ntimestr, noncestr, 1, ++request_id);
   } else {
     snprintf(req, JSON_BUF_LEN, json_submit_req, rpc_user, work->job_id,
-             xnonce2str, ntimestr, noncestr);
+             xnonce2str, ntimestr, noncestr, ++request_id);
   }
   free(xnonce2str);
 }
 
+// le is default
 void std_be_build_stratum_request(char *req, struct work *work) {
   unsigned char *xnonce2str;
   uint32_t ntime, nonce;
@@ -1947,10 +1783,10 @@ void std_be_build_stratum_request(char *req, struct work *work) {
       applog(LOG_DEBUG, "Sending share as solved block.");
     }
     snprintf(req, JSON_BUF_LEN, json_submit_block_req, rpc_user, work->job_id,
-             xnonce2str, ntimestr, noncestr, 1);
+             xnonce2str, ntimestr, noncestr, 1, ++request_id);
   } else {
     snprintf(req, JSON_BUF_LEN, json_submit_req, rpc_user, work->job_id,
-             xnonce2str, ntimestr, noncestr);
+             xnonce2str, ntimestr, noncestr, ++request_id);
   }
   free(xnonce2str);
 }
@@ -1964,7 +1800,7 @@ bool std_le_submit_getwork_result(CURL *curl, struct work *work) {
   char *gw_str;
   int data_size = algo_gate.get_work_data_size();
 
-  for (size_t i = 0; i < data_size / sizeof(uint32_t); i++)
+  for (int i = 0; i < data_size / sizeof(uint32_t); i++)
     le32enc(&work->data[i], work->data[i]);
   gw_str = abin2hex((uchar *)work->data, data_size);
   if (unlikely(!gw_str)) {
@@ -1994,7 +1830,7 @@ bool std_be_submit_getwork_result(CURL *curl, struct work *work) {
   char *gw_str;
   int data_size = algo_gate.get_work_data_size();
 
-  for (size_t i = 0; i < data_size / sizeof(uint32_t); i++)
+  for (int i = 0; i < data_size / sizeof(uint32_t); i++)
     be32enc(&work->data[i], work->data[i]);
   gw_str = abin2hex((uchar *)work->data, data_size);
   if (unlikely(!gw_str)) {
@@ -2022,7 +1858,7 @@ char *std_malloc_txs_request(struct work *work) {
   char *req;
   json_t *val;
   char data_str[2 * sizeof(work->data) + 1];
-  size_t i;
+  int i;
   int datasize = work->sapling ? 112 : 80;
 
   for (i = 0; i < ARRAY_SIZE(work->data); i++)
@@ -2192,17 +2028,11 @@ start:
     if (work->height > last_block_height) {
       last_block_height = work->height;
       last_targetdiff = net_diff;
-      norm_diff_sum_temp = 0.;
-      norm_lost_diff_sum_temp = 0.;
 
       applog(LOG_BLUE, "New Block %d, Net Diff %.5g, Ntime %08x", work->height,
              net_diff, work->data[algo_gate.ntime_index]);
-      struct timeval now;
 
-      gettimeofday(&now, NULL);
-      memcpy(&five_min_start2, &now, sizeof now);
-
-      if (opt_debug) {
+      if (!opt_quiet) {
         double miner_hr = 0.;
         double net_hr = net_hashrate;
         double nd = net_diff * exp32;
@@ -2401,22 +2231,21 @@ static bool get_work(struct thr_info *thr, struct work *work) {
   struct workio_cmd *wc;
   struct work *work_heap;
 
-  if
-    unlikely(opt_benchmark) {
-      uint32_t ts = (uint32_t)time(NULL);
+  if unlikely (opt_benchmark) {
+    uint32_t ts = (uint32_t)time(NULL);
 
-      // why 74? std cmp_size is 76, std data is 128
-      for (int n = 0; n < 74; n++)
-        ((char *)work->data)[n] = n;
+    // why 74? std cmp_size is 76, std data is 128
+    for (int n = 0; n < 74; n++)
+      ((char *)work->data)[n] = n;
 
-      work->data[algo_gate.ntime_index] = swab32(ts); // ntime
+    work->data[algo_gate.ntime_index] = swab32(ts); // ntime
 
-      // this overwrites much of the for loop init
-      memset(work->data + algo_gate.nonce_index, 0x00, 52); // nonce..nonce+52
-      work->data[20] = 0x80000000;
-      work->data[31] = 0x00000280;
-      return true;
-    }
+    // this overwrites much of the for loop init
+    memset(work->data + algo_gate.nonce_index, 0x00, 52); // nonce..nonce+52
+    work->data[20] = 0x80000000;
+    work->data[31] = 0x00000280;
+    return true;
+  }
   /* fill out work request message */
   wc = (struct workio_cmd *)calloc(1, sizeof(*wc));
   if (!wc)
@@ -2461,8 +2290,8 @@ err_out:
   return false;
 }
 
-static void update_submit_stats(struct work *work,
-                                const void *hash __attribute__((unused))) {
+static void update_submit_stats(struct work *work, const void *hash) {
+  pthread_mutex_lock(&stats_lock);
 
   submitted_share_count++;
   share_stats[s_put_ptr].share_count = submitted_share_count;
@@ -2475,6 +2304,8 @@ static void update_submit_stats(struct work *work,
   if (have_stratum)
     strncpy(share_stats[s_put_ptr].job_id, work->job_id, 30);
   s_put_ptr = stats_ptr_incr(s_put_ptr);
+
+  pthread_mutex_unlock(&stats_lock);
 }
 
 bool submit_solution(struct work *work, const void *hash,
@@ -2487,21 +2318,18 @@ bool submit_solution(struct work *work, const void *hash,
   }
 
   work->sharediff = hash_to_diff(hash);
-  pthread_mutex_lock(&stats_lock);
   if (likely(submit_work(thr, work))) {
     update_submit_stats(work, hash);
-    pthread_mutex_unlock(&stats_lock);
 
-    if
-      unlikely(!have_stratum &&
-               !have_longpoll) { // solo, block solved, force getwork
-        pthread_rwlock_wrlock(&g_work_lock);
-        g_work_time = 0;
-        pthread_rwlock_unlock(&g_work_lock);
-        restart_threads();
-      }
+    if unlikely (!have_stratum &&
+                 !have_longpoll) { // solo, block solved, force getwork
+      pthread_rwlock_wrlock(&g_work_lock);
+      g_work_time = 0;
+      pthread_rwlock_unlock(&g_work_lock);
+      restart_threads();
+    }
 
-    if (opt_debug) {
+    if (!opt_quiet) {
       if (have_stratum)
         applog(LOG_NOTICE, "%d Submitted Diff %.5g, Block %d, Job %s",
                submitted_share_count, work->sharediff, work->height,
@@ -2534,10 +2362,8 @@ bool submit_solution(struct work *work, const void *hash,
              t[7], t[6], t[5], t[4], t[3], t[2], t[1], t[0]);
     }
     return true;
-  } else {
-    pthread_mutex_unlock(&stats_lock);
+  } else
     applog(LOG_WARNING, "%d failed to submit share", submitted_share_count);
-  }
   return false;
 }
 
@@ -2606,12 +2432,11 @@ void std_get_new_work(struct work *work, struct work *g_work, int thr_id,
     ++(*nonceptr);
 }
 
-bool std_ready_to_mine(struct work *work,
-                       struct stratum_ctx *stratum __attribute__((unused)),
-                       int thr_id __attribute__((unused))) {
+bool std_ready_to_mine(struct work *work, struct stratum_ctx *stratum,
+                       int thr_id) {
   if (stratum_problem || g_work_time == 0 ||
       (have_stratum && !work->data[0] && !opt_benchmark)) {
-    usleep(200000); // sleep(1);
+    sleep(1);
     return false;
   }
   return true;
@@ -2639,7 +2464,7 @@ static void stratum_gen_work(struct stratum_ctx *sctx, struct work *g_work) {
   diff_to_hash(g_work->target, g_work->targetdiff);
 
   // Increment extranonce2
-  for (size_t t = 0; t < sctx->xnonce2_size && !(++sctx->job.xnonce2[t]); t++)
+  for (int t = 0; t < sctx->xnonce2_size && !(++sctx->job.xnonce2[t]); t++)
     ;
 
   g_work_time = time(NULL);
@@ -2674,7 +2499,8 @@ static void stratum_gen_work(struct stratum_ctx *sctx, struct work *g_work) {
   }
 
   // Update data and calculate new estimates.
-  if (last_block_height != sctx->block_height) {
+  if ((stratum_diff != sctx->job.diff) ||
+      (last_block_height != sctx->block_height)) {
     uint32_t endiandata[20];
     swab32_array(endiandata, g_work->data, 20);
 
@@ -2715,8 +2541,6 @@ static void stratum_gen_work(struct stratum_ctx *sctx, struct work *g_work) {
     }
     applog(LOG_NOTICE, "Block Algos:%s (Rot. %d.%d, Speed: ~%.02lfx)", block_CN,
            (config_id / 2) + 1, (config_id % 2) + 1, 5.25 / speed_factor);
-    // applog(LOG_NOTICE, "Estimated Speed Factor %.02lfx", 5.25 /
-    // speed_factor);
 
     struct timeval end, diff;
     pthread_mutex_lock(&stats_lock);
@@ -2746,18 +2570,6 @@ static void stratum_gen_work(struct stratum_ctx *sctx, struct work *g_work) {
       gettimeofday(&hashrate_start, NULL);
       pthread_mutex_unlock(&stats_lock);
     }
-    if (last_block_height != sctx->block_height) {
-      struct timeval now;
-      gettimeofday(&now, NULL);
-      memcpy(&five_min_start2, &now, sizeof now);
-      submit_sum = 0;
-      accept_sum = 0;
-      reject_sum = 0;
-      stale_sum = 0;
-      solved_sum = 0;
-      norm_diff_sum_temp = 0.;
-      norm_lost_diff_sum_temp = 0.;
-    }
 
     static bool multipool = false;
     if (stratum.block_height < last_block_height)
@@ -2772,7 +2584,6 @@ static void stratum_gen_work(struct stratum_ctx *sctx, struct work *g_work) {
 
     applog2(LOG_INFO, "Diff: Net %.5g, Stratum %.5g, Target %.5g", net_diff,
             stratum_diff, g_work->targetdiff);
-
     if (!opt_quiet) {
 
       if (likely(hr > 0.)) {
@@ -2797,7 +2608,7 @@ static void stratum_gen_work(struct stratum_ctx *sctx, struct work *g_work) {
                   ? 0
                   : et.tv_sec / (last_block_height - session_first_block);
           if (net_diff && net_ttf) {
-            double net_hr = nd / ((opt_algo == ALGO_GR) ? 120.0 : net_ttf);
+            double net_hr = nd / 120.0;
             char net_hr_units[4] = {0};
 
             scale_hash_for_display(&net_hr, net_hr_units);
@@ -2837,7 +2648,7 @@ static void *miner_thread(void *userdata) {
    * error if it fails */
   if (opt_priority == 0) {
     setpriority(PRIO_PROCESS, 0, 19);
-    if (!thr_id && opt_debug)
+    if (!thr_id && opt_debug) {
 #ifdef __MINGW32__
       applog(LOG_INFO, "Default miner thread priority %d (NORMAL)",
              opt_priority);
@@ -2845,6 +2656,7 @@ static void *miner_thread(void *userdata) {
       applog(LOG_INFO, "Default miner thread priority %d (nice 19)",
              opt_priority);
 #endif
+    }
     drop_policy();
   } else {
     int prio = 0;
@@ -2875,15 +2687,16 @@ static void *miner_thread(void *userdata) {
     }
 #endif
     setpriority(PRIO_PROCESS, 0, prio);
-    if (opt_priority == 0)
+    if (opt_priority == 0) {
       drop_policy();
+    }
   }
   // CPU thread affinity
   if (num_cpus > 1) {
 #if AFFINITY_USES_UINT128
     // Default affinity
     if ((opt_affinity == (uint128_t)(-1)) && opt_n_threads > 1) {
-      affine_to_cpu_mask(thr_id, (uint128_t)1 << (thr_id % num_cpus));
+      affine_to_cpu_mask(thr_id, ((uint128_t)(1)) << (thr_id % num_cpus));
       if (opt_debug)
         applog(LOG_INFO, "Binding thread %d to cpu %d.", thr_id,
                thr_id % num_cpus,
@@ -3055,15 +2868,9 @@ static void *miner_thread(void *userdata) {
       //          applog( LOG_WARNING, "BUG: See RELEASE_NOTES for reporting
       //          bugs. Algo = %s.",
       //                               algo_names[ opt_algo ] );
-
-      pthread_mutex_lock(&stats_lock);
       if (!submit_work(mythr, &work)) {
         applog(LOG_WARNING, "Failed to submit share.");
-        pthread_mutex_unlock(&stats_lock);
         break;
-      } else {
-        update_submit_stats(&work, NULL);
-        pthread_mutex_unlock(&stats_lock);
       }
       if (!opt_quiet)
         applog(LOG_NOTICE, "%d: submitted by thread %d.",
@@ -3071,13 +2878,12 @@ static void *miner_thread(void *userdata) {
 
       // prevent stale work in solo
       // we can't submit twice a block!
-      if
-        unlikely(!have_stratum && !have_longpoll) {
-          pthread_rwlock_wrlock(&g_work_lock);
-          // will force getwork
-          g_work_time = 0;
-          pthread_rwlock_unlock(&g_work_lock);
-        }
+      if unlikely (!have_stratum && !have_longpoll) {
+        pthread_rwlock_wrlock(&g_work_lock);
+        // will force getwork
+        g_work_time = 0;
+        pthread_rwlock_unlock(&g_work_lock);
+      }
     }
 
     // display hashrate
@@ -3134,7 +2940,7 @@ void restart_threads(void) {
   for (int i = 0; i < opt_n_threads; i++)
     work_restart[i].restart = 1;
   if (opt_debug)
-    applog(LOG_DEBUG, "Threads restarted for new work.");
+    applog(LOG_INFO, "Threads restarted for new work.");
 }
 
 json_t *std_longpoll_rpc_call(CURL *curl, int *err, char *lp_url) {
@@ -3363,14 +3169,14 @@ static void *stratum_thread(void *userdata) {
   char *s = NULL;
 
   // Save original user data.
-  rpc_user_original = strdup(rpc_user);
-  rpc_pass_original = strdup(rpc_pass);
-  rpc_url_original = strdup(rpc_url);
-  // Check if user uses the same stratum as preffered pools.
-  // If yes, do a more frequent donations but for shorter amount of time.
-  if (check_same_stratum()) {
-    donation_wait = 3600;
-  }
+  rpc_user_original = (rpc_user == NULL) ? strdup("") : strdup(rpc_user);
+  rpc_pass_original = (rpc_pass == NULL) ? strdup("x") : strdup(rpc_pass);
+  rpc_url_original = (rpc_url == NULL) ? strdup("") : strdup(rpc_url);
+
+  stratum.url = (char *)tq_pop(mythr->q, NULL);
+  if (!stratum.url)
+    goto out;
+  applog(LOG_BLUE, "Stratum connect %s", short_url);
 
   // Do not start stratum functionality if the miner is going to tune.
   while (likely(opt_tune)) {
@@ -3381,20 +3187,19 @@ static void *stratum_thread(void *userdata) {
     // very unaccurate for mining session when tuning was done.
     gettimeofday(&last_submit_time, NULL);
     memcpy(&five_min_start, &last_submit_time, sizeof(struct timeval));
-    memcpy(&five_min_start2, &last_submit_time, sizeof(struct timeval));
     memcpy(&session_start, &last_submit_time, sizeof(struct timeval));
-    memcpy(&hashrate_start, &last_submit_time, sizeof(struct timeval));
-    donation_time_start = time(NULL) + 15 + (rand() % 30);
+    donation_time_start = time(NULL) + 15 + (rand() % 60);
     donation_time_stop = donation_time_start + 6000;
   }
 
-  stratum.url = (char *)tq_pop(mythr->q, NULL);
-  if (!stratum.url)
-    goto out;
-  applog(LOG_BLUE, "Stratum connect %s", short_url);
+  if (check_same_stratum()) {
+    donation_wait = 3600;
+  }
 
   while (1) {
-    donation_switch();
+    if (enable_donation) {
+      donation_switch();
+    }
 
     if (!stratum_check(false)) {
       // Only if opt_retries are set and not dev_mining.
@@ -3509,6 +3314,12 @@ static bool cpu_capability(bool display_only) {
   //     #if !((__AES__) || (__SSE2__))
   //         printf("Neither __AES__ nor __SSE2__ defined.\n");
   //     #endif
+
+#ifdef __MINGW32__
+  printf("Prepared for Windows - NTver: 0x%X\n", _WIN32_WINNT);
+#else
+  printf("Prepared for Linux\n");
+#endif
 
   cpu_brand_string(cpu_brand);
   printf("CPU: %s\n", cpu_brand);
@@ -4382,6 +4193,11 @@ int main(int argc, char *argv[]) {
   if (!opt_n_threads)
     opt_n_threads = num_cpus;
 
+#ifdef AFFINITY_USES_UINT128
+  if (num_cpus > 64)
+    opt_affinity |= opt_affinity << 64;
+#endif
+
   used_threads = (uint8_t *)malloc(opt_n_threads);
 
   if (opt_algo == ALGO_NULL) {
@@ -4445,7 +4261,6 @@ int main(int argc, char *argv[]) {
   memset(share_stats, 0, s_stats_size * sizeof(struct share_stats_t));
   gettimeofday(&last_submit_time, NULL);
   memcpy(&five_min_start, &last_submit_time, sizeof(struct timeval));
-  memcpy(&five_min_start2, &last_submit_time, sizeof(struct timeval));
   memcpy(&session_start, &last_submit_time, sizeof(struct timeval));
 
   //   if ( !check_cpu_capability() ) exit(1);
@@ -4457,9 +4272,6 @@ int main(int argc, char *argv[]) {
   pthread_mutex_init(&stratum.work_lock, NULL);
 
   flags = CURL_GLOBAL_ALL;
-  if (rpc_url != NULL && strncasecmp(rpc_url, "https:", 6) &&
-      strncasecmp(rpc_url, "stratum+tcps://", 15))
-    use_ssl = false;
 
   if (curl_global_init(flags)) {
     applog(LOG_ERR, "CURL initialization failed");
@@ -4569,8 +4381,8 @@ int main(int argc, char *argv[]) {
   }
 
   if (!opt_quiet && (opt_n_threads < num_cpus)) {
-    char affinity_map[100];
-    memset(affinity_map, 0, 100);
+    char affinity_map[200];
+    memset(affinity_map, 0, 200);
     format_affinity_map(affinity_map, opt_affinity);
     applog(LOG_INFO, "CPU affinity [%s]", affinity_map);
   }
@@ -4787,6 +4599,7 @@ int main(int argc, char *argv[]) {
 
   // hold the stats lock while starting miner threads
   pthread_mutex_lock(&stats_lock);
+
   gettimeofday(&hashrate_start, NULL);
 
   /* start mining threads */

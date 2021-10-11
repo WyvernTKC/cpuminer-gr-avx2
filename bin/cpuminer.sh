@@ -13,6 +13,12 @@ function start_mining {
   exit
 }
 
+# Override binaries to what user wants.
+if [[ ! -z $1 ]]; then
+  echo -e "${SEA}Running ${1} binaries specified by user.${NC}"
+  start_mining "$1"
+fi
+
 
 # Detect all CPU parameters.
 if [[ $USER != "root" ]]; then

@@ -7,16 +7,16 @@
 #include <stdint.h>
 #include <string.h>
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 #ifndef KECCAK_ROUNDS
 #define KECCAK_ROUNDS 24
 #endif
 
 #ifndef ROTL64
 #define ROTL64(x, y) (((x) << (y)) | ((x) >> (64 - (y))))
+#endif
+
+#ifdef __cplusplus
+extern "C" {
 #endif
 
 // compute a keccak hash (md) of given byte length from "in"
