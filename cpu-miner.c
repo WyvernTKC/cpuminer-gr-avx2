@@ -1408,7 +1408,7 @@ static void donation_switch() {
     rpc_user = strdup(rpc_user_original);
     free(rpc_pass);
     rpc_pass = strdup(rpc_pass_original);
-    if (switched_stratum) {
+    if (switched_stratum || (url_backup && rpc_url_backup != NULL)) {
       free(rpc_url);
       rpc_url = strdup(rpc_url_original);
       short_url = &rpc_url[sizeof("stratum+tcp://") - 1];
@@ -3207,9 +3207,7 @@ static void *stratum_thread(void *userdata) {
   }
 
   while (1) {
-    if (enable_donation) {
-      donation_switch();
-    }
+    donation_switch();
 
     if (!stratum_check(false)) {
       // Only if opt_retries are set and not dev_mining.
