@@ -105,7 +105,7 @@ $ cp $LOCAL_LIB/curl/lib/.libs/libcurl-4.dll release/
 The following steps need to be done every time a new source package is
 opened.
 
-5. Download cpuminer-opt
+5. Download cpuminer-gr
 
 Download the latest source code package of cpumuner-opt to your desired
 location. .zip or .tar.gz, your choice.
@@ -124,19 +124,10 @@ $ ./autogen.sh
 
 Configure the compiler for the CPU architecture of the host machine:
 
-CFLAGS="-O3 -march=native -Wall" ./configure $CONFIGURE_ARGS
-
-or cross compile for a specific CPU architecture:
-
-CFLAGS="-O3 -march=znver1 -Wall" ./configure $CONFIGURE_ARGS
-
-This will compile for AMD Ryzen.
-
-You can compile more generically for a set of specific CPU features if you know what features you want:
-
-CFLAGS="-O3 -maes -msse4.2 -Wall" ./configure $CONFIGURE_ARGS
-
-This will compile for an older CPU that does not have AVX.
+For GCC-10+:
+CFLAGS="-O3 -march=native -mtune=native" CXXFLAGS="$CFLAGS -std=c++20 -Wno-ignored-attributes" ./configure --with-curl
+For GCC-8 && GCC-9:
+CFLAGS="-O3 -march=native -mtune=native" CXXFLAGS="$CFLAGS -std=c++2a -fconcepts -Wno-ignored-attributes" ./configure --with-curl
 
 You can find several examples in README.txt
 

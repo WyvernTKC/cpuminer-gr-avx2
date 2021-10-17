@@ -65,6 +65,36 @@ If not what makes it happen or not happen?
 Change Log
 ----------
 
+1.2.2
+
+#### Fix:
+- Fix problem (introduced in 1.2.1) while staying at one of the dev pools
+  even after the donation period finishes.
+  **! Affected only pool. Users were still mining to their wallets !**
+  It could occur while having connection problems during the donation period
+  was still ongoing and during longer connection problems in general.
+
+
+1.2.1
+
+#### Windows Fixes:
+- **Fix crashing problem on Windows.**
+- Fix affinity not allocating threads to selected hardware threads
+
+#### Linux Fixes:
+- Fix affinity only allowing for up to 64 threads if set in any way.
+
+#### Automation Scripts:
+- Added 2 CPU models on windows binaries. (Please contact me on RTM discord if
+  it detects wrong binaries for you)
+- Users can now override and select specific binary:
+-- by modifying lines 6 & 9 of the cpuminer.bat (Windows)
+-- by adding miner suffix as argument like `./cpuminer.sh avx2` for AVX2 binaries. (Linux)
+
+#### General Changes:
+- Autodetect GCC for build.sh
+
+
 1.2.0
 
 #### Windows Fixes:
