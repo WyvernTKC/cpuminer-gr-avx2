@@ -4,12 +4,15 @@ YELLOW='\033[1;31m'
 SEA='\033[38;5;49m'
 NC='\033[0m'
 
+#addi variable of script location
+location=$(dirname "$0")
+
 # Run miner.
 function start_mining {
   echo -e "Starting ${SEA}${1}${NC} variant of the binaries."
 
   INST="$1"
-  ./binaries/cpuminer-${INST} --config=config.json
+  $location/binaries/cpuminer-${INST} --config=$location/config.json
   exit
 }
 
