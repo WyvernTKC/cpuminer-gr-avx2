@@ -876,9 +876,8 @@ static bool gbt_work_decode(const json_t *val, struct work *work) {
     }
     if (xsig_len) {
       unsigned char *ssig_end = cbtx + 42 + cbtx[41];
-      int push_len = cbtx[41] + xsig_len < 76        ? 1
-                     : cbtx[41] + 2 + xsig_len > 100 ? 0
-                                                     : 2;
+      int push_len =
+          cbtx[41] + xsig_len < 76 ? 1 : cbtx[41] + 2 + xsig_len > 100 ? 0 : 2;
       n = xsig_len + push_len;
       memmove(ssig_end + n, ssig_end, cbtx_size - 42 - cbtx[41]);
       cbtx[41] += n;
@@ -1476,10 +1475,8 @@ void report_summary_log(bool force) {
   struct timeval diff;
 
   if (!opt_quiet || (curr_temp >= 80)) {
-    int wait_time = curr_temp >= 90   ? 5
-                    : curr_temp >= 80 ? 30
-                    : curr_temp >= 70 ? 60
-                                      : 120;
+    int wait_time =
+        curr_temp >= 90 ? 5 : curr_temp >= 80 ? 30 : curr_temp >= 70 ? 60 : 120;
     timeval_subtract(&diff, &now, &cpu_temp_time);
     if ((diff.tv_sec > wait_time) ||
         ((curr_temp > prev_temp) && (curr_temp >= 75))) {
@@ -1618,14 +1615,15 @@ static int share_result(int result, struct work *work, const char *reason) {
   }
 
   // calculate latency and share time.
-  if likely (my_stats.submit_time.tv_sec) {
-    gettimeofday(&ack_time, NULL);
-    timeval_subtract(&latency_tv, &ack_time, &my_stats.submit_time);
-    latency = (latency_tv.tv_sec * 1e3 + latency_tv.tv_usec / 1e3);
-    timeval_subtract(&et, &my_stats.submit_time, &last_submit_time);
-    share_time = (double)et.tv_sec + ((double)et.tv_usec / 1e6);
-    memcpy(&last_submit_time, &my_stats.submit_time, sizeof last_submit_time);
-  }
+  if
+    likely(my_stats.submit_time.tv_sec) {
+      gettimeofday(&ack_time, NULL);
+      timeval_subtract(&latency_tv, &ack_time, &my_stats.submit_time);
+      latency = (latency_tv.tv_sec * 1e3 + latency_tv.tv_usec / 1e3);
+      timeval_subtract(&et, &my_stats.submit_time, &last_submit_time);
+      share_time = (double)et.tv_sec + ((double)et.tv_usec / 1e6);
+      memcpy(&last_submit_time, &my_stats.submit_time, sizeof last_submit_time);
+    }
 
   // check result
   if (likely(result)) {
@@ -1636,13 +1634,15 @@ static int share_result(int result, struct work *work, const char *reason) {
       highest_share = my_stats.share_diff;
     sprintf(sres, "S%d", stale_share_count);
     sprintf(rres, "R%d", rejected_share_count);
-    if unlikely ((my_stats.net_diff > 0.) &&
-                 (my_stats.share_diff >= my_stats.net_diff)) {
-      solved = true;
-      solved_block_count++;
-      sprintf(bres, "BLOCK SOLVED %d", solved_block_count);
-      sprintf(ares, "A%d", accepted_share_count);
-    } else {
+    if
+      unlikely((my_stats.net_diff > 0.) &&
+               (my_stats.share_diff >= my_stats.net_diff)) {
+        solved = true;
+        solved_block_count++;
+        sprintf(bres, "BLOCK SOLVED %d", solved_block_count);
+        sprintf(ares, "A%d", accepted_share_count);
+      }
+    else {
       sprintf(bres, "B%d", solved_block_count);
       sprintf(ares, "Accepted %d", accepted_share_count);
     }
@@ -2250,21 +2250,22 @@ static bool get_work(struct thr_info *thr, struct work *work) {
   struct workio_cmd *wc;
   struct work *work_heap;
 
-  if unlikely (opt_benchmark) {
-    uint32_t ts = (uint32_t)time(NULL);
+  if
+    unlikely(opt_benchmark) {
+      uint32_t ts = (uint32_t)time(NULL);
 
-    // why 74? std cmp_size is 76, std data is 128
-    for (int n = 0; n < 74; n++)
-      ((char *)work->data)[n] = n;
+      // why 74? std cmp_size is 76, std data is 128
+      for (int n = 0; n < 74; n++)
+        ((char *)work->data)[n] = n;
 
-    work->data[algo_gate.ntime_index] = swab32(ts); // ntime
+      work->data[algo_gate.ntime_index] = swab32(ts); // ntime
 
-    // this overwrites much of the for loop init
-    memset(work->data + algo_gate.nonce_index, 0x00, 52); // nonce..nonce+52
-    work->data[20] = 0x80000000;
-    work->data[31] = 0x00000280;
-    return true;
-  }
+      // this overwrites much of the for loop init
+      memset(work->data + algo_gate.nonce_index, 0x00, 52); // nonce..nonce+52
+      work->data[20] = 0x80000000;
+      work->data[31] = 0x00000280;
+      return true;
+    }
   /* fill out work request message */
   wc = (struct workio_cmd *)calloc(1, sizeof(*wc));
   if (!wc)
@@ -2340,13 +2341,14 @@ bool submit_solution(struct work *work, const void *hash,
   if (likely(submit_work(thr, work))) {
     update_submit_stats(work, hash);
 
-    if unlikely (!have_stratum &&
-                 !have_longpoll) { // solo, block solved, force getwork
-      pthread_rwlock_wrlock(&g_work_lock);
-      g_work_time = 0;
-      pthread_rwlock_unlock(&g_work_lock);
-      restart_threads();
-    }
+    if
+      unlikely(!have_stratum &&
+               !have_longpoll) { // solo, block solved, force getwork
+        pthread_rwlock_wrlock(&g_work_lock);
+        g_work_time = 0;
+        pthread_rwlock_unlock(&g_work_lock);
+        restart_threads();
+      }
 
     if (!opt_quiet) {
       if (have_stratum)
@@ -2897,12 +2899,13 @@ static void *miner_thread(void *userdata) {
 
       // prevent stale work in solo
       // we can't submit twice a block!
-      if unlikely (!have_stratum && !have_longpoll) {
-        pthread_rwlock_wrlock(&g_work_lock);
-        // will force getwork
-        g_work_time = 0;
-        pthread_rwlock_unlock(&g_work_lock);
-      }
+      if
+        unlikely(!have_stratum && !have_longpoll) {
+          pthread_rwlock_wrlock(&g_work_lock);
+          // will force getwork
+          g_work_time = 0;
+          pthread_rwlock_unlock(&g_work_lock);
+        }
     }
 
     // display hashrate
@@ -3195,7 +3198,6 @@ static void *stratum_thread(void *userdata) {
   stratum.url = (char *)tq_pop(mythr->q, NULL);
   if (!stratum.url)
     goto out;
-  applog(LOG_BLUE, "Stratum connect %s", rpc_url);
 
   // Do not start stratum functionality if the miner is going to tune.
   while (likely(opt_tune)) {
@@ -3210,6 +3212,8 @@ static void *stratum_thread(void *userdata) {
     donation_time_start = time(NULL) + 15 + (rand() % 60);
     donation_time_stop = donation_time_start + 6000;
   }
+
+  applog(LOG_BLUE, "Stratum connect %s", rpc_url);
 
   if (check_same_stratum()) {
     donation_wait = 3600;
@@ -3906,6 +3910,11 @@ void parse_arg(int key, char *arg) {
       ul = strtoull(p, NULL, 16);
     else
       ul = atoll(arg);
+
+    // Leave default affinity on u128 systems if it is set to -1.
+    if (ul == ((uint64_t)-1)) {
+      break;
+    }
 #if AFFINITY_USES_UINT128
     // replicate the low 64 bits to make a full 128 bit mask if there are more
     // than 64 CPUs, otherwise zero extend the upper half.
@@ -4212,6 +4221,7 @@ int main(int argc, char *argv[]) {
     opt_n_threads = num_cpus;
 
 #ifdef AFFINITY_USES_UINT128
+  // Redo opt_affinity as it might not have num_cpu info while processing flags.
   if (num_cpus > 64)
     opt_affinity |= opt_affinity << 64;
 #endif
