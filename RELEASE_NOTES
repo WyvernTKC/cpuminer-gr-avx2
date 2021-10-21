@@ -65,6 +65,23 @@ If not what makes it happen or not happen?
 Change Log
 ----------
 
+1.2.3
+
+#### General Changes:
+- Disable new rplant protocol by default. Can be anabled with `--confirm-block`
+  as currently rplant is not counting skipped shares by their backend to the users
+  which leads to lower miner payouts. Please do not use the flag until rplant
+  fixes their pool.
+- Minor visual changes.
+- Remove some sleeps on Windows release as help and benchmark.log are now available
+  for users.
+
+#### Flags:
+- Add `--temp-sensor=PATH` - Specify temperature readout file/sensor.
+- Add `--confirm-block` - Enable miner to send more data if share is solving the
+  block.
+
+
 1.2.2
 
 #### Fix:
