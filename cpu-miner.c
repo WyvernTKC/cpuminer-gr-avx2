@@ -130,6 +130,10 @@ int opt_n_threads = 0;
 bool opt_sapling = false;
 bool opt_set_msr = true;
 
+// Path to custom sensor location.
+// That way users can select proper sensors for their machines.
+char *opt_sensor_path = NULL;
+
 uint64_t request_id = 5;
 
 // Windows doesn't support 128 bit affinity mask.
@@ -4027,6 +4031,18 @@ void parse_arg(int key, char *arg) {
   }
   case 1113: // confirm-block
     opt_block_trust = true;
+    break;
+  case 1114: // temp-sensor
+#ifndef __MINGW32__
+    opt_sensor_path = strdup(arg);
+    // Sanity check if it even is a file.
+    struct stat path_stat;
+    stat(opt_sensor_path, &path_stat);
+    if (!S_ISREG(path_stat.st_mode)) {
+      fprintf(stderr, "Set sensor path is invalid: '%s'\n", opt_sensor_path);
+      show_usage_and_exit(1);
+    }
+#endif
     break;
   case 'h':
     show_usage_and_exit(0);

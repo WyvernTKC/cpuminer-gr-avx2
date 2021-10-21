@@ -62,25 +62,33 @@ static inline float linux_cputemp(int core __attribute__((unused))) {
   FILE *fd;
   uint32_t val = 0;
 
-  fd = fopen(HWMON_PATH1, "r");
+  if (opt_sensor_path == NULL) {
 
-  if (!fd)
-    fd = fopen(HWMON_PATH2, "r");
+    fd = fopen(HWMON_PATH1, "r");
 
-  if (!fd)
-    fd = fopen(HWMON_PATH3, "r");
+    if (!fd)
+      fd = fopen(HWMON_PATH2, "r");
 
-  if (!fd)
-    fd = fopen(HWMON_PATH, "r");
+    if (!fd)
+      fd = fopen(HWMON_PATH3, "r");
 
-  if (!fd)
-    fd = fopen(HWMON_ALT, "r");
+    if (!fd)
+      fd = fopen(HWMON_PATH, "r");
+
+    if (!fd)
+      fd = fopen(HWMON_ALT, "r");
+
+  } else {
+    // USer sensor path provided.
+    fd = fopen(opt_sensor_path, "r");
+  }
 
   if (!fd)
     return tc;
 
-  if (fscanf(fd, "%d", &val))
+  if (fscanf(fd, " %d ", &val)) {
     tc = val / 1000.0;
+  }
   fclose(fd);
   return tc;
 }
