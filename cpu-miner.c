@@ -3969,7 +3969,7 @@ void parse_arg(int key, char *arg) {
   case 1028: // verify
     opt_verify = true;
     break;
-  case '1029': // version
+  case 1029: // version
     display_cpu_capability();
     exit(0);
   case 1102: // force-tune
@@ -4020,7 +4020,7 @@ void parse_arg(int key, char *arg) {
     }
     break;
   }
-  case 1112: // confirm-block
+  case 1113: // confirm-block
     opt_block_trust = true;
     break;
   case 'h':

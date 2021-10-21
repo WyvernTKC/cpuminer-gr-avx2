@@ -766,7 +766,7 @@ static struct option const options[] = {
     {"no-tune", 0, NULL, 1103},
     {"tune-full", 0, NULL, 1106},
     {"tune-config", 1, NULL, 1104},
-    {"confirm-block", 0, NULL, 1112},
+    {"confirm-block", 0, NULL, 1113},
     {0, 0, 0, 0}};
 
 #ifdef __cplusplus
