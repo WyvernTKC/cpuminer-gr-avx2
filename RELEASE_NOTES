@@ -69,12 +69,15 @@ Change Log
 
 #### General Changes:
 - Disable new rplant protocol by default. Can be anabled with `--confirm-block`
-  as currently rplant is not counting skipped shares by their backend to the users
-  which leads to lower miner payouts. Please do not use the flag until rplant
-  fixes their pool.
-- Minor visual changes.
+  as currently rplant is not counting skipped shares on their backend to the users
+  which leads to lower miner payouts/hashrate on the pool. 
+  Please do not use the flag until rplant fixes their pool.
+- Minor output changes.
 - Remove some sleeps on Windows release as help and benchmark.log are now available
   for users.
+- Add info if user is trying to use SSL protocol for non-SSL stratum when miner
+  is not able to connect to te pool's stratum.
+- Warn users if they are possibly using not optimal binaries.
 
 #### Flags:
 - Add `--temp-sensor=PATH` - Specify temperature readout file/sensor.

@@ -559,7 +559,7 @@ static inline bool has_sse() {
 }
 
 static inline uint32_t cpuid_get_highest_function_number() {
-  uint32_t cpu_info[4] = {0};
+  int cpu_info[4] = {0};
   cpuid(VENDOR_ID, cpu_info);
   return cpu_info[EAX_Reg];
 }

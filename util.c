@@ -1570,6 +1570,17 @@ bool stratum_connect(struct stratum_ctx *sctx, const char *url) {
   rc = curl_easy_perform(curl);
   if (rc) {
     applog(LOG_ERR, "Stratum connection failed: %s", sctx->curl_err_str);
+    // Maybe we can try and detect some errors related to SSL/non-SSL
+    // connection.
+    if (strcasestr(sctx->curl_err_str, "handshake") ||
+        strcasestr(sctx->curl_err_str, "SSL") ||
+        strcasestr(sctx->curl_err_str, "TLS")) {
+      applog(LOG_ERR,
+             "Possibly trying to connect using SSL to non-SSL stratum.");
+      applog(LOG_ERR, "Make sure to use 'stratum+tcps' for SSL and "
+                      "'stratum+tcp' for non-SSL");
+    }
+
     curl_easy_cleanup(curl);
     sctx->curl = NULL;
     return false;
