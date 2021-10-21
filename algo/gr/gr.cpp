@@ -270,12 +270,6 @@ int scanhash_gr(struct work *work, uint32_t max_nonce, uint64_t *hashes_done,
              gr_benchmark_time / 1e6);
     }
     benchmark(pdata, thr_id, 0);
-#ifdef __MINGW32__
-    // Make it sleep for some time. Some Windows configuration run the miner
-    // in separate window that closes after it finishes and it is not possible
-    // to get benchmark results.
-    sleep(300);
-#endif
     if (thr_id == 0) {
       exit(0);
     }

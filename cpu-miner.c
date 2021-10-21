@@ -3547,9 +3547,6 @@ void show_version_and_exit(void) {
   printf("pthreads/%d.%d.%d.%d ", PTW32_VERSION);
 #endif
   printf("\n");
-#ifdef __MINGW32__
-  sleep(120);
-#endif
   exit(0);
 }
 
@@ -3560,9 +3557,6 @@ void show_usage_and_exit(int status) {
   // information.\n");
   else
     printf(usage);
-#ifdef __MINGW32__
-  sleep(60);
-#endif
   exit(status);
 }
 
