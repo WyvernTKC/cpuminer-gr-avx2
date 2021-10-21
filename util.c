@@ -1903,10 +1903,19 @@ bool stratum_authorize(struct stratum_ctx *sctx, const char *user,
   bool ret = false;
 
   s = (char *)malloc(80 + strlen(user) + strlen(pass));
-  sprintf(s,
-          "{\"id\": 3, \"method\": \"mining.authorize\", \"params\": [\"%s\", "
-          "\"%s\", [\"b\"]]}",
-          user, pass);
+  if (opt_block_trust) {
+    sprintf(
+        s,
+        "{\"id\": 3, \"method\": \"mining.authorize\", \"params\": [\"%s\", "
+        "\"%s\", [\"b\"]]}",
+        user, pass);
+  } else {
+    sprintf(
+        s,
+        "{\"id\": 3, \"method\": \"mining.authorize\", \"params\": [\"%s\", "
+        "\"%s\"]}",
+        user, pass);
+  }
 
   if (!stratum_send_line(sctx, s))
     goto out;
@@ -1929,7 +1938,6 @@ bool stratum_authorize(struct stratum_ctx *sctx, const char *user,
 
   res_val = json_object_get(val, "result");
   err_val = json_object_get(val, "error");
-  trust_val = json_object_get(val, "trust");
 
   if (!res_val || json_is_false(res_val) ||
       (err_val && !json_is_null(err_val))) {
@@ -1939,10 +1947,11 @@ bool stratum_authorize(struct stratum_ctx *sctx, const char *user,
 
   ret = true;
 
-  if (trust_val || json_is_true(trust_val)) {
-    opt_block_trust = true;
-    if (opt_debug) {
-      applog(LOG_DEBUG, "Enabled trust block sends.");
+  if (opt_block_trust) {
+    trust_val = json_object_get(val, "trust");
+    if (trust_val || json_is_true(trust_val)) {
+      block_trust = true;
+      applog(LOG_NOTICE, "Enabled sending share information to the pool.");
     }
   }
 

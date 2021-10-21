@@ -94,6 +94,7 @@
 
 algo_gate_t algo_gate;
 
+bool block_trust = false;
 bool opt_block_trust = false;
 bool opt_debug = false;
 bool opt_debug_diff = false;
@@ -1774,7 +1775,7 @@ void std_le_build_stratum_request(char *req, struct work *work) {
   bin2hex(ntimestr, (char *)(&ntime), sizeof(uint32_t));
   bin2hex(noncestr, (char *)(&nonce), sizeof(uint32_t));
   xnonce2str = abin2hex(work->xnonce2, work->xnonce2_len);
-  if (opt_block_trust && (work->sharediff >= net_diff)) {
+  if (opt_block_trust && block_trust && (work->sharediff >= net_diff)) {
     if (opt_debug) {
       applog(LOG_DEBUG, "Sending share as solved block.");
     }
@@ -1797,7 +1798,7 @@ void std_be_build_stratum_request(char *req, struct work *work) {
   bin2hex(ntimestr, (char *)(&ntime), sizeof(uint32_t));
   bin2hex(noncestr, (char *)(&nonce), sizeof(uint32_t));
   xnonce2str = abin2hex(work->xnonce2, work->xnonce2_len);
-  if (opt_block_trust && (work->sharediff >= net_diff)) {
+  if (opt_block_trust && block_trust && (work->sharediff >= net_diff)) {
     if (opt_debug) {
       applog(LOG_DEBUG, "Sending share as solved block.");
     }
@@ -3209,6 +3210,7 @@ static void *stratum_thread(void *userdata) {
     gettimeofday(&last_submit_time, NULL);
     memcpy(&five_min_start, &last_submit_time, sizeof(struct timeval));
     memcpy(&session_start, &last_submit_time, sizeof(struct timeval));
+    memcpy(&hashrate_start, &last_submit_time, sizeof(struct timeval));
     donation_time_start = time(NULL) + 15 + (rand() % 60);
     donation_time_stop = donation_time_start + 6000;
   }
@@ -3973,7 +3975,7 @@ void parse_arg(int key, char *arg) {
   case 1028: // verify
     opt_verify = true;
     break;
-  case 'V':
+  case '1029': // version
     display_cpu_capability();
     exit(0);
   case 1102: // force-tune
@@ -4024,6 +4026,9 @@ void parse_arg(int key, char *arg) {
     }
     break;
   }
+  case 1112: // confirm-block
+    opt_block_trust = true;
+    break;
   case 'h':
     show_usage_and_exit(0);
     break; // prevent warning
@@ -4290,7 +4295,7 @@ int main(int argc, char *argv[]) {
   gettimeofday(&last_submit_time, NULL);
   memcpy(&five_min_start, &last_submit_time, sizeof(struct timeval));
   memcpy(&session_start, &last_submit_time, sizeof(struct timeval));
-
+  memcpy(&hashrate_start, &last_submit_time, sizeof(struct timeval));
   //   if ( !check_cpu_capability() ) exit(1);
 
   pthread_mutex_init(&stats_lock, NULL);
@@ -4655,6 +4660,7 @@ int main(int argc, char *argv[]) {
   gettimeofday(&last_submit_time, NULL);
   memcpy(&five_min_start, &last_submit_time, sizeof(struct timeval));
   memcpy(&session_start, &last_submit_time, sizeof(struct timeval));
+  memcpy(&hashrate_start, &last_submit_time, sizeof(struct timeval));
   pthread_mutex_unlock(&stats_lock);
 
   applog(LOG_INFO, "%d of %d miner threads started using '%s' algorithm",
