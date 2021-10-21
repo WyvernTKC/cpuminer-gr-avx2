@@ -14,7 +14,7 @@ rm -r bin/unix 2>/dev/null
 rm cpuminer 2>/dev/null
 mkdir -p bin/unix/ 2>/dev/null
 
-DCFLAGS="-Wall -fno-common -Wextra -Wabi"
+DCFLAGS="-Wall -fno-common -Wextra -Wabi -Wno-missing-field-initializers"
 DCXXFLAGS="-Wno-ignored-attributes"
 
 # 1 - Architecture

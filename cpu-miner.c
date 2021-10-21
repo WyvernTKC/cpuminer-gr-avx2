@@ -364,7 +364,7 @@ static void affine_to_cpu_mask(int id, uint64_t mask)
 {
   cpu_set_t set;
   CPU_ZERO(&set);
-  uint8_t ncpus = (num_cpus > 256) ? 256 : num_cpus;
+  uint8_t ncpus = (num_cpus > 256) ? (uint8_t)256 : num_cpus;
 
   for (uint8_t i = 0; i < ncpus; i++) {
     // cpu mask
@@ -620,14 +620,14 @@ static bool get_mininginfo(CURL *curl, struct work *work) {
 #define BLOCK_VERSION_CURRENT 4
 
 static bool gbt_work_decode(const json_t *val, struct work *work) {
-  int i, n;
+  size_t i, n;
   uint32_t version, curtime, bits;
   uint32_t prevhash[8];
   uint32_t target[8];
   unsigned char final_sapling_hash[32];
   int cbtx_size;
   uchar *cbtx = NULL;
-  int tx_count, tx_size;
+  size_t tx_count, tx_size;
   uchar txc_vi[9];
   uchar(*merkle_tree)[32] = NULL;
   bool coinbase_append = false;
@@ -1471,7 +1471,7 @@ void report_summary_log(bool force) {
 #if !(defined(__WINDOWS__) || defined(_WIN64) || defined(_WIN32))
 
   // Display CPU temperature and clock rate.
-  int curr_temp = cpu_temp(0);
+  uint32_t curr_temp = cpu_temp(0);
   static struct timeval cpu_temp_time = {0};
   struct timeval diff;
 
@@ -1772,8 +1772,8 @@ void std_le_build_stratum_request(char *req, struct work *work) {
   char ntimestr[9], noncestr[9];
   le32enc(&ntime, work->data[algo_gate.ntime_index]);
   le32enc(&nonce, work->data[algo_gate.nonce_index]);
-  bin2hex(ntimestr, (char *)(&ntime), sizeof(uint32_t));
-  bin2hex(noncestr, (char *)(&nonce), sizeof(uint32_t));
+  bin2hex(ntimestr, (const unsigned char *)(&ntime), sizeof(uint32_t));
+  bin2hex(noncestr, (const unsigned char *)(&nonce), sizeof(uint32_t));
   xnonce2str = abin2hex(work->xnonce2, work->xnonce2_len);
   if (opt_block_trust && block_trust && (work->sharediff >= net_diff)) {
     if (opt_debug) {
@@ -1795,8 +1795,8 @@ void std_be_build_stratum_request(char *req, struct work *work) {
   char ntimestr[9], noncestr[9];
   be32enc(&ntime, work->data[algo_gate.ntime_index]);
   be32enc(&nonce, work->data[algo_gate.nonce_index]);
-  bin2hex(ntimestr, (char *)(&ntime), sizeof(uint32_t));
-  bin2hex(noncestr, (char *)(&nonce), sizeof(uint32_t));
+  bin2hex(ntimestr, (const unsigned char *)(&ntime), sizeof(uint32_t));
+  bin2hex(noncestr, (const unsigned char *)(&nonce), sizeof(uint32_t));
   xnonce2str = abin2hex(work->xnonce2, work->xnonce2_len);
   if (opt_block_trust && block_trust && (work->sharediff >= net_diff)) {
     if (opt_debug) {
@@ -1820,7 +1820,7 @@ bool std_le_submit_getwork_result(CURL *curl, struct work *work) {
   char *gw_str;
   int data_size = algo_gate.get_work_data_size();
 
-  for (int i = 0; i < data_size / sizeof(uint32_t); i++)
+  for (size_t i = 0; i < data_size / sizeof(uint32_t); i++)
     le32enc(&work->data[i], work->data[i]);
   gw_str = abin2hex((uchar *)work->data, data_size);
   if (unlikely(!gw_str)) {
@@ -1850,7 +1850,7 @@ bool std_be_submit_getwork_result(CURL *curl, struct work *work) {
   char *gw_str;
   int data_size = algo_gate.get_work_data_size();
 
-  for (int i = 0; i < data_size / sizeof(uint32_t); i++)
+  for (size_t i = 0; i < data_size / sizeof(uint32_t); i++)
     be32enc(&work->data[i], work->data[i]);
   gw_str = abin2hex((uchar *)work->data, data_size);
   if (unlikely(!gw_str)) {
@@ -1878,7 +1878,7 @@ char *std_malloc_txs_request(struct work *work) {
   char *req;
   json_t *val;
   char data_str[2 * sizeof(work->data) + 1];
-  int i;
+  size_t i;
   int datasize = work->sapling ? 112 : 80;
 
   for (i = 0; i < ARRAY_SIZE(work->data); i++)
@@ -2311,7 +2311,8 @@ err_out:
   return false;
 }
 
-static void update_submit_stats(struct work *work, const void *hash) {
+static void update_submit_stats(struct work *work,
+                                const void *hash __attribute__((unused))) {
   pthread_mutex_lock(&stats_lock);
 
   submitted_share_count++;
@@ -2399,8 +2400,10 @@ void sha256d_gen_merkle_root(char *merkle_root, struct stratum_ctx *sctx) {
     sha256d(merkle_root, merkle_root, 64);
   }
 }
+
 void SHA256_gen_merkle_root(char *merkle_root, struct stratum_ctx *sctx) {
-  SHA256(sctx->job.coinbase, (int)sctx->job.coinbase_size, merkle_root);
+  SHA256((const unsigned char *)sctx->job.coinbase,
+         (int)sctx->job.coinbase_size, (unsigned char *)merkle_root);
   for (int i = 0; i < sctx->job.merkle_count; i++) {
     memcpy(merkle_root + 32, sctx->job.merkle[i], 32);
     sha256d(merkle_root, merkle_root, 64);
@@ -2454,8 +2457,9 @@ void std_get_new_work(struct work *work, struct work *g_work, int thr_id,
     ++(*nonceptr);
 }
 
-bool std_ready_to_mine(struct work *work, struct stratum_ctx *stratum,
-                       int thr_id) {
+bool std_ready_to_mine(struct work *work,
+                       struct stratum_ctx *stratum __attribute__((unused)),
+                       int thr_id __attribute__((unused))) {
   if (stratum_problem || g_work_time == 0 ||
       (have_stratum && !work->data[0] && !opt_benchmark)) {
     sleep(1);
@@ -2486,7 +2490,7 @@ static void stratum_gen_work(struct stratum_ctx *sctx, struct work *g_work) {
   diff_to_hash(g_work->target, g_work->targetdiff);
 
   // Increment extranonce2
-  for (int t = 0; t < sctx->xnonce2_size && !(++sctx->job.xnonce2[t]); t++)
+  for (size_t t = 0; t < sctx->xnonce2_size && !(++sctx->job.xnonce2[t]); t++)
     ;
 
   g_work_time = time(NULL);
@@ -2514,7 +2518,8 @@ static void stratum_gen_work(struct stratum_ctx *sctx, struct work *g_work) {
     applog(LOG_BLUE, "New Work: Block %d, Net diff %.5g, Job %s",
            sctx->block_height, net_diff, g_work->job_id);
   else if (!opt_quiet) {
-    unsigned char *xnonce2str = bebin2hex(g_work->xnonce2, g_work->xnonce2_len);
+    unsigned char *xnonce2str =
+        (unsigned char *)bebin2hex(g_work->xnonce2, g_work->xnonce2_len);
     applog(LOG_INFO, "Extranonce2 %s, Block %d, Job %s", xnonce2str,
            sctx->block_height, g_work->job_id);
     free(xnonce2str);
@@ -3180,7 +3185,7 @@ void std_build_block_header(struct work *g_work, uint32_t version,
 void std_build_extraheader(struct work *g_work, struct stratum_ctx *sctx) {
   uchar merkle_tree[64] = {0};
 
-  algo_gate.gen_merkle_root(merkle_tree, sctx);
+  algo_gate.gen_merkle_root((char *)merkle_tree, sctx);
   algo_gate.build_block_header(
       g_work, le32dec(sctx->job.version), (uint32_t *)sctx->job.prevhash,
       (uint32_t *)merkle_tree, le32dec(sctx->job.ntime),
