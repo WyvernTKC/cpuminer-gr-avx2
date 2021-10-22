@@ -8,6 +8,7 @@
  */
 
 #include "gr-gate.h"
+#include "sysinfos.c"       // cpu_temp
 #include "virtual_memory.h" // Memory allocation.
 #include <unistd.h>         // usleep
 
@@ -935,6 +936,129 @@ void benchmark(void *input, int thr_id, long sleep_time) {
       gr_hash_order[5] = cn[local_rotation][(shuffle + 0) % 3] + 15;
       gr_hash_order[11] = cn[local_rotation][(shuffle + 1) % 3] + 15;
       gr_hash_order[17] = cn[local_rotation][(shuffle + 2) % 3] + 15;
+    }
+#if defined(GR_4WAY)
+    // Make sure nonces are increased for each hash. Same hashes will result
+    // in better data locality on CN algos leading to better/innaccurate
+    // results.
+    gr_4way_hash(hash, vdata, thr_id);
+    *noncev = _mm256_add_epi32(*noncev, m256_const1_64(0x0000000400000000));
+    hashes_done += 4.0;
+#else
+    // Increase nonce.
+    edata0[19] += 2;
+    edata1[19] += 2;
+    gr_hash(hash, edata0, edata1, thr_id);
+    hashes_done += 2.0;
+#endif
+  }
+}
+
+void stress_test(void *input, int thr_id) {
+  for (int i = 0; i < 160; i++) {
+    ((uint8_t *)input)[i] = i;
+  }
+
+  // Purge memory for test.
+  AllocateNeededMemory(true);
+  srand(thr_id);
+
+  uint32_t n = 10000 * thr_id;
+  uint32_t edata0[20] __attribute__((aligned(64)));
+  mm128_bswap32_80(edata0, input);
+  edata0[19] = n;
+#if defined(GR_4WAY)
+  uint32_t hash[8 * 4] __attribute__((aligned(64)));
+  uint32_t vdata[20 * 4] __attribute__((aligned(64)));
+  __m256i *noncev = (__m256i *)vdata + 9; // aligned
+  mm256_bswap32_intrlv80_4x64(vdata, input);
+  *noncev = mm256_intrlv_blend_32(
+      _mm256_set_epi32(n + 3, 0, n + 2, 0, n + 1, 0, n, 0), *noncev);
+#else
+  uint32_t hash[8 * 2] __attribute__((aligned(64)));
+  uint32_t edata1[20] __attribute__((aligned(64)));
+  mm128_bswap32_80(edata1, input);
+  edata1[19] = n + 1;
+#endif
+
+  double hashes_done = 0.0;
+  struct timeval start, end, diff;
+
+  cn_config[Turtlelite] = 2;
+  cn_config[Turtle] = 2;
+  cn_config[Darklite] = 2;
+  // Those do not rly matter.
+  cn_config[Dark] = 1;
+  cn_config[Lite] = 0;
+  cn_config[Fast] = 0;
+
+#if defined(GR_4WAY)
+  const double periods = 1200.0;
+#else
+  const double periods = 600.0;
+#endif
+
+  // Change first part of the hash to get different core rotation.
+  for (int i = 0; i < 5 + 1; ++i) {
+    edata0[i] = rand();
+  }
+  // Use new rotation.
+  gr_getAlgoString((const uint8_t *)(&edata0[1]), gr_hash_order);
+  if (rand() % 2 == 1) {
+    gr_hash_order[5] = cn[30][0] + 15;
+    gr_hash_order[11] = cn[30][1] + 15;
+    gr_hash_order[17] = cn[30][2] + 15;
+  } else {
+    gr_hash_order[5] = cn[18][0] + 15;
+    gr_hash_order[11] = cn[18][1] + 15;
+    gr_hash_order[17] = cn[18][2] + 15;
+  }
+  cn_config[Turtlelite] = rand() % 2 + 1;
+
+  sync_conf(); // Sync before benchmark starts.
+  gettimeofday(&start, NULL);
+  while (true) {
+    if (hashes_done >= periods) {
+      gettimeofday(&end, NULL);
+      // Change first part of the hash to get different core rotation.
+      for (int i = 0; i < 5 + 1; ++i) {
+        edata0[i] = rand();
+      }
+      // Use new rotation.
+      gr_getAlgoString((const uint8_t *)(&edata0[1]), gr_hash_order);
+      if (rand() % 2 == 1) {
+        gr_hash_order[5] = cn[30][0] + 15;
+        gr_hash_order[11] = cn[30][1] + 15;
+        gr_hash_order[17] = cn[30][2] + 15;
+      } else {
+        gr_hash_order[5] = cn[31][0] + 15;
+        gr_hash_order[11] = cn[31][1] + 15;
+        gr_hash_order[17] = cn[31][2] + 15;
+      }
+
+      // Change prefetch just in case to test stability.
+      prefetch_l1 = (rand() % 2 == 1);
+
+      // Change turtlelite to 1, 2, 4 way.
+      cn_config[Turtlelite] = rand() % 2 + 1;
+
+      timeval_subtract(&diff, &end, &start);
+      double elapsed = (double)diff.tv_sec + (double)diff.tv_usec / 1e6;
+
+      pthread_mutex_lock(&stats_lock);
+      bench_hashes += hashes_done;
+      bench_time += elapsed;
+      if (thr_id == 0 && bench_time > 0.01) {
+        applog(LOG_INFO, "Stress testing! ~%.1lf H/s - CPU: %.2f C",
+               bench_hashes / bench_time * opt_n_threads, cpu_temp(0));
+      }
+      pthread_mutex_unlock(&stats_lock);
+
+      thr_hashrates[thr_id] = hashes_done / elapsed;
+
+      hashes_done = 0.0;
+
+      gettimeofday(&start, NULL);
     }
 #if defined(GR_4WAY)
     // Make sure nonces are increased for each hash. Same hashes will result

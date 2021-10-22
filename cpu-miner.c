@@ -129,6 +129,7 @@ int opt_param_r = 0;
 int opt_n_threads = 0;
 bool opt_sapling = false;
 bool opt_set_msr = true;
+bool opt_stress_test = false;
 bool matching_instructions = true;
 
 // Path to custom sensor location.
@@ -4061,6 +4062,13 @@ void parse_arg(int key, char *arg) {
     }
 #endif
     break;
+  case 1115: // stress-test
+    opt_stress_test = true;
+    want_longpoll = false;
+    want_stratum = false;
+    have_stratum = false;
+    opt_benchmark = true;
+    break;
   case 'h':
     show_usage_and_exit(0);
     break; // prevent warning
@@ -4484,7 +4492,7 @@ int main(int argc, char *argv[]) {
 
   size_t max_large_pages = 2;
   // Tuning not loaded and not disabled. Try loading tune_config file.
-  if (opt_tune) {
+  if (opt_tune && !opt_stress_test) {
     if (opt_tune_force || !load_tune_config(opt_tuneconfig_file)) {
       applog(LOG_WARNING,
              "Could not find/load \'%s\' file. Miner will "

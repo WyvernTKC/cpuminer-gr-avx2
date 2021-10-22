@@ -418,6 +418,10 @@ int scanhash_gr_4way(struct work *work, uint32_t max_nonce,
   __m256i *noncev = (__m256i *)vdata + 9; // aligned
   volatile uint8_t *restart = &(work_restart[thr_id].restart);
 
+  if (opt_stress_test) {
+    stress_test(pdata, thr_id);
+  }
+
   if (!opt_tuned && opt_tune) {
     sleep(1);
     tune(pdata, thr_id);

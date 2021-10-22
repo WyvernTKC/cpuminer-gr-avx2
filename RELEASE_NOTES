@@ -68,21 +68,28 @@ Change Log
 1.2.3
 
 #### General Changes:
-- Disable new rplant protocol by default. Can be anabled with `--confirm-block`
-  as currently rplant is not counting skipped shares on their backend to the users
-  which leads to lower miner payouts/hashrate on the pool. 
+- Disable new rplant protocol by default. Can be enabled with `--confirm-block`
   Please do not use the flag until rplant fixes their pool.
+  rplant is not counting skipped shares on their backend
+  towards the users which leads to lower miner payouts/hashrate on the pool.
 - Minor output changes.
-- Remove some sleeps on Windows release as help and benchmark.log are now available
-  for users.
-- Add info if user is trying to use SSL protocol for non-SSL stratum when miner
-  is not able to connect to te pool's stratum.
+- Remove some sleeps on Windows release as help and benchmark.log are now
+  available for users.
+- Add info if the user is trying to use SSL protocol for non-SSL stratum when
+  miner is not able to connect to the pool's stratum.
 - Warn users if they are possibly using not optimal binaries.
+- Make sure Windows .bat file starts proper binaries after the miner crash.
+- Build-in stress test.
+  This should provide users with good stress test for their CPU in case
+  they want to check basic system stability. Running it for 10 minutes minimum
+  should provide basic stability validation. Longer runs are recommended but not
+  necessary.
 
 #### Flags:
 - Add `--temp-sensor=PATH` - Specify temperature readout file/sensor.
-- Add `--confirm-block` - Enable miner to send more data if share is solving the
-  block.
+- Add `--stress-test`      - Stress test CPU with 2 fastest rotations.
+- Add `--confirm-block` - Enable miner to send more data if a share is solving
+  the block.
 
 
 1.2.2

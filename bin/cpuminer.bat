@@ -228,6 +228,7 @@ echo Change line 11 if CPU was not detected properly.
 call :StartMiner
 
 :StartMiner
+echo If file is "missing" please check if Windows Defender or AV did not block/remove it.
 binaries\cpuminer-!CPU_INST!.exe --config=config.json
 timeout 5 > NUL
 goto StartMiner

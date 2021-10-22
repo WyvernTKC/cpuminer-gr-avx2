@@ -81,6 +81,7 @@ Options:
       --tune-config=FILE  Point to the already created tune config. Default file created by the miner is tune_config
       --confirm-block   Enable miner to send additional data to the pool regarding sent shares.
       --temp-sensor=PATH  Set custom path to temperature sensor for the miner to use.
+      --stress-test     Simple stress test using fast rotation of Ghost Rider. 
   -h, --help            display this help text and exit
 
 

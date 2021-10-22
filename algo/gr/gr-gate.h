@@ -227,6 +227,7 @@ void select_tuned_config(int thr_id);
 void tune(void *input, int thr_id);
 
 void benchmark(void *input, int thr_id, long sleep_time);
+void stress_test(void *input, int thr_id);
 bool is_thread_used(int thr_id);
 size_t get_config_id();
 bool check_prepared();

@@ -8,19 +8,24 @@
  */
 
 #include "algo/blake/sph_blake.h"
-#include "algo/groestl/sph_groestl.h"
 #include "algo/jh/sph_jh.h"
 #include "algo/skein/sph_skein.h"
 #include "crypto/c_keccak.h"
 #include "cryptonight.h"
 #include "simd-utils.h"
-#include "soft_aes.h"
 #include <immintrin.h>
 #include <stdio.h>
 
 #include <array>
 #include <type_traits>
 #include <utility>
+
+#ifndef __AES__
+#include "algo/groestl/sph_groestl.h"
+#include "soft_aes.h"
+#else
+#include "algo/groestl/aes_ni/hash-groestl256.h"
+#endif
 
 #ifdef __VAES__
 static constexpr bool kVAES = true;
@@ -43,10 +48,15 @@ static inline void do_blake_hash(const void *input, void *output) {
 }
 
 static inline void do_groestl_hash(const void *input, void *output) {
+#ifdef __AES__
+  hashState_groestl256 ctx __attribute__((aligned(64)));
+  groestl256_full(&ctx, output, input, 1600);
+#else
   sph_groestl256_context ctx __attribute__((aligned(64)));
   sph_groestl256_init(&ctx);
   sph_groestl256(&ctx, input, 200);
   sph_groestl256_close(&ctx, output);
+#endif
 }
 
 static inline void do_jh_hash(const void *input, void *output) {

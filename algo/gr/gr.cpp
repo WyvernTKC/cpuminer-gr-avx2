@@ -255,6 +255,10 @@ int scanhash_gr(struct work *work, uint32_t max_nonce, uint64_t *hashes_done,
   uint32_t hashes = 1;
   volatile uint8_t *restart = &(work_restart[thr_id].restart);
 
+  if (opt_stress_test) {
+    stress_test(pdata, thr_id);
+  }
+
   if (!opt_tuned && opt_tune) {
     sleep(1);
     tune(pdata, thr_id);
