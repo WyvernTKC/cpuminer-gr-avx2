@@ -46,7 +46,9 @@
 //#endif
 
 //#define ROTL64(a,n) ((((a)<<(n))|((a)>>(64-(n))))&li_64(ffffffffffffffff))
+#ifndef ROTL64
 #define ROTL64(a, n) rol64(a, n)
+#endif
 
 #if (PLATFORM_BYTE_ORDER == IS_BIG_ENDIAN)
 #define EXT_BYTE(var, n) ((u8)((u64)(var) >> (8 * (7 - (n)))))

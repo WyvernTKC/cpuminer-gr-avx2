@@ -2609,6 +2609,8 @@ static void stratum_gen_work(struct stratum_ctx *sctx, struct work *g_work) {
   if ((stratum_diff != sctx->job.diff) ||
       (last_block_height != sctx->block_height)) {
 
+    bool new_block = (last_block_height != sctx->block_height);
+
     static bool multipool = false;
     if (stratum.block_height < last_block_height)
       multipool = true;
@@ -2620,8 +2622,10 @@ static void stratum_gen_work(struct stratum_ctx *sctx, struct work *g_work) {
     if (lowest_share < last_targetdiff)
       lowest_share = 9e99;
 
-    applog2(LOG_INFO, "Diff: Net %.5g, Stratum %.5g, Target %.5g", net_diff,
-            stratum_diff, g_work->targetdiff);
+    if (new_block) {
+      applog2(LOG_INFO, "Diff: Net %.5g, Stratum %.5g, Target %.5g", net_diff,
+              stratum_diff, g_work->targetdiff);
+    }
     if (!opt_quiet) {
 
       if (likely(hr > 0.)) {
@@ -2637,7 +2641,7 @@ static void stratum_gen_work(struct stratum_ctx *sctx, struct work *g_work) {
         // hr_units,
         //        block_ttf, share_ttf);
 
-        if (!multipool && last_block_height > session_first_block) {
+        if (!multipool && new_block) {
           struct timeval now, et;
           gettimeofday(&now, NULL);
           timeval_subtract(&et, &now, &session_start);

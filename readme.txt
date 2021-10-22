@@ -13,11 +13,15 @@ All options should be presented in JSON format like:
 Some examples:
 "tune-full": true
 "tune-config": "tune_config"
-"url": "stratum+tcp://YOUR_POOL_ADDRESS:PORT"
 "user": "YOUR_WALLET"
 
+If using non-SSL stratum:
+"url": "stratum+tcp://YOUR_POOL_ADDRESS:PORT"
+If using SSL stratum:
+"url": "stratum+tcps://YOUR_POOL_ADDRESS:PORT"
 
 Help from the miner:
+Options:
   -a, --algo=ALGO       specify the algorithm to use
                           gr            Ghost Rider - Raptoreum (RTM)
   -N, --param-n         N parameter for scrypt based algos
@@ -33,9 +37,9 @@ Help from the miner:
   -t, --threads=N       number of miner threads (default: number of processors)
   -r, --retries=N       number of times to retry if a network call fails
                           (default: retry indefinitely)
-      --retry-pause=N   time to pause between retries, in seconds (default: 5)
+      --retry-pause=N   time to pause between retries, in seconds (default: 30)
       --time-limit=N    maximum time [s] to mine before exiting the program.
-  -T, --timeout=N       timeout for long poll and stratum (default: 240 seconds)
+  -T, --timeout=N       timeout for long poll and stratum (default: 300 seconds)
   -s, --scantime=N      upper bound on time spent scanning current work when
                           long polling is unavailable, in seconds (default: 5)
       --randomize       Randomize scan range start to reduce duplicates
@@ -67,7 +71,7 @@ Help from the miner:
   -c, --config=FILE     load a JSON-format configuration file
       --data-file       path and name of data file
       --verify          enable additional time consuming start up tests
-  -V, --version         display version information and exit
+      --version         display version information and exit
       --log=FILE        path to the file that will include a copy of miner output. File is not cleared after restart.
   -d, --donation=VAL    donation value in %. Default is 1.75
   -y  --no-msr          disable application of MSR mod on the system
@@ -75,6 +79,8 @@ Help from the miner:
       --no-tune         disable tuning of the miner before mining. Tuning takes ~69 (non-AVX2) or ~154 (AVX2+) minutes. 
       --tune-full       enable full tuning. Include All 4way Cryptonight variants. Tuning takes ~222 minutes. Only available on AVX2+
       --tune-config=FILE  Point to the already created tune config. Default file created by the miner is tune_config
+      --confirm-block   Enable miner to send additional data to the pool regarding sent shares.
+      --temp-sensor=PATH  Set custom path to temperature sensor for the miner to use.
   -h, --help            display this help text and exit
 
 

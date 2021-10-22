@@ -3,6 +3,8 @@
 @SetLocal EnableDelayedExpansion
 @cd /d "%~dp0"
 
+set CPU_INST=
+
 REM Add proper binary instruction set in INST_OVERRIDE to force use those binaries.
 REM To check whichi ones are avaliable refer to readme.txt or use program like CPU-Z. 
 REM Binaries: sse2 sse42 aes-sse42 avx avx2 zen zen2 zen3 avx512 avx512-sha avx512-sha-vaes
@@ -206,22 +208,29 @@ for /f "tokens=1*" %%a in ("!Params!") do EndLocal & set %1=%%b
 exit /b
 
 :RunUnknown
-echo Using %USE_UNKNOWN% by default. Change line 6 and 9 if CPU was not detected properly.
+echo Using %USE_UNKNOWN% by default. Change line 11 if CPU was not detected properly.
 echo Detected Unknown CPU - %MANUFACTURER%
 echo Detected CPU Caption - %CPUCAPTION%
 echo Detected CPU Description - %CPUDESCRIPTION%
-call :RunBinary %USE_UNKNOWN% %1
+set CPU_INST="%USE_UNKNOWN%"
+call :StartMiner
 
 :RunOverride
-call :RunBinary %1 %2
+echo Detected %1 compatible binary with %2 architecture
+echo Change line 11 if CPU was not detected properly.
+set CPU_INST="%1"
+call :StartMiner
 
 :RunBinary
+set CPU_INST="%1"
 echo Detected %1 compatible binary with %2 architecture
-echo Change line 6 and 9 if CPU was not detected properly.
+echo Change line 11 if CPU was not detected properly.
+call :StartMiner
 
-binaries\cpuminer-%1.exe --config=config.json
+:StartMiner
+binaries\cpuminer-!CPU_INST!.exe --config=config.json
 timeout 5 > NUL
-call :RunBinary %1 %2
+goto StartMiner
 
 :Exit
 pause

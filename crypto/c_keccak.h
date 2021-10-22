@@ -12,7 +12,7 @@
 #endif
 
 #ifndef ROTL64
-#define ROTL64(x, y) (((x) << (y)) | ((x) >> (64 - (y))))
+#define ROTL64(a, n) rol64(a, n)
 #endif
 
 #ifdef __cplusplus
