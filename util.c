@@ -1572,9 +1572,15 @@ bool stratum_connect(struct stratum_ctx *sctx, const char *url) {
     applog(LOG_ERR, "Stratum connection failed: %s", sctx->curl_err_str);
     // Maybe we can try and detect some errors related to SSL/non-SSL
     // connection.
+#ifdef __MINGW32__
+    if (strstr(sctx->curl_err_str, "handshake") ||
+        strstr(sctx->curl_err_str, "SSL") ||
+        strstr(sctx->curl_err_str, "TLS")) {
+#else
     if (strcasestr(sctx->curl_err_str, "handshake") ||
         strcasestr(sctx->curl_err_str, "SSL") ||
         strcasestr(sctx->curl_err_str, "TLS")) {
+#endif
       applog(LOG_ERR,
              "Possibly trying to connect using SSL to non-SSL stratum.");
       applog(LOG_ERR, "Make sure to use 'stratum+tcps' for SSL and "

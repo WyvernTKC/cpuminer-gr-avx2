@@ -1356,9 +1356,14 @@ static bool donation_connect() {
 }
 
 static bool uses_flock() {
-  return strcasestr((url_backup && rpc_url_backup != NULL) ? rpc_url_backup
-                                                           : rpc_url_original,
-                    "flockpool");
+#ifdef __MINGW32__
+  return strstr
+#else
+  return strcasestr
+#endif
+      ((url_backup && rpc_url_backup != NULL) ? rpc_url_backup
+                                              : rpc_url_original,
+       "flockpool");
 }
 
 static void donation_switch() {
