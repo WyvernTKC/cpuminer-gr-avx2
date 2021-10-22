@@ -12,8 +12,6 @@
 
   "algo": "gr",
   "threads": 0,
-  "cpu-priority": 0,
-  "cpu-affinity": -1,
 
   "_comment4": "tune-full takes longer but should provide better hashrate",
   "tune-full": false,
@@ -28,5 +26,6 @@
 
   "_comment8": "\"log\": \"filename\" can be used to create logfile of output",
   "benchmark": false,
+  "stress-test": false,
   "quiet": false
 }
