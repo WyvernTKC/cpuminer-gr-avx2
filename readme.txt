@@ -90,7 +90,7 @@ Correct binaries should be selected automaticaly from the provided .sh/.bat scri
 
 # Compiled as AMD Zen1 AVX2 SHA
 # AMD Zen & Zen+ - 1000 & 2000 series (3000 Mobile)
-cpuminer-zen"
+cpuminer-zen
 
 # Compiled as AMD Zen2 AVX2 SHA
 # AMD Zen2 - 3000 (Desktop) & 4000 series
@@ -134,10 +134,10 @@ cpuminer-avx
 cpuminer-aes-sse42
 
 # Compiled as Nehalem SSE4.2
-cpuminer-sse42"
+cpuminer-sse42
 
 # Compiled as Core2 SSSE3
-cpuminer-ssse3"
+cpuminer-ssse3
 
 # Compiled as Generic SSE2
 cpuminer-sse2
