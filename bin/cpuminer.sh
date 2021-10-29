@@ -142,6 +142,15 @@ elif [[ $HAS_AVX512 && $HAS_SHA ]]; then
   INST="avx512-sha"
 elif [[ $HAS_AVX512 ]]; then
   INST="avx512"
+elif [[ $HAS_AVX2 && $HAS_VAES && $HAS_SHA ]]; then
+  # zen3 fallback in case of non English locale.
+  INST="zen3"
+elif [[ $HAS_AVX2 && $HAS_AES && $HAS_SHA ]]; then
+  # zen2 fallback in case of non English locale.
+  # In theory can also be zen/zen+
+  INST="zen2"
+elif [[ $HAS_AVX2 ]]; then
+  INST="avx2"
 elif [[ $HAS_AVX2 ]]; then
   INST="avx2"
 elif [[ $HAS_AVX && $HAS_AES ]]; then
