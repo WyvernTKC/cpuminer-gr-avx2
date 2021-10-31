@@ -63,7 +63,7 @@ if /I !MANUFACTURER! == GenuineIntel (
   REM Rocket Lake S
   if !CPU_MODEL! EQU 167 ( call :RunBinary avx512-sha-vaes "Rocket Lake (C)" )
   REM Tiger Lake H, U
-  if !CPU_MODEL! EQU 141 ( call :RunBinary avx512-sha "Tiger Lake (C)" )
+  if !CPU_MODEL! EQU 141 ( call :RunBinary avx512-sha-vaes "Tiger Lake (C)" )
   if !CPU_MODEL! EQU 140 ( call :RunBinary avx512-sha "Tiger Lake (C)" )
   REM Ice Lake U & Y
   if !CPU_MODEL! EQU 126 ( call :RunBinary avx512-sha-vaes "Ice Lake (C)" )
