@@ -58,8 +58,8 @@ if /I !MANUFACTURER! == GenuineIntel (
   REM List of used CPU Model numbers taken from: https://en.wikichip.org/wiki/intel/cpuid
   REM Big Cores (Client)
   REM Alder Lake S, P
-  if !CPU_MODEL! EQU 151 ( call :RunBinary avx512-sha "Alder Lake (C)" )
-  if !CPU_MODEL! EQU 154 ( call :RunBinary avx512-sha "Alder Lake (C)" )
+  if !CPU_MODEL! EQU 151 ( call :RunBinary avx2 "Alder Lake (C)" )
+  if !CPU_MODEL! EQU 154 ( call :RunBinary avx2 "Alder Lake (C)" )
   REM Rocket Lake S
   if !CPU_MODEL! EQU 167 ( call :RunBinary avx512-sha-vaes "Rocket Lake (C)" )
   REM Tiger Lake H, U

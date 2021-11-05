@@ -143,20 +143,30 @@ elif [[ $HAS_AVX512 && $HAS_SHA ]]; then
 elif [[ $HAS_AVX512 ]]; then
   INST="avx512"
 elif [[ $HAS_AVX2 && $HAS_VAES && $HAS_SHA ]]; then
-  # zen3 fallback in case of non English locale.
-  INST="zen3"
+  if [[ $CPU_VENDOR == "AMD" ]]; then
+    # zen3 fallback in case of non English locale.
+    INST="zen3"
+  else # Intel Alder Lake
+    INST="avx2"
+    #INST="avx2-sha-vaes"
+  fi
 elif [[ $HAS_AVX2 && $HAS_AES && $HAS_SHA ]]; then
   # zen2 fallback in case of non English locale.
   # In theory can also be zen/zen+
   INST="zen2"
-elif [[ $HAS_AVX2 ]]; then
+elif [[ $HAS_AVX2 && $HAS_AES ]]; then
   INST="avx2"
 elif [[ $HAS_AVX2 ]]; then
-  INST="avx2"
+  echo -e "${YELLOW}Detected AVX2 CPU but not AES support.${NC}"
+  echo -e "${YELLOW}Please check BIOS settings and enable it!${NC}"
+  echo -e "${YELLOW}Running without hardware AES leads major decrease in performance!${NC}"
+  INST="sse42"
 elif [[ $HAS_AVX && $HAS_AES ]]; then
   # It is possible to have AVX but not AES.
   # Some OEM laptops have it disabled by default in the bios.
   INST="avx"
+elif [[ $HAS_AVX && $HAS_AES ]]; then
+  INST="sse42"
 elif [[ $HAS_SSE42 && $HAS_AES ]]; then
   INST="aes-sse42"
 elif [[ $HAS_SSE42 ]]; then
