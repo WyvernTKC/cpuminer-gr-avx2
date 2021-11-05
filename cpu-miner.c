@@ -4523,6 +4523,7 @@ int main(int argc, char *argv[]) {
       if (opt_tune_full) {
         applog(LOG_WARNING,
                "Ignoring tune-full flag. Only available on AVX2 capable CPUs.");
+        opt_tune_full = false;
       }
       uint32_t tune_def_time = (((640 + 40) * 6) / 60) + 2;
       applog(LOG_WARNING, "Tuning process takes ~%d minutes to finish.",
