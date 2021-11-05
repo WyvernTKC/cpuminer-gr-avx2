@@ -481,10 +481,12 @@ static void tune_config(void *input, int thr_id, int rot) {
   struct timeval start, end, diff;
   uint32_t shuffle = 222;
   sync_bench();
+  usleep(20000);
   sync_bench();
 
   if (!is_thread_used(thr_id)) {
     sync_bench();
+    usleep(20000);
     sync_bench();
     return;
   }
@@ -524,6 +526,7 @@ static void tune_config(void *input, int thr_id, int rot) {
       // Update thread hashrate for API.
       thr_hashrates[thr_id] = hashes_done / elapsed;
       sync_bench();
+      usleep(20000);
       sync_bench();
       break;
     }
@@ -664,6 +667,10 @@ void tune(void *input, int thr_id) {
   } else {
     cn_tune[0][5] = 1;
   }
+#ifndef GR_4WAY
+  // Make sure it stays at 2 pages max on nonAVX2 CPUs.
+  cn_tune[0][5] = 1;
+#endif
   AllocateNeededMemory(true);
   cn_tune[0][5] = 0;
 
@@ -878,6 +885,7 @@ void benchmark(void *input, int thr_id, long sleep_time) {
   gettimeofday(&start, NULL);
   while (true) {
     if (unlikely(local_rotation != rotation)) {
+      gettimeofday(&end, NULL);
       // Change first part of the hash to get different core rotation.
       for (int i = 1; i < 5 + 1; ++i) {
         edata0[i] = rand();
@@ -888,7 +896,6 @@ void benchmark(void *input, int thr_id, long sleep_time) {
       gr_hash_order[11] = cn[rotation][1] + 15;
       gr_hash_order[17] = cn[rotation][2] + 15;
 
-      gettimeofday(&end, NULL);
       timeval_subtract(&diff, &end, &start);
       double elapsed = (double)diff.tv_sec + (double)diff.tv_usec / 1e6;
       if (thread_used) {
@@ -896,9 +903,13 @@ void benchmark(void *input, int thr_id, long sleep_time) {
         bench_hashes += hashes_done;
         bench_time += elapsed;
         pthread_mutex_unlock(&stats_lock);
+        // Update thread hashrate for API.
+        thr_hashrates[thr_id] = hashes_done / elapsed;
+      } else {
+        // Update thread hashrate for API.
+        thr_hashrates[thr_id] = 0.0;
+        ;
       }
-      // Update thread hashrate for API.
-      thr_hashrates[thr_id] = hashes_done / elapsed;
 
       hashes_done = 0.0;
       if (opt_tuned) {

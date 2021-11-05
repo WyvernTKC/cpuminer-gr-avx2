@@ -58,8 +58,8 @@ if /I !MANUFACTURER! == GenuineIntel (
   REM List of used CPU Model numbers taken from: https://en.wikichip.org/wiki/intel/cpuid
   REM Big Cores (Client)
   REM Alder Lake S, P
-  if !CPU_MODEL! EQU 151 ( call :RunBinary avx2 "Alder Lake (C)" )
-  if !CPU_MODEL! EQU 154 ( call :RunBinary avx2 "Alder Lake (C)" )
+  if !CPU_MODEL! EQU 151 ( call :RunBinary avx2-sha-vaes "Alder Lake (C)" )
+  if !CPU_MODEL! EQU 154 ( call :RunBinary avx2-sha-vaes "Alder Lake (C)" )
   REM Rocket Lake S
   if !CPU_MODEL! EQU 167 ( call :RunBinary avx512-sha-vaes "Rocket Lake (C)" )
   REM Tiger Lake H, U
@@ -104,7 +104,7 @@ if /I !MANUFACTURER! == GenuineIntel (
   
   REM Big Cores (Server)
   REM Sapphire Rapids
-  if !CPU_MODEL! EQU 143 ( call :RunBinary avx512-sha "Sapphire Rapids (S)" )
+  if !CPU_MODEL! EQU 143 ( call :RunBinary avx512-sha-vaes "Sapphire Rapids (S)" )
   REM Ice Lake (Server) DE & SP
   if !CPU_MODEL! EQU 108 ( call :RunBinary avx512-sha-vaes "Ice Lake (S)" )
   if !CPU_MODEL! EQU 106 ( call :RunBinary avx512-sha-vaes "Ice Lake (S)" )

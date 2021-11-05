@@ -65,6 +65,17 @@ If not what makes it happen or not happen?
 Change Log
 ----------
 
+1.2.4
+#### Fix:
+- Fix problem when miner would reconnect after donation to the same pool.
+  Occured if user switched to backup pool at least once.
+- Fix problem with Large Pages, AVX or below while `tune-full` was set to `true`.
+
+#### General:
+- Update startup scripts.
+- Use new avx2-sha-vaes on Alder Lake.
+
+
 1.2.3
 
 #### General Changes:

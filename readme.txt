@@ -100,6 +100,9 @@ cpuminer-zen2
 # AMD Zen3 - 5000 series
 cpuminer-zen3
 
+# Alder Lake (12th gen, 12000 series) E cores limit to avx2 instead of avx512+
+cpuminer-avx2-sha-vaes
+
 # Compiled as Icelake AVX512 SHA VAES
 # Ice Lake (10th gen, 10000 series Mobile)
 # Rocket Lake (11th gen, 11000 series)
@@ -121,7 +124,6 @@ cpuminer-avx512
 # Kaby Lake (7th gen, 7000 series)
 # Coffee Lake (8 & 9th gen, 8000/9000 series)
 # Cascade Lake / Cannon Lake (10th gen, 10000 series)
-# Alder Lake (12th gen, 12000 series) E cores limit to avx2 instead of avx512+
 cpuminer-avx2
 
 # Compiled as Sandybridge AVX AES

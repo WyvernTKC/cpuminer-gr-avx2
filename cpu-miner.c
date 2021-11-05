@@ -119,7 +119,7 @@ static int opt_retries = -1;
 static int opt_fail_pause = 15;
 static int opt_time_limit = 0;
 int opt_timeout = 300;
-static int opt_scantime = 30;
+static int opt_scantime = 45;
 const int min_scantime = 1;
 // static const bool opt_time = true;
 enum algos opt_algo = ALGO_NULL;
@@ -246,13 +246,13 @@ char *donation_url_pattern[2][8] = {
      "ausminers", "rplant"}};
 char *donation_url[2][8] = {
     {"stratum+tcp://eu.flockpool.com:4444",
-     "stratum+tcp://us.flockpool.com:4444",
+     "stratum+tcp://us-west.flockpool.com:4444",
      "stratum+tcp://asia.flockpool.com:4444", "stratum+tcp://p2pool.co:3032",
      "stratum+tcp://r-pool.net:3032", "stratum+tcp://rtm.suprnova.cc:6273",
      "stratum+tcp://rtm.ausminers.com:3001",
      "stratum+tcp://stratum-eu.rplant.xyz:7056"},
     {"stratum+tcp://eu.flockpool.com:4444",
-     "stratum+tcp://us.flockpool.com:4444",
+     "stratum+tcp://us-west.flockpool.com:4444",
      "stratum+tcp://asia.flockpool.com:4444", "stratum+tcp://p2pool.co:3032",
      "stratum+tcp://r-pool.net:3032", "stratum+tcp://rtm.suprnova.cc:6273",
      "stratum+tcp://rtm.ausminers.com:3001",
@@ -1067,11 +1067,11 @@ static struct timeval last_submit_time = {0};
 static inline int stats_ptr_incr(int p) { return ++p % s_stats_size; }
 
 static bool is_stale_share(struct work *work) {
+  pthread_mutex_lock(&stats_lock);
   if ((work->data[algo_gate.ntime_index] !=
        g_work.data[algo_gate.ntime_index]) ||
       stratum_problem || g_work_time == 0 || switching_sctx_data) {
     applog(LOG_WARNING, "Skip stale share.");
-    pthread_mutex_lock(&stats_lock);
     // Treat share as Stale.
     stale_share_count++;
     // Increment work pointer. Treat it as if you received a response.
@@ -1080,6 +1080,7 @@ static bool is_stale_share(struct work *work) {
     pthread_mutex_unlock(&stats_lock);
     return true;
   }
+  pthread_mutex_unlock(&stats_lock);
   return false;
 }
 
@@ -1427,12 +1428,14 @@ static void donation_switch() {
     // Make sure to switch stratums after stratum donation switch.
     // Go back to original stratum if switched to backup in the meantime.
     // MAKE SURE rpc_url is matching user rpc and backup 100%.
-    if (switched_stratum || (url_backup && rpc_url_backup != NULL) ||
+    if (switched_stratum || // If switched stratum during donation.
+        (url_backup && rpc_url_backup != NULL) || // If switched to backup.
         !(strcmp(rpc_url, rpc_url_original) == 0 ||
           (rpc_url_backup != NULL && strcmp(rpc_url, rpc_url_backup) == 0))) {
       free(rpc_url);
       rpc_url = strdup(rpc_url_original);
       short_url = &rpc_url[sizeof("stratum+tcp://") - 1];
+      url_backup = false; // Went back to OG pool.
       stratum_check(true);
     }
     switched_stratum = false;
@@ -3483,6 +3486,8 @@ static bool cpu_capability(bool display_only) {
       (cpu_has_sse2 && !sw_has_sse2) || (cpu_has_vaes && !sw_has_vaes) ||
       (cpu_has_aes && !sw_has_aes) || (cpu_has_sha && !sw_has_sha)) {
     matching_instructions = false;
+    applog(LOG_WARNING, "Software does NOT match CPU features!");
+    applog(LOG_WARNING, "Please check if proper binaries are being used.");
   }
 
   // Determine mining options
@@ -4209,6 +4214,9 @@ int main(int argc, char *argv[]) {
   opt_tuneconfig_file = strdup("tune_config");
 
   show_credits();
+  opt_algo = ALGO_GR;
+  if (!check_cpu_capability())
+    exit(1);
 
   unsigned long now = time(NULL);
   srand(now);
@@ -4286,13 +4294,13 @@ int main(int argc, char *argv[]) {
   if (!register_algo_gate(opt_algo, &algo_gate))
     exit(1);
 
-  if (!check_cpu_capability())
-    exit(1);
+  // if (!check_cpu_capability())
+  //  exit(1);
 
-  if (!matching_instructions) {
-    applog(LOG_WARNING, "Software does NOT match CPU features!");
-    applog(LOG_WARNING, "Please check if proper binaries are being used.");
-  }
+  // if (!matching_instructions) {
+  //  applog(LOG_WARNING, "Software does NOT match CPU features!");
+  //  applog(LOG_WARNING, "Please check if proper binaries are being used.");
+  //}
 
   if (!opt_benchmark) {
     if (!short_url) {

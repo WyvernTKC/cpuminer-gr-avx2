@@ -14,7 +14,7 @@ rm -r bin/unix 2>/dev/null
 rm cpuminer 2>/dev/null
 mkdir -p bin/unix/ 2>/dev/null
 
-DCFLAGS="-Wall -fno-common -Wextra -Wabi -Wno-missing-field-initializers"
+DCFLAGS="-Wall -fno-common -Wextra -Wno-missing-field-initializers"
 DCXXFLAGS="-Wno-ignored-attributes"
 
 # 1 - Architecture
@@ -80,3 +80,9 @@ compile "cascadelake" "avx512-sha" "-msha -mtune=intel"
 
 # Slylake-X AVX512 AES
 compile "skylake-avx512" "avx512" "-mtune=intel"
+
+# Alder Lake
+# GCC 11
+# compile "alderlake" "avx2-sha-vaes" "-mtune=alderlake"
+# GCC < 10
+compile "skylake" "avx2-sha-vaes" "-mtune=intel -mvaes -msha"
