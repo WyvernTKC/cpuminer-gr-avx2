@@ -4652,7 +4652,7 @@ int main(int argc, char *argv[]) {
 #ifdef __AES__
   // Prepare and set MSR.
   if (opt_set_msr) {
-    int ret = enable_msr(opt_n_threads);
+    int ret = enable_msr(num_cpus);
     if (ret == 0) {
       applog(LOG_NOTICE, CL_WHT CL_GRN "MSR set up successfully." CL_WHT);
     } else if (ret == 1) {
