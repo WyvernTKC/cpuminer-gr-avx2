@@ -75,6 +75,12 @@ Change Log
 - Update startup scripts.
 - Use new avx2-sha-vaes on Alder Lake.
 
+#### Flags:
+- Add `--ecores=N` - Specify number of E cores of the CPU. Miner will try to
+  autodetect. It will show predicted number. Specifying it incorrectly or
+  on platform that do NOT support E cores (Intel Alder Lake) can lead to reduced
+  performance.
+
 
 1.2.3
 

@@ -130,6 +130,8 @@ int opt_n_threads = 0;
 bool opt_sapling = false;
 bool opt_set_msr = true;
 bool opt_stress_test = false;
+uint32_t opt_ecores = (uint32_t)-1;
+bool is_intel_12th = false;
 bool matching_instructions = true;
 
 // Path to custom sensor location.
@@ -237,22 +239,24 @@ char *rpc_url_original = NULL;
 // Data about dev wallets.
 // idx 0 - Ausminer
 // idx 1 - Delgon
-const uint8_t max_idx = 8;
+const uint8_t max_idx = 9;
 uint8_t donation_url_idx[2] = {0, 0};
-char *donation_url_pattern[2][8] = {
-    {"flockpool", "flockpool", "flockpool", "p2pool", "r-pool", "suprnova",
-     "ausminers", "rplant"},
-    {"flockpool", "flockpool", "flockpool", "p2pool", "r-pool", "suprnova",
-     "ausminers", "rplant"}};
-char *donation_url[2][8] = {
+char *donation_url_pattern[2][9] = {
+    {"flockpool", "flockpool", "flockpool", "flockpool", "p2pool", "r-pool",
+     "suprnova", "ausminers", "rplant"},
+    {"flockpool", "flockpool", "flockpool", "flockpool", "p2pool", "r-pool",
+     "suprnova", "ausminers", "rplant"}};
+char *donation_url[2][9] = {
     {"stratum+tcp://eu.flockpool.com:4444",
      "stratum+tcp://us-west.flockpool.com:4444",
+     "stratum+tcp://us.flockpool.com:4444",
      "stratum+tcp://asia.flockpool.com:4444", "stratum+tcp://p2pool.co:3032",
      "stratum+tcp://r-pool.net:3032", "stratum+tcp://rtm.suprnova.cc:6273",
      "stratum+tcp://rtm.ausminers.com:3001",
      "stratum+tcp://stratum-eu.rplant.xyz:7056"},
     {"stratum+tcp://eu.flockpool.com:4444",
      "stratum+tcp://us-west.flockpool.com:4444",
+     "stratum+tcp://us.flockpool.com:4444",
      "stratum+tcp://asia.flockpool.com:4444", "stratum+tcp://p2pool.co:3032",
      "stratum+tcp://r-pool.net:3032", "stratum+tcp://rtm.suprnova.cc:6273",
      "stratum+tcp://rtm.ausminers.com:3001",
@@ -3384,6 +3388,37 @@ static bool cpu_capability(bool display_only) {
         printf("\n");
 #endif
 
+  // Detect if it is 12th Gen Intel.
+  if (strstr(cpu_brand, "12th")) {
+    is_intel_12th = true;
+    opt_ecores = (opt_ecores == (uint32_t)-1) ? 0 : opt_ecores;
+    if (opt_debug) {
+      applog(LOG_DEBUG, "Detected Intel 12th Gen.");
+    }
+  }
+  if (strstr(cpu_brand, "12900")) {
+    is_intel_12th = true;
+    opt_ecores = (opt_ecores == (uint32_t)-1) ? 8 : opt_ecores;
+    if (opt_debug) {
+      applog(LOG_DEBUG, "Detected Intel 12900. Setting ecores to %d out of (8)",
+             opt_ecores);
+    }
+  } else if (strstr(cpu_brand, "12700")) {
+    is_intel_12th = true;
+    opt_ecores = (opt_ecores == (uint32_t)-1) ? 4 : opt_ecores;
+    if (opt_debug) {
+      applog(LOG_DEBUG, "Detected Intel 12700. Setting ecores to %d out of (4)",
+             opt_ecores);
+    }
+  } else if (strstr(cpu_brand, "12600")) {
+    is_intel_12th = true;
+    opt_ecores = (opt_ecores == (uint32_t)-1) ? 4 : opt_ecores;
+    if (opt_debug) {
+      applog(LOG_DEBUG, "Detected Intel 12600. Setting ecores to %d out of (4)",
+             opt_ecores);
+    }
+  }
+
   printf("CPU features: ");
   if (cpu_has_avx512)
     printf(" AVX512");
@@ -4079,6 +4114,10 @@ void parse_arg(int key, char *arg) {
     have_stratum = false;
     opt_benchmark = true;
     break;
+  case 1116: // ecores
+    d = atoi(arg);
+    opt_ecores = d;
+    break;
   case 'h':
     show_usage_and_exit(0);
     break; // prevent warning
@@ -4215,8 +4254,6 @@ int main(int argc, char *argv[]) {
 
   show_credits();
   opt_algo = ALGO_GR;
-  if (!check_cpu_capability())
-    exit(1);
 
   unsigned long now = time(NULL);
   srand(now);
@@ -4231,9 +4268,24 @@ int main(int argc, char *argv[]) {
   } else if (!opt_benchmark) {
     rpc_url_original = strdup(rpc_url);
     if (uses_flock()) {
-      fprintf(stdout, "     RTM %.2lf%% Donation\n\n", donation_percent - 0.25);
+      fprintf(stdout, "     RTM %.2lf%% Fee\n\n", donation_percent - 0.25);
     } else {
-      fprintf(stdout, "     RTM %.2lf%% Donation\n\n", donation_percent);
+      fprintf(stdout, "     RTM %.2lf%% Fee\n\n", donation_percent);
+    }
+  }
+
+  if (!check_cpu_capability())
+    exit(1);
+
+  if (is_intel_12th) {
+    applog(LOG_INFO, "Detected 12th Gen Intel.");
+  }
+  if (opt_ecores != (uint32_t)-1) {
+    applog(LOG_NOTICE, CL_WHT CL_GRN "Setting E cores number to %u" CL_WHT,
+           opt_ecores);
+    if (!is_intel_12th) {
+      applog(LOG_WARNING, "Miner did not detect 12th Gen Intel. Make sure it "
+                          "is if you want to use ecores option.");
     }
   }
 

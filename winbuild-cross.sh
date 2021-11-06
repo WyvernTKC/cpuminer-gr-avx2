@@ -42,7 +42,7 @@ cp $LOCAL_LIB/curl/lib/.libs/libcurl-4.dll bin/win/
 # CPU Groups that are present in multi NUMA configs.
 # "-D_WIN32_WINNT=0x0601"
 
-DCFLAGS="-Wall -fno-common -Wextra -Wabi -D_WIN32_WINNT=0x0601"
+DCFLAGS="-Wall -fno-common -Wextra -D_WIN32_WINNT=0x0601"
 DCXXFLAGS="-Wno-ignored-attributes"
 
 # Start building...
@@ -114,6 +114,12 @@ compile "cascadelake" "avx512-sha" "-msha -mtune=intel"
 
 # Slylake-X AVX512 AES
 compile "skylake-avx512" "avx512" "-mtune=intel"
+
+# Alder Lake
+# GCC 11
+# compile "alderlake" "avx2-sha-vaes" "-mtune=alderlake"
+# GCC < 10
+compile "skylake" "avx2-sha-vaes" "-mtune=intel -mvaes -msha"
 
 # Remove gmp.h
 rm ./gmp.h 2>/dev/null
