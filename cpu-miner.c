@@ -2753,7 +2753,7 @@ static void *miner_thread(void *userdata) {
     if ((opt_affinity == (uint128_t)(-1)) && opt_n_threads > 1) {
       affine_to_cpu_mask(thr_id, ((uint128_t)(1)) << (thr_id % num_cpus));
       if (opt_debug)
-        applog(LOG_INFO, "Binding thread %d to cpu %d. Mask 0x%llX %llX",
+        applog(LOG_INFO, "Binding thread %d to cpu %d. Mask 0x%016llX %016llX",
                thr_id, thr_id % num_cpus,
                u128_hi64((uint128_t)1 << (thr_id % num_cpus)),
                u128_lo64((uint128_t)1 << (thr_id % num_cpus)));
@@ -2762,7 +2762,7 @@ static void *miner_thread(void *userdata) {
     if ((opt_affinity == ((uint64_t)-1)) && (opt_n_threads > 1)) {
       affine_to_cpu_mask(thr_id, 1ULL << (thr_id % num_cpus));
       if (opt_debug)
-        applog(LOG_DEBUG, "Binding thread %d to cpu %d. Mask 0x%llX", thr_id,
+        applog(LOG_DEBUG, "Binding thread %d to cpu %d. Mask 0x%016llX", thr_id,
                thr_id % num_cpus, 1ULL << (thr_id % num_cpus));
     }
 #endif
@@ -2772,13 +2772,13 @@ static void *miner_thread(void *userdata) {
       if (opt_debug) {
 #if AFFINITY_USES_UINT128
         if (num_cpus > 64)
-          applog(LOG_INFO, "Binding thread %d to mask %016llx %016llx", thr_id,
+          applog(LOG_INFO, "Binding thread %d to mask %016llX %016llX", thr_id,
                  u128_hi64(opt_affinity), u128_lo64(opt_affinity));
         else
-          applog(LOG_INFO, "Binding thread %d to mask %016llx", thr_id,
+          applog(LOG_INFO, "Binding thread %d to mask %016llX", thr_id,
                  opt_affinity);
 #else
-        applog(LOG_INFO, "Binding thread %d to mask %016llx", thr_id,
+        applog(LOG_INFO, "Binding thread %d to mask %16llx", thr_id,
                opt_affinity);
 #endif
       }
@@ -3398,23 +3398,52 @@ static bool cpu_capability(bool display_only) {
   }
   if (strstr(cpu_brand, "12900")) {
     is_intel_12th = true;
-    opt_ecores = (opt_ecores == (uint32_t)-1) ? 8 : opt_ecores;
-    if (opt_debug) {
-      applog(LOG_DEBUG, "Detected Intel 12900. Setting ecores to %d out of (8)",
+    if (opt_n_threads == 24) {
+      opt_ecores = (opt_ecores == (uint32_t)-1) ? 8 : opt_ecores;
+      if (opt_debug) {
+        applog(LOG_DEBUG,
+               "Detected Intel 12900. Setting ecores to %d out of (8)",
+               opt_ecores);
+      }
+    } else {
+      applog(LOG_WARNING,
+             "Detected Intel 12900 with unusual number of threads! Setting "
+             "ecores to 0 out of (8)",
              opt_ecores);
+      opt_ecores = (opt_ecores == (uint32_t)-1) ? 0 : opt_ecores;
     }
   } else if (strstr(cpu_brand, "12700")) {
     is_intel_12th = true;
-    opt_ecores = (opt_ecores == (uint32_t)-1) ? 4 : opt_ecores;
-    if (opt_debug) {
-      applog(LOG_DEBUG, "Detected Intel 12700. Setting ecores to %d out of (4)",
+    if (opt_n_threads == 20) {
+      opt_ecores = (opt_ecores == (uint32_t)-1) ? 4 : opt_ecores;
+      if (opt_debug) {
+        applog(LOG_DEBUG,
+               "Detected Intel 12700. Setting ecores to %d out of (4)",
+               opt_ecores);
+      }
+    } else {
+      opt_ecores = (opt_ecores == (uint32_t)-1) ? 0 : opt_ecores;
+      applog(LOG_WARNING,
+             "Detected Intel 12700 with unusual number of threads!  Setting "
+             "ecores "
+             "to 0 out of (4)",
              opt_ecores);
     }
   } else if (strstr(cpu_brand, "12600")) {
     is_intel_12th = true;
-    opt_ecores = (opt_ecores == (uint32_t)-1) ? 4 : opt_ecores;
-    if (opt_debug) {
-      applog(LOG_DEBUG, "Detected Intel 12600. Setting ecores to %d out of (4)",
+    if (opt_n_threads == 16) {
+      opt_ecores = (opt_ecores == (uint32_t)-1) ? 4 : opt_ecores;
+      if (opt_debug) {
+        applog(LOG_DEBUG,
+               "Detected Intel 12600. Setting ecores to %d out of (4)",
+               opt_ecores);
+      }
+    } else {
+      opt_ecores = (opt_ecores == (uint32_t)-1) ? 0 : opt_ecores;
+      applog(LOG_WARNING,
+             "Detected Intel 12600 with unusual number of threads!  Setting "
+             "ecores "
+             "to 0 out of (4)",
              opt_ecores);
     }
   }
@@ -3811,6 +3840,9 @@ void parse_arg(int key, char *arg) {
     v = atoi(arg);
     if (v < 0 || v > 9999) /* sanity check */
       show_usage_and_exit(1);
+    if (v == 0) {
+      break;
+    }
     opt_n_threads = v;
     break;
   case 'u': // user
@@ -4241,6 +4273,47 @@ static size_t GetMaxLargePages() {
 }
 
 int main(int argc, char *argv[]) {
+#if defined(__MINGW32__)
+//	SYSTEM_INFO sysinfo;
+//	GetSystemInfo(&sysinfo);
+//	num_cpus = sysinfo.dwNumberOfProcessors;
+// What happens if GetActiveProcessorGroupCount called if groups not enabled?
+
+// Are Windows CPU Groups supported?
+#if _WIN32_WINNT == 0x0601
+  num_cpus = 0;
+  num_cpugroups = GetActiveProcessorGroupCount();
+  if (num_cpugroups > 1) {
+    applog(LOG_INFO, "Detected %d Processor Groups.", num_cpugroups);
+  }
+  for (i = 0; i < num_cpugroups; i++) {
+    int cpus = GetActiveProcessorCount(i);
+    num_cpus += cpus;
+
+    if (num_cpugroups > 1)
+      applog(LOG_DEBUG, "Found %d cpus on cpu group %d", cpus, i);
+  }
+#else
+  SYSTEM_INFO sysinfo;
+  GetSystemInfo(&sysinfo);
+  num_cpus = sysinfo.dwNumberOfProcessors;
+#endif
+
+#elif defined(_SC_NPROCESSORS_CONF)
+  num_cpus = sysconf(_SC_NPROCESSORS_CONF);
+#elif defined(CTL_HW) && defined(HW_NCPU)
+  int req[] = {CTL_HW, HW_NCPU};
+  size_t len = sizeof(num_cpus);
+  sysctl(req, 2, &num_cpus, &len, NULL, 0);
+#else
+  num_cpus = 1;
+#endif
+  if (num_cpus < 1)
+    num_cpus = 1;
+
+  if (!opt_n_threads)
+    opt_n_threads = num_cpus;
+
   struct thr_info *thr;
   long flags;
   int i, err;
@@ -4288,47 +4361,6 @@ int main(int argc, char *argv[]) {
                           "is if you want to use ecores option.");
     }
   }
-
-#if defined(__MINGW32__)
-//	SYSTEM_INFO sysinfo;
-//	GetSystemInfo(&sysinfo);
-//	num_cpus = sysinfo.dwNumberOfProcessors;
-// What happens if GetActiveProcessorGroupCount called if groups not enabled?
-
-// Are Windows CPU Groups supported?
-#if _WIN32_WINNT == 0x0601
-  num_cpus = 0;
-  num_cpugroups = GetActiveProcessorGroupCount();
-  if (num_cpugroups > 1) {
-    applog(LOG_INFO, "Detected %d Processor Groups.", num_cpugroups);
-  }
-  for (i = 0; i < num_cpugroups; i++) {
-    int cpus = GetActiveProcessorCount(i);
-    num_cpus += cpus;
-
-    if (opt_debug || i > 0)
-      applog(LOG_DEBUG, "Found %d cpus on cpu group %d", cpus, i);
-  }
-#else
-  SYSTEM_INFO sysinfo;
-  GetSystemInfo(&sysinfo);
-  num_cpus = sysinfo.dwNumberOfProcessors;
-#endif
-
-#elif defined(_SC_NPROCESSORS_CONF)
-  num_cpus = sysconf(_SC_NPROCESSORS_CONF);
-#elif defined(CTL_HW) && defined(HW_NCPU)
-  int req[] = {CTL_HW, HW_NCPU};
-  size_t len = sizeof(num_cpus);
-  sysctl(req, 2, &num_cpus, &len, NULL, 0);
-#else
-  num_cpus = 1;
-#endif
-  if (num_cpus < 1)
-    num_cpus = 1;
-
-  if (!opt_n_threads)
-    opt_n_threads = num_cpus;
 
 #ifdef AFFINITY_USES_UINT128
   // Redo opt_affinity as it might not have num_cpu info while processing flags.
