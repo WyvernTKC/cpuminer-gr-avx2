@@ -13,19 +13,37 @@ if NOT "%INST_OVERRIDE%" == "" (
   call :RunOverride %INST_OVERRIDE% "User Defined"
 )
 
-for /f "tokens=1 delims=" %%a in ('wmic cpu get Manufacturer') do for %%b in (%%a) do set MANUFACTURER=%%a
-for /f "tokens=1 delims=" %%a in ('wmic cpu get Caption') do for %%b in (%%a) do set CPUCAPTION=%%a
-for /f "tokens=1 delims=" %%a in ('wmic cpu get Description') do for %%b in (%%a) do set CPUDESCRIPTION=%%a
+echo Detecting CPU
 
-call :Trim MANUFACTURER %MANUFACTURER%
-call :Trim CPUCAPTION %CPUCAPTION%
-call :Trim CPUDESCRIPTION %CPUDESCRIPTION%
+where wmic 1>NUL 2>NUL
+
+if %ERRORLEVEL% EQU 0 (
+
+  for /f "tokens=1 delims=" %%a in ('wmic cpu get Manufacturer') do for %%b in (%%a) do set MANUFACTURER=%%a
+  for /f "tokens=1 delims=" %%a in ('wmic cpu get Caption') do for %%b in (%%a) do set CPUCAPTION=%%a
+  for /f "tokens=1 delims=" %%a in ('wmic cpu get Description') do for %%b in (%%a) do set CPUDESCRIPTION=%%a
+
+) else (
+
+  for /f "tokens=1 delims=" %%a in ('PowerShell -Command "Get-WmiObject -Class Win32_Processor -ComputerName . | Select-Object -Property Manufacturer"') do for %%b in (%%a) do set MANUFACTURER=%%a
+  for /f "tokens=1 delims=" %%a in ('PowerShell -Command "Get-WmiObject -Class Win32_Processor -ComputerName . | Select-Object -Property Caption"') do for %%b in (%%a) do set CPUCAPTION=%%a
+  for /f "tokens=1 delims=" %%a in ('PowerShell -Command "Get-WmiObject -Class Win32_Processor -ComputerName . | Select-Object -Property Description"') do for %%b in (%%a) do set CPUDESCRIPTION=%%a
+
+)
+
+call :Trim MANUFACTURER !MANUFACTURER!
+call :Trim CPUCAPTION !CPUCAPTION!
+call :Trim CPUDESCRIPTION !CPUDESCRIPTION!
+
+echo Detected Unknown CPU - !MANUFACTURER!
+echo Detected CPU Caption - !CPUCAPTION!
+echo Detected CPU Description - !CPUDESCRIPTION!
 
 set /a CPU_FAMILY=0
 set /a CPU_MODEL=0
 
 set /a TYPE=0
-for %%a in (%CPUCAPTION%) do ( 
+for %%a in (!CPUCAPTION!) do (
   if !TYPE! equ 1 (
     set /a CPU_FAMILY="%%a"
     set /a TYPE=0
@@ -42,15 +60,14 @@ set USE_UNKNOWN=sse2
 
 REM MANUFACTURER -> Manufacturer of the CPU. GenuineIntel or AuthenticAMD
 REM CPU_FAMILY & CPU_MODEL can be used to determine instruction set.
-echo Detected CPU Family: %CPU_FAMILY%
-echo Detected CPU Model:  %CPU_MODEL%
-
+echo Detected CPU Family: !CPU_FAMILY!
+echo Detected CPU Model:  !CPU_MODEL!
 
 REM Detected Intel
 if /I !MANUFACTURER! == GenuineIntel (
-  echo Detected %MANUFACTURER% CPU
+  echo Detected !MANUFACTURER! CPU
   if NOT !CPU_FAMILY! EQU 6 (
-    echo Unknowsn CPU Family - %CPU_FAMILY%
+    echo Unknowsn CPU Family - !CPU_FAMILY!
     call :RunUnknown "Unknown Intel Family"
   )
   
@@ -135,7 +152,7 @@ if /I !MANUFACTURER! == GenuineIntel (
 
 REM Detected AMD
 if /I !MANUFACTURER! == AuthenticAMD (
-  echo Detected %MANUFACTURER% CPU
+  echo Detected !MANUFACTURER! CPU
   if !CPU_FAMILY! EQU 25 (
     echo Detected Zen3 CPU
     call :RunBinary zen3 "Zen3"
@@ -196,9 +213,9 @@ if /I !MANUFACTURER! == AuthenticAMD (
 )
 
 REM Unknown CPU? use SSE2 to be safe.
-echo Detected Unknown CPU - %MANUFACTURER%
-echo Detected CPU Caption - %CPUCAPTION%
-echo Detected CPU Description - %CPUDESCRIPTION%
+echo Detected Unknown CPU - !MANUFACTURER!
+echo Detected CPU Caption - !CPUCAPTION!
+echo Detected CPU Description - !CPUDESCRIPTION!
 call :RunUnknown "Unknown"
 
 :Trim
@@ -209,9 +226,9 @@ exit /b
 
 :RunUnknown
 echo Using %USE_UNKNOWN% by default. Change line 11 if CPU was not detected properly.
-echo Detected Unknown CPU - %MANUFACTURER%
-echo Detected CPU Caption - %CPUCAPTION%
-echo Detected CPU Description - %CPUDESCRIPTION%
+echo Detected Unknown CPU - !MANUFACTURER!
+echo Detected CPU Caption - !CPUCAPTION!
+echo Detected CPU Description - !CPUDESCRIPTION!
 set CPU_INST="%USE_UNKNOWN%"
 call :StartMiner
 
@@ -228,7 +245,7 @@ echo Change line 11 if CPU was not detected properly.
 call :StartMiner
 
 :StartMiner
-echo If file is "missing" please check if Windows Defender or AV did not block/remove it.
+echo If file is "missing" please check if Windows Defender or AV did not block/remove it from binaries folder.
 binaries\cpuminer-!CPU_INST!.exe --config=config.json
 timeout 5 > NUL
 goto StartMiner
