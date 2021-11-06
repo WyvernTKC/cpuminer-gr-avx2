@@ -469,28 +469,40 @@ void *statistic_thread(void *arg) {
   sync_bench(); // Sync before benchmark starts.
   sync_bench(); // Rotation change sync.
   while (true) {
-    for (int i = 0; i < 3; ++i) {
-      usleep(sleep_time);
-      sub_rotation = (sub_rotation + 1) % 3;
-    }
-
     gr_hash_order[5] = cn[rotation][0] + 15;
     gr_hash_order[11] = cn[rotation][1] + 15;
     gr_hash_order[17] = cn[rotation][2] + 15;
+    // Do not wait for hashing threads if rotation is disabled.
+    if (arg_used || (!arg_used && !is_rot_disabled())) {
+      for (int i = 0; i < 3; ++i) {
+        usleep(sleep_time);
+        sub_rotation = (sub_rotation + 1) % 3;
+      }
+    } else {
+      usleep(100000);
+    }
+
     double tested_threads = (double)get_used_thread_count();
     // Change rotation.
     rotation = (rotation + 1) % 40;
 
     sync_bench(); // Rotation change sync.
-    // Update global hashrate for API.
-    global_hashrate = bench_hashes / bench_time;
+    if (!arg_used && is_rot_disabled()) {
+      global_hashrate = 0;
 
-    bench_hashrate_true += bench_hashes / bench_time * tested_threads;
-    bench_hashrate_all += bench_hashes / bench_time *
-                          time_ratio[(rotation + 39) % 40] / 2.0 *
-                          tested_threads;
-    bench_hashes /= tested_threads;
-    bench_time /= tested_threads;
+      bench_hashes = 0;
+      bench_time = sleep_time * 3.0;
+    } else {
+      // Update global hashrate for API.
+      global_hashrate = bench_hashes / bench_time;
+
+      bench_hashrate_true += bench_hashes / bench_time * tested_threads;
+      bench_hashrate_all += bench_hashes / bench_time *
+                            time_ratio[(rotation + 39) % 40] / 2.0 *
+                            tested_threads;
+      bench_hashes /= tested_threads;
+      bench_time /= tested_threads;
+    }
 
     char prefix[256] = {0};
     sprintf(prefix,
@@ -1069,7 +1081,7 @@ void benchmark(void *input, int thr_id, long sleep_time) {
       if (!is_thread_used(thr_id)) {
         thread_used = false;
         while (local_rotation == rotation) {
-          usleep(100000);
+          usleep(25000);
         }
         continue;
       } else {
