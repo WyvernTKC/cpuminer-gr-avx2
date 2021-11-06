@@ -465,6 +465,22 @@ int scanhash_gr_4way(struct work *work, uint32_t max_nonce,
   *noncev = mm256_intrlv_blend_32(
       _mm256_set_epi32(n + 3, 0, n + 2, 0, n + 1, 0, n, 0), *noncev);
 
+  // Check if current rotation is "disabled" by the user.
+  if (is_rot_disabled()) {
+    if (thr_id == 0) {
+      applog(LOG_WARNING, "Detected disabled rotation %d. Waiting...",
+             (get_config_id() / 2) + 1);
+    }
+    while (!(*restart)) {
+      // sleep for 50ms
+      // TODO
+      // use pthread_cond instead.
+      usleep(50000);
+    }
+    hashes_done = 0;
+    return 0;
+  }
+
   if (!is_thread_used(thr_id)) {
     while (!(*restart)) {
       // sleep for 50ms
@@ -472,6 +488,7 @@ int scanhash_gr_4way(struct work *work, uint32_t max_nonce,
       // use pthread_cond instead.
       usleep(50000);
     }
+    hashes_done = 0;
     return 0;
   }
 

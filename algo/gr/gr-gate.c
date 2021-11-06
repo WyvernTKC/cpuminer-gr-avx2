@@ -378,6 +378,8 @@ static size_t get_used_thread_count() {
   return used;
 }
 
+bool inline is_rot_disabled() { return opt_disabled_rots[get_config_id() / 2]; }
+
 static double bench_time = 0.0;
 static double bench_hashes = 0.0;
 static double bench_hashrate_all = 0.0;

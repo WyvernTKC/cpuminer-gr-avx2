@@ -131,6 +131,7 @@ bool opt_sapling = false;
 bool opt_set_msr = true;
 bool opt_stress_test = false;
 uint32_t opt_ecores = (uint32_t)-1;
+bool opt_disabled_rots[20] = {false};
 bool is_intel_12th = false;
 bool matching_instructions = true;
 
@@ -4149,6 +4150,22 @@ void parse_arg(int key, char *arg) {
   case 1116: // ecores
     d = atoi(arg);
     opt_ecores = d;
+    break;
+  case 1117: // disable-rot
+      ;
+    // arg - list like 1,5,19
+    char *dis_rot = strtok(arg, ",");
+    while (dis_rot != NULL) {
+      v = atoi(dis_rot);
+      // Only allow values from 0 - 20
+      if (v < 1 || v > 20) {
+        fprintf(stderr, "Allowed rotations from 1 - 20\n");
+        show_usage_and_exit(1);
+      }
+      printf("Disabling %d\n", v);
+      opt_disabled_rots[v - 1] = true;
+      dis_rot = strtok(NULL, ",");
+    }
     break;
   case 'h':
     show_usage_and_exit(0);

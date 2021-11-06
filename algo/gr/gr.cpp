@@ -301,6 +301,22 @@ int scanhash_gr(struct work *work, uint32_t max_nonce, uint64_t *hashes_done,
   edata0[19] = nonce;
   edata1[19] = nonce + 1;
 
+  // Check if current rotation is "disabled" by the user.
+  if (is_rot_disabled()) {
+    if (thr_id == 0) {
+      applog(LOG_WARNING, "Detected disabled rotation %d. Waiting...",
+             (get_config_id() / 2) + 1);
+    }
+    while (!(*restart)) {
+      // sleep for 50ms
+      // TODO
+      // use pthread_cond instead.
+      usleep(50000);
+    }
+    hashes_done = 0;
+    return 0;
+  }
+
   if (!is_thread_used(thr_id)) {
     while (!(*restart)) {
       // sleep for 50ms
@@ -308,8 +324,10 @@ int scanhash_gr(struct work *work, uint32_t max_nonce, uint64_t *hashes_done,
       // use pthread_cond instead.
       usleep(50000);
     }
+    hashes_done = 0;
     return 0;
   }
+
   while (likely((nonce < last_nonce) && !(*restart))) {
     if (gr_hash(hash, edata0, edata1, thr_id)) {
       if (hashes % 50 != 0) {

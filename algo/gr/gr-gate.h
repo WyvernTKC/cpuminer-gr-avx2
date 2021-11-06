@@ -231,6 +231,7 @@ void stress_test(void *input, int thr_id);
 bool is_thread_used(size_t thr_id);
 size_t get_config_id();
 bool check_prepared();
+bool is_rot_disabled();
 
 bool register_gr_algo(algo_gate_t *gate);
 

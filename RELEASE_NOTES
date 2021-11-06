@@ -82,7 +82,9 @@ Change Log
   autodetect. It will show predicted number. Specifying it incorrectly or
   on platform that do NOT support E cores (Intel Alder Lake) can lead to reduced
   performance.
-
+- Add `--disable-rot=LIST` - Comma separated list of rotations to not be used
+  while mining. For testing purposes only! Using this for normal mining WILL
+  reduce your overall average hashrate!! Does not apply for tuning process.
 
 1.2.3
 
