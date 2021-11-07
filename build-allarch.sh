@@ -85,4 +85,4 @@ compile "skylake-avx512" "avx512" "-mtune=intel"
 # GCC 11
 # compile "alderlake" "avx2-sha-vaes" "-mtune=alderlake"
 # GCC < 10
-compile "skylake" "avx2-sha-vaes" "-mtune=intel -mvaes -msha"
+compile "skylake" "avx2-sha-vaes" "-mvaes -msha -mtune=intel"

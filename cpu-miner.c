@@ -130,7 +130,7 @@ int opt_n_threads = 0;
 bool opt_sapling = false;
 bool opt_set_msr = true;
 bool opt_stress_test = false;
-uint32_t opt_ecores = (uint32_t)-1;
+int opt_ecores = -1;
 bool opt_disabled_rots[20] = {false};
 bool is_intel_12th = false;
 bool matching_instructions = true;
@@ -3389,63 +3389,63 @@ static bool cpu_capability(bool display_only) {
         printf("\n");
 #endif
 
-  // Detect if it is 12th Gen Intel.
-  if (strstr(cpu_brand, "12th")) {
-    is_intel_12th = true;
-    opt_ecores = (opt_ecores == (uint32_t)-1) ? 0 : opt_ecores;
-    if (opt_debug) {
-      applog(LOG_DEBUG, "Detected Intel 12th Gen.");
-    }
-  }
   if (strstr(cpu_brand, "12900")) {
     is_intel_12th = true;
     if (opt_n_threads == 24) {
-      opt_ecores = (opt_ecores == (uint32_t)-1) ? 8 : opt_ecores;
+      opt_ecores = (opt_ecores == -1) ? 8 : opt_ecores;
       if (opt_debug) {
         applog(LOG_DEBUG,
                "Detected Intel 12900. Setting ecores to %d out of (8)",
                opt_ecores);
       }
     } else {
-      applog(LOG_WARNING,
-             "Detected Intel 12900 with unusual number of threads! Setting "
-             "ecores to 0 out of (8)",
-             opt_ecores);
-      opt_ecores = (opt_ecores == (uint32_t)-1) ? 0 : opt_ecores;
+      applog2(LOG_WARNING,
+              "Detected Intel 12900 with unusual number of threads! Setting "
+              "ecores to 0 out of (8)",
+              opt_ecores);
+      opt_ecores = (opt_ecores == -1) ? 0 : opt_ecores;
     }
   } else if (strstr(cpu_brand, "12700")) {
     is_intel_12th = true;
     if (opt_n_threads == 20) {
-      opt_ecores = (opt_ecores == (uint32_t)-1) ? 4 : opt_ecores;
+      opt_ecores = (opt_ecores == -1) ? 4 : opt_ecores;
       if (opt_debug) {
-        applog(LOG_DEBUG,
-               "Detected Intel 12700. Setting ecores to %d out of (4)",
-               opt_ecores);
+        applog2(LOG_DEBUG,
+                "Detected Intel 12700. Setting ecores to %d out of (4)",
+                opt_ecores);
       }
     } else {
-      opt_ecores = (opt_ecores == (uint32_t)-1) ? 0 : opt_ecores;
-      applog(LOG_WARNING,
-             "Detected Intel 12700 with unusual number of threads!  Setting "
-             "ecores "
-             "to 0 out of (4)",
-             opt_ecores);
+      opt_ecores = (opt_ecores == -1) ? 0 : opt_ecores;
+      applog2(LOG_WARNING,
+              "Detected Intel 12700 with unusual number of threads!  Setting "
+              "ecores "
+              "to 0 out of (4)",
+              opt_ecores);
     }
   } else if (strstr(cpu_brand, "12600")) {
     is_intel_12th = true;
     if (opt_n_threads == 16) {
-      opt_ecores = (opt_ecores == (uint32_t)-1) ? 4 : opt_ecores;
+      opt_ecores = (opt_ecores == -1) ? 4 : opt_ecores;
       if (opt_debug) {
-        applog(LOG_DEBUG,
-               "Detected Intel 12600. Setting ecores to %d out of (4)",
-               opt_ecores);
+        applog2(LOG_DEBUG,
+                "Detected Intel 12600. Setting ecores to %d out of (4)",
+                opt_ecores);
       }
     } else {
-      opt_ecores = (opt_ecores == (uint32_t)-1) ? 0 : opt_ecores;
-      applog(LOG_WARNING,
-             "Detected Intel 12600 with unusual number of threads!  Setting "
-             "ecores "
-             "to 0 out of (4)",
-             opt_ecores);
+      opt_ecores = (opt_ecores == -1) ? 0 : opt_ecores;
+      applog2(LOG_WARNING,
+              "Detected Intel 12600 with unusual number of threads!  Setting "
+              "ecores "
+              "to 0 out of (4)",
+              opt_ecores);
+    }
+  }
+  // Detect if it is 12th Gen Intel.
+  if (strstr(cpu_brand, "12th")) {
+    is_intel_12th = true;
+    opt_ecores = (opt_ecores == -1) ? 0 : opt_ecores;
+    if (opt_debug) {
+      applog2(LOG_DEBUG, "Detected Intel 12th Gen.");
     }
   }
 
@@ -4364,19 +4364,25 @@ int main(int argc, char *argv[]) {
     }
   }
 
+  if (!register_algo_gate(opt_algo, &algo_gate))
+    exit(1);
+
   if (!check_cpu_capability())
     exit(1);
 
   if (is_intel_12th) {
     applog(LOG_INFO, "Detected 12th Gen Intel.");
   }
-  if (opt_ecores != (uint32_t)-1) {
+  if (opt_ecores != -1) {
     applog(LOG_NOTICE, CL_WHT CL_GRN "Setting E cores number to %u" CL_WHT,
            opt_ecores);
     if (!is_intel_12th) {
       applog(LOG_WARNING, "Miner did not detect 12th Gen Intel. Make sure it "
                           "is if you want to use ecores option.");
     }
+  } else {
+    // Make sure ecores number is at least 0.
+    opt_ecores = 0;
   }
 
 #ifdef AFFINITY_USES_UINT128

@@ -148,7 +148,6 @@ elif [[ $HAS_AVX2 && $HAS_VAES && $HAS_SHA ]]; then
     INST="zen3"
   else # Intel Alder Lake
     INST="avx2-sha-vaes"
-    #INST="avx2-sha-vaes"
   fi
 elif [[ $HAS_AVX2 && $HAS_AES && $HAS_SHA ]]; then
   # zen2 fallback in case of non English locale.

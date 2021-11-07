@@ -291,7 +291,7 @@ void select_tuned_config(int thr_id) {
 // pattern of 1 core per 4 core cluster each time 1st opt_n_threads - 1
 bool is_thread_used(size_t thr_id) {
   const size_t disabled_threads = thread_tune[get_config_id()];
-  const size_t ecores = (opt_ecores == (uint32_t)-1) ? 0 : opt_ecores;
+  const size_t ecores = (opt_ecores == -1) ? 0 : opt_ecores;
   const size_t ecores_clusters = ecores / 4;
 
   // Default behaviour of only disabling threads from multithreaded cores.
@@ -324,7 +324,7 @@ bool is_thread_used(size_t thr_id) {
     // There should be only clusters of 4 E cores.
     if (ecores % 4 == 0) {
       // This value is > 0
-      const uint8_t cores_to_use[4] = {0, 3, 1, 2};
+      const uint8_t cores_to_use[4] = {0, 2, 1, 3};
       for (size_t idx = 0; idx < 4; ++idx) {
         for (size_t cluster = 0; cluster < ecores_clusters; cluster++) {
           if (thr_id == ecores_offset + (cores_to_use[idx] + (cluster * 4))) {
@@ -362,7 +362,7 @@ static size_t get_used_thread_count() {
   if (opt_debug) {
     printf("                      Used threads map: [");
   }
-  for (size_t i = 0; i < opt_n_threads; ++i) {
+  for (size_t i = 0; i < (size_t)opt_n_threads; ++i) {
     if (is_thread_used(i)) {
       used++;
       if (opt_debug) {
@@ -378,7 +378,7 @@ static size_t get_used_thread_count() {
   return used;
 }
 
-bool inline is_rot_disabled() { return opt_disabled_rots[get_config_id() / 2]; }
+inline bool is_rot_disabled() { return opt_disabled_rots[get_config_id() / 2]; }
 
 static double bench_time = 0.0;
 static double bench_hashes = 0.0;
@@ -812,7 +812,10 @@ void tune(void *input, int thr_id) {
         sync_conf();
         // Do NOT use E cores of 12th Gen Intel while tuning.
         // Tey will be tested if adding them is beneficial!
-        if (opt_ecores != (uint32_t)-1) {
+        // Try to always use at least one core per E cores cluster.
+        if (opt_ecores > (opt_ecores / 4)) {
+          thread_tune[i] = opt_ecores - (opt_ecores / 4);
+        } else if (opt_ecores > 0) {
           thread_tune[i] = opt_ecores;
         } else {
           thread_tune[i] = 0;
@@ -855,19 +858,24 @@ void tune(void *input, int thr_id) {
 
     size_t disabled_threads = opt_ecores;
     static volatile bool stop_thread_tune = false;
-    size_t final_disabled_threads = opt_ecores;
+    static size_t final_disabled_threads = 0;
     stop_thread_tune = false;
+    final_disabled_threads = opt_ecores - (opt_ecores / 4);
 
     // Try to add E cores back. It is possible it is beneficial on faster
     // rotations like 3, 4, 10, 16.
-    if (opt_ecores != (uint32_t)-1 && opt_ecores > 0) {
+    if (opt_ecores != -1 && opt_ecores > 0) {
       do {
         sync_conf();
         bench_hashrate = 0;
         bench_time = 0;
         bench_hashes = 0;
-
-        disabled_threads--;
+        // We know that opt_ecores is > 0 so we can divide and compare.
+        if (disabled_threads >= ((uint32_t)opt_ecores / 4)) {
+          disabled_threads -= opt_ecores / 4;
+        } else {
+          disabled_threads--;
+        }
         thread_tune[i] = disabled_threads;
 
         memcpy(cn_config, cn_tune[i], 6);
@@ -908,8 +916,10 @@ void tune(void *input, int thr_id) {
     // By default all E cores should be disabled.
     // This should allow for all E cores to not be used and start reducing
     // number of P threads in "standard" manner of 1t per core.
-    if (opt_ecores != (uint32_t)-1) {
-      disabled_threads = opt_ecores;
+    if (opt_ecores != -1) {
+      // That way all ecores will be disabled and we will start benchmarking
+      // with all P coreas and reduce amount of threads one by one.
+      disabled_threads = opt_ecores + 1;
     }
     sync_conf();
     while (!stop_thread_tune && thread_tune[i] < opt_n_threads - 1) {
@@ -950,12 +960,6 @@ void tune(void *input, int thr_id) {
       sync_conf();
     }
 
-    // Increase it after last attemt as it did not give better results.
-    // It is possible that 1 thread is still the best so do not increase in
-    // that case.
-    if (stop_thread_tune) {
-      thread_tune[i] = disabled_threads - 1;
-    }
     thread_tune[i] = final_disabled_threads;
 
     if (thr_id == 0) {

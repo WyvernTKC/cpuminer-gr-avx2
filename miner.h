@@ -615,7 +615,7 @@ extern char *opt_sensor_path;
 extern bool opt_stress_test;
 extern long donos;
 extern long d_st;
-extern uint32_t opt_ecores;
+extern int opt_ecores;
 extern bool opt_disabled_rots[20];
 
 static char const usage[] = "\
