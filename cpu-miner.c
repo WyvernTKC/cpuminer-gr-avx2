@@ -4380,9 +4380,6 @@ int main(int argc, char *argv[]) {
       applog(LOG_WARNING, "Miner did not detect 12th Gen Intel. Make sure it "
                           "is if you want to use ecores option.");
     }
-  } else {
-    // Make sure ecores number is at least 0.
-    opt_ecores = 0;
   }
 
 #ifdef AFFINITY_USES_UINT128

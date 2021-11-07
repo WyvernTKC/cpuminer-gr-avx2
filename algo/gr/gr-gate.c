@@ -856,15 +856,16 @@ void tune(void *input, int thr_id) {
     }
     uint8_t variant[3] = {cn_map[cn[i][0]], cn_map[cn[i][1]], cn_map[cn[i][2]]};
 
-    size_t disabled_threads = opt_ecores;
+    size_t disabled_threads = (opt_ecores == -1) ? 0 : opt_ecores;
     static volatile bool stop_thread_tune = false;
     static size_t final_disabled_threads = 0;
     stop_thread_tune = false;
-    final_disabled_threads = opt_ecores - (opt_ecores / 4);
+    final_disabled_threads = 0;
 
     // Try to add E cores back. It is possible it is beneficial on faster
     // rotations like 3, 4, 10, 16.
-    if (opt_ecores != -1 && opt_ecores > 0) {
+    if (opt_ecores > 0) {
+      final_disabled_threads = opt_ecores - (opt_ecores / 4);
       do {
         sync_conf();
         bench_hashrate = 0;
@@ -916,7 +917,7 @@ void tune(void *input, int thr_id) {
     // By default all E cores should be disabled.
     // This should allow for all E cores to not be used and start reducing
     // number of P threads in "standard" manner of 1t per core.
-    if (opt_ecores != -1) {
+    if (opt_ecores > 0) {
       // That way all ecores will be disabled and we will start benchmarking
       // with all P coreas and reduce amount of threads one by one.
       disabled_threads = opt_ecores + 1;
