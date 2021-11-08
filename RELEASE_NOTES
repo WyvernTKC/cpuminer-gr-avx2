@@ -77,6 +77,10 @@ Change Log
 - Use new avx2-sha-vaes on Alder Lake.
 - Correct some output inconsistencies while tuning.
 
+### Improvements:
+- Add improvements for Alder Lake tuning. ~6% (12900k) increase in hashrate.
+  Retuning of the system is REQUIRED to get improved performance.
+
 ### Flags:
 - Add `--ecores=N` - Specify the number of E cores of the CPU. Miner will try to
   autodetect. It will show the predicted number. Specifying it incorrectly or on the

@@ -856,7 +856,14 @@ void tune(void *input, int thr_id) {
     }
     uint8_t variant[3] = {cn_map[cn[i][0]], cn_map[cn[i][1]], cn_map[cn[i][2]]};
 
-    size_t disabled_threads = (opt_ecores == -1) ? 0 : opt_ecores;
+    size_t disabled_threads;
+    if (opt_ecores > (opt_ecores / 4)) {
+      disabled_threads = opt_ecores - (opt_ecores / 4);
+    } else if (opt_ecores > 0) {
+      disabled_threads = opt_ecores;
+    } else {
+      disabled_threads = 0;
+    }
     static volatile bool stop_thread_tune = false;
     static size_t final_disabled_threads = 0;
     stop_thread_tune = false;
