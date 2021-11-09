@@ -4303,7 +4303,7 @@ int main(int argc, char *argv[]) {
   if (num_cpugroups > 1) {
     applog(LOG_INFO, "Detected %d Processor Groups.", num_cpugroups);
   }
-  for (i = 0; i < num_cpugroups; i++) {
+  for (int i = 0; i < num_cpugroups; i++) {
     int cpus = GetActiveProcessorCount(i);
     num_cpus += cpus;
 

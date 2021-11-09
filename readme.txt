@@ -82,6 +82,8 @@ Options:
       --confirm-block   Enable miner to send additional data to the pool regarding sent shares.
       --temp-sensor=PATH  Set custom path to temperature sensor for the miner to use.
       --stress-test     Simple stress test using fast rotation of Ghost Rider. 
+      --ecores=N        Specify exact number of E cores on Alder Lake CPU. Defaults to autodetect that can be inaccurate.
+      --disable-rot=LIST  Comma (,) separated number of rotations (3,10,16) to be skipped and not mined. For testing purposes.
   -h, --help            display this help text and exit
 
 
