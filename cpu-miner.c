@@ -272,7 +272,7 @@ volatile bool switching_sctx_data = false;
 bool enable_donation = true;
 double donation_percent = 1.75;
 int dev_turn = 1;
-int turn_part = 3;
+int turn_part = 2;
 bool dev_mining = false;
 bool switched_stratum = false;
 
@@ -1375,7 +1375,7 @@ static bool uses_flock() {
 static void donation_switch() {
   long now = time(NULL);
   if (donation_time_start <= now) {
-    applog(LOG_BLUE, "Donation Start");
+    applog(LOG_BLUE, "Dev Fee Start");
     dev_mining = true;
     switching_sctx_data = true;
 
@@ -1418,7 +1418,7 @@ static void donation_switch() {
       dev_turn = (dev_turn + 1) % 2; // Rotate between devs.
     }
   } else if (donation_time_stop <= now) {
-    applog(LOG_BLUE, "Donation Stop");
+    applog(LOG_BLUE, "Dev Fee Stop");
     dev_mining = false;
     switching_sctx_data = true;
     donation_time_start = now + donation_wait - (donation_percent * 60);
