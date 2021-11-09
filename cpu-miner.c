@@ -4382,6 +4382,59 @@ int main(int argc, char *argv[]) {
     }
   }
 
+  // Check if proper tcp / tcps was selected and replace if needed.
+  if (strstr(rpc_url_original, "flockpool")) {
+    bool uses_ssl = (strstr(rpc_url_original, ":5555") != NULL);
+    bool has_ssl_set = (strstr(rpc_url_original, "stratum+tcps://") != NULL);
+    char *tmp =
+        (char *)malloc(strlen(rpc_url_original) +
+                       (strstr(rpc_url_original, "://") == NULL ? 15 : 1));
+    if (uses_ssl && !has_ssl_set) {
+      applog(LOG_WARNING, "Detected SSL port but TCP protocol in primary URL.");
+      applog(LOG_WARNING, "Changing to stratum+tcps to support SSL.");
+      sprintf(tmp, "stratum+tcps://%s", strstr(rpc_url_original, "://") + 3);
+    } else if (!uses_ssl && has_ssl_set) {
+      applog(LOG_WARNING, "Detected TCP port but SSL protocol in primary URL.");
+      applog(LOG_WARNING, "Changing to stratum+tcp to support TCP.");
+      sprintf(tmp, "stratum+tcp://%s", strstr(rpc_url_original, "://") + 3);
+    } else {
+      sprintf(tmp, "%s", rpc_url);
+    }
+    free(rpc_url);
+    free(rpc_url_original);
+    rpc_url = strdup(tmp);
+    rpc_url_original = strdup(tmp);
+    free(tmp);
+    if (opt_debug) {
+      applog(LOG_DEBUG, "rpc: %s", rpc_url);
+      applog(LOG_DEBUG, "rpc_orig: %s", rpc_url_original);
+    }
+  }
+  if (rpc_url_backup != NULL && strstr(rpc_url_backup, "flockpool")) {
+    bool uses_ssl = (strstr(rpc_url_backup, ":5555") != NULL);
+    bool has_ssl_set = (strstr(rpc_url_backup, "stratum+tcps://") != NULL);
+    char *tmp =
+        (char *)malloc(strlen(rpc_url_backup) +
+                       (strstr(rpc_url_original, "://") == NULL ? 15 : 1));
+    if (uses_ssl && !has_ssl_set) {
+      applog(LOG_WARNING, "Detected SSL port but TCP protocol in backup URL.");
+      applog(LOG_WARNING, "Changing to stratum+tcps to support SSL.");
+      sprintf(tmp, "stratum+tcps://%s", strstr(rpc_url_original, "://") + 3);
+    } else if (!uses_ssl && has_ssl_set) {
+      applog(LOG_WARNING, "Detected TCP port but SSL protocol in backup URL.");
+      applog(LOG_WARNING, "Changing to stratum+tcp to support TCP.");
+      sprintf(tmp, "stratum+tcp://%s", strstr(rpc_url_original, "://") + 3);
+    } else {
+      sprintf(tmp, "%s", rpc_url);
+    }
+    free(rpc_url_backup);
+    rpc_url_backup = strdup(tmp);
+    free(tmp);
+    if (opt_debug) {
+      applog(LOG_DEBUG, "rpc_bck: %s", rpc_url_backup);
+    }
+  }
+
 #ifdef AFFINITY_USES_UINT128
   // Redo opt_affinity as it might not have num_cpu info while processing flags.
   if (num_cpus > 64)
