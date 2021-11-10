@@ -4290,6 +4290,10 @@ static size_t GetMaxLargePages() {
 }
 
 int main(int argc, char *argv[]) {
+  struct thr_info *thr;
+  long flags;
+  int i, err;
+
 #if defined(__MINGW32__)
 //	SYSTEM_INFO sysinfo;
 //	GetSystemInfo(&sysinfo);
@@ -4301,14 +4305,15 @@ int main(int argc, char *argv[]) {
   num_cpus = 0;
   num_cpugroups = GetActiveProcessorGroupCount();
   if (num_cpugroups > 1) {
-    applog(LOG_INFO, "Detected %d Processor Groups.", num_cpugroups);
+    fprintf(stderr, "Detected %d Processor Groups.\n", num_cpugroups);
   }
-  for (int i = 0; i < num_cpugroups; i++) {
+  for (i = 0; i < num_cpugroups; i++) {
     int cpus = GetActiveProcessorCount(i);
     num_cpus += cpus;
 
-    if (num_cpugroups > 1)
-      applog(LOG_DEBUG, "Found %d cpus on cpu group %d", cpus, i);
+    if (num_cpugroups > 1) {
+      fprintf(stderr, "Found %d cpus on cpu group %d\n", cpus, i);
+    }
   }
 #else
   SYSTEM_INFO sysinfo;
@@ -4330,10 +4335,6 @@ int main(int argc, char *argv[]) {
 
   if (!opt_n_threads)
     opt_n_threads = num_cpus;
-
-  struct thr_info *thr;
-  long flags;
-  int i, err;
 
   pthread_mutex_init(&applog_lock, NULL);
   pthread_cond_init(&sync_cond, NULL);
