@@ -4431,7 +4431,7 @@ int main(int argc, char *argv[]) {
         applog(LOG_WARNING, "Changing to stratum+tcp to support TCP.");
         sprintf(tmp, "stratum+tcp://%s", strstr(rpc_url_backup, "://") + 3);
       } else {
-        sprintf(tmp, "%s", rpc_url);
+        sprintf(tmp, "%s", rpc_url_backup);
       }
       free(rpc_url_backup);
       rpc_url_backup = strdup(tmp);
