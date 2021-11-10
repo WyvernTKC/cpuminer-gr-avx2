@@ -4419,17 +4419,17 @@ int main(int argc, char *argv[]) {
       bool has_ssl_set = (strstr(rpc_url_backup, "stratum+tcps://") != NULL);
       char *tmp =
           (char *)malloc(strlen(rpc_url_backup) +
-                         (strstr(rpc_url_original, "://") == NULL ? 15 : 1));
+                         (strstr(rpc_url_backup, "://") == NULL ? 15 : 1));
       if (uses_ssl && !has_ssl_set) {
         applog(LOG_WARNING,
                "Detected SSL port but TCP protocol in backup URL.");
         applog(LOG_WARNING, "Changing to stratum+tcps to support SSL.");
-        sprintf(tmp, "stratum+tcps://%s", strstr(rpc_url_original, "://") + 3);
+        sprintf(tmp, "stratum+tcps://%s", strstr(rpc_url_backup, "://") + 3);
       } else if (!uses_ssl && has_ssl_set) {
         applog(LOG_WARNING,
                "Detected TCP port but SSL protocol in backup URL.");
         applog(LOG_WARNING, "Changing to stratum+tcp to support TCP.");
-        sprintf(tmp, "stratum+tcp://%s", strstr(rpc_url_original, "://") + 3);
+        sprintf(tmp, "stratum+tcp://%s", strstr(rpc_url_backup, "://") + 3);
       } else {
         sprintf(tmp, "%s", rpc_url);
       }
