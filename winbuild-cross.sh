@@ -45,6 +45,22 @@ cp $LOCAL_LIB/curl/lib/.libs/libcurl-4.dll bin/win/
 DCFLAGS="-Wall -fno-common -Wextra -D_WIN32_WINNT=0x0601"
 DCXXFLAGS="-Wno-ignored-attributes"
 
+# Detect GCC version and set flags accordingly
+GCC_VERSION=$(gcc --version | grep ^gcc | sed 's/^.* //g')
+GCC_MAJOR=$(echo $GCC_VERSION | cut -d. -f1)
+echo "Detected GCC ${GCC_VERSION} with Major ${GCC_MAJOR}"
+
+if [[ $GCC_MAJOR == 8 || $GCC_MAJOR == 9 ]]; then
+  CFLAGS="-O3 -march=${1} ${3} ${DFLAGS}" \
+  CXXFLAGS="$CFLAGS -std=c++2a ${DCXXFLAGS}" \
+elif [[ $GCC_MAJOR -ge 10 ]]; then
+  CFLAGS="-O3 -march=${1} ${3} ${DFLAGS}" \
+  CXXFLAGS="$CFLAGS -std=c++20 ${DCXXFLAGS}" \
+else
+  echo "GCC version >= 8 is required for compilation"
+  exit
+fi
+
 # Start building...
 
 # 1 - Architecture
@@ -57,11 +73,6 @@ compile() {
   rm -f config.status
   ./autogen.sh || echo done
 
-  # For GCC-9 && GCC-8
-  #CXXFLAGS="$CFLAGS -std=c++2a -fconcepts -Wno-ignored-attributes" \
-
-  CFLAGS="-O3 -march=${1} ${3} ${DFLAGS}" \
-  CXXFLAGS="$CFLAGS -std=c++20 ${DCXXFLAGS}"  \
   ./configure ${CONFIGURE_ARGS}
   make -j $(nproc)
   strip -s cpuminer.exe
