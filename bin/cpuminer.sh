@@ -85,38 +85,33 @@ check_tune_full () {
   fi
 }
 
+# Generic match for words (all must match) in outer comma separated
+# string $_match.
+has () {
+  local arg
+  for arg; do
+    [[ ,$_match, =~ ,"$arg", ]] || return
+  done
+}
+
 # Parse ${cpu[flags]} into outer array $features and prepare outer
 # $_features string to match for words in has().
 parse_features () {
   features=()
-
-  # Make if easy to match for words.
-  local flags=,${cpu[flags]// /,},
+  local _match=${cpu[flags]// /,}
 
   # Check AVX512 / AVX2 / AVX / SSE4.2
-  [[ $flags =~ ,avx512(f|dq|bw|vl), ]] && features+=(avx512)
-  [[ $flags =~ ,avx2, ]] && features+=(avx2)
-  [[ $flags =~ ,avx, ]] && features+=(avx)
-  [[ $flags =~ ,sse4_2, ]] && features+=(sse42)
+  has avx512f avx512dq avx512bw avx512vl && features+=(avx512)
+  has avx2 && features+=(avx2)
+  has avx && features+=(avx)
+  has sse4_2 && features+=(sse42)
 
   # Check VAES / AES
-  [[ $flags =~ ,vaes, ]] && features+=(vaes)
-  [[ $flags =~ ,aes([_-]ni)?, ]] && features+=(aes)
+  has vaes && features+=(vaes)
+  [[ ,$_match, =~ ,aes([_-]ni)?, ]] && features+=(aes)
 
   # Check SHA
-  [[ $flags =~ ,sha(_ni)?, ]] && features+=(sha)
-
-  # Stringify the array.
-  printf -v _features ',%s' "${features[@]}"
-  _features+=,
-}
-
-# Match for words (all must match) in outer string $_features.
-has () {
-  local arg
-  for arg; do
-    [[ $_features =~ ,"$arg", ]] || return
-  done
+  [[ ,$_match, =~ ,sha(_ni)?, ]] && features+=(sha)
 }
 
 # Override binaries to what user wants.
@@ -137,10 +132,13 @@ echo "Detected ${cpu[vendor_long]-${cpu[vendor]}} CPU: $(hl "${cpu[model_name]}"
 
 check_tune_full
 
-declare features _features
+declare features
 parse_features
 
 echo "Available CPU Instructions: $(hl "${features[@]^^}")"
+
+# In the following match against features in has().
+printf -v _match ',%s' "${features[@]}"
 
 if [[ -v cpu[zen] ]]; then
   case ${cpu[zen]} in
