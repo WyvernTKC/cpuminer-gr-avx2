@@ -94,8 +94,7 @@ has () {
   done
 }
 
-# Parse ${cpu[flags]} into outer array $features and prepare outer
-# $_features string to match for words in has().
+# Parse ${cpu[flags]} into outer array $features.
 parse_features () {
   features=()
   local _match=${cpu[flags]// /,}
