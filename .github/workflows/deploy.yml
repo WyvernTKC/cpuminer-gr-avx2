@@ -13,11 +13,10 @@ jobs:
           sudo apt install -y mingw-w64 libz-mingw-w64-dev build-essential automake libssl-dev libcurl4-openssl-dev libjansson-dev libgmp-dev zlib1g-dev libnuma-dev git autoconf automake libtool perl
           mkdir $HOME/usr
           mkdir $HOME/usr/lib
-          git clone https://github.com/openssl/openssl/ $HOME/usr/lib/
-          cd $HOME/usr/lib/openssl
+          git clone https://github.com/openssl/openssl/ $HOME/usr/lib/openssl
           $HOME/usr/lib/openssl/Configure mingw64 shared --cross-compile-prefix=x86_64-w64-mingw32-
           make -j$(nproc)
-          git clone https://github.com/curl/curl/ $HOME/usr/lib/
+          git clone https://github.com/curl/curl/ $HOME/usr/lib/curl
           cd $HOME/usr/lib/curl
           autoreconf -fi
           ./configure --with-winssl --with-winidn --with-schannel --host=x86_64-w64-mingw32
