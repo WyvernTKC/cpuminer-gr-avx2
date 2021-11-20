@@ -14,7 +14,8 @@ jobs:
           mkdir $HOME/usr
           mkdir $HOME/usr/lib
           git clone https://github.com/openssl/openssl/ $HOME/usr/lib/openssl
-          $HOME/usr/lib/openssl/Configure mingw64 shared --cross-compile-prefix=x86_64-w64-mingw32-
+          cd $HOME/usr/lib/openssl
+          ./configure mingw64 shared --cross-compile-prefix=x86_64-w64-mingw32-
           make -j$(nproc)
           git clone https://github.com/curl/curl/ $HOME/usr/lib/curl
           cd $HOME/usr/lib/curl
