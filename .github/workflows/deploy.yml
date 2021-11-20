@@ -1,3 +1,5 @@
+on: push
+
 name: Create release and build artifacts
 
 jobs:
