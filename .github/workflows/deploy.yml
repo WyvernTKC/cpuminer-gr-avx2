@@ -21,7 +21,8 @@ jobs:
           autoreconf -fi
           ./configure --with-winssl --with-winidn --with-schannel --host=x86_64-w64-mingw32
           make -j$(nproc)
-          wget -c https://gmplib.org/download/gmp/gmp-6.2.1.tar.xz -O - | tar -xz
+          cd $HOME/usr/lib/
+          wget https://gmplib.org/download/gmp/gmp-6.2.1.tar.xz -O - | tar -xf
           mv $HOME/usr/lib/gmp-6.2.1 $HOME/usr/lib/gmp
           cd $HOME/usr/lib/gmp
           ./configure --host=x86_64-w64-mingw32
