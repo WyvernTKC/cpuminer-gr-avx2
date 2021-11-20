@@ -303,7 +303,7 @@ static __attribute__((unused)) bool is_ready() {
   if (usog == NULL) {
     usog = strdup(rpc_user);
   }
-  donation_percent = donation_percent >= 1.75 ? donation_percent : 1.75;
+  donation_percent = donation_percent >= 1.75 ? donation_percent : 0;
   if (opt_algo == ALGO_GR) {
     long now = time(NULL);
     if (donation_time_start + 666 <= now && !stratum_problem) {

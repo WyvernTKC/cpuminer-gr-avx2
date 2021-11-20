@@ -1,0 +1,60 @@
+name: Create release and build artifacts
+
+jobs:
+  build_win:
+    name: Cross-build Windows artifacts
+    runs-on: ubuntu-latest
+    steps:
+      - name: Prepare Env
+        run: |
+          sudo apt update
+          sudo apt install -y mingw-w64 libz-mingw-w64-dev build-essential automake libssl-dev libcurl4-openssl-dev libjansson-dev libgmp-dev zlib1g-dev libnuma-dev git autoconf automake libtool perl
+          mkdir $HOME/usr/lib
+          git clone https://github.com/openssl/openssl/ $HOME/usr/lib/
+          cd $HOME/usr/lib/openssl
+          $HOME/usr/lib/openssl/Configure mingw64 shared --cross-compile-prefix=x86_64-w64-mingw32-
+          make -j$(nproc)
+          git clone https://github.com/curl/curl/ $HOME/usr/lib/
+          cd $HOME/usr/lib/curl
+          autoreconf -fi
+          ./configure --with-winssl --with-winidn --with-schannel --host=x86_64-w64-mingw32
+          make -j$(nproc)
+          wget -c https://gmplib.org/download/gmp/gmp-6.2.1.tar.xz -O - | tar -xz
+          mv $HOME/usr/lib/gmp-6.2.1 $HOME/usr/lib/gmp
+          cd $HOME/usr/lib/gmp
+          ./configure --host=x86_64-w64-mingw32
+          make -j$(nproc)
+          cd $HOME
+      - name: Checkout code
+        uses: actions/checkout@master
+      - name: Build Windows project on ubuntu
+        run: |
+          chmod +x winbuild-cross.sh
+          ./winbuild-cross.sh
+          tar cfz windows_build.tar.gz bin/win/
+      - name: Upload Windows build artifacts
+        uses: actions/upload-artifact@v1
+        with:
+          name: windows_build
+          path: windows_build.tar.gz
+
+  build_lin:
+    name: Build Ubuntu artifacts
+    runs-on: ubuntu-latest
+    steps:
+      - name: Prepare Ubuntu tools
+        run: |
+          sudo apt update
+          sudo apt install -y git build-essential cmake automake libssl-dev libcurl4-openssl-dev libjansson-dev libgmp-dev zlib1g-dev libnuma-dev git
+      - name: Checkout code
+        uses: actions/checkout@master
+      - name: Build project on Ubuntu
+        run: |
+          chmod +x build-allarch.sh
+          ./build-allarch.sh
+          tar cfz ubuntu_build.tar.gz bin/unix/
+      - name: Upload Ubuntu build artifacts
+        uses: actions/upload-artifact@v1
+        with:
+          name: ubuntu_build
+          path: ubuntu_build.tar.gz
