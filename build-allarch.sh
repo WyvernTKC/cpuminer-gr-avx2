@@ -27,7 +27,7 @@ compile() {
   rm -f config.status
   ./autogen.sh || echo done
   CFLAGS="-O3 -march=${1} ${3} ${DCFLAGS}" \
-  CXXFLAGS="$CFLAGS -std=c++20 ${DCXXFLAGS}" \
+  CXXFLAGS="$CFLAGS -std=c++2a ${DCXXFLAGS}" \
   ./configure --with-curl
   make -j $(nproc)
   strip -s cpuminer
