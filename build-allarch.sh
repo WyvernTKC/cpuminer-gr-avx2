@@ -38,30 +38,30 @@ compile() {
 
 #Non-AES
 # Generic SSE2
-compile "x86-64" "sse2" "-msse"
+#compile "x86-64" "sse2" "-msse"
 
 # Core2 SSSE3
-compile "core2" "ssse3"
+#compile "core2" "ssse3"
 
 # Nehalem SSE4.2
-compile "corei7" "sse42"
+#compile "corei7" "sse42"
 
 
 #AES
 # Westmere SSE4.2 AES
-compile "westmere" "aes-sse42" "-maes"
+#compile "westmere" "aes-sse42" "-maes"
 
 # Sandybridge AVX AES
-compile "corei7-avx" "avx" "-maes"
+#compile "corei7-avx" "avx" "-maes"
 
 
 #AVX2+
 # Haswell AVX2 AES
 # GCC 9 doesn't include AES with core-avx2
-compile "core-avx2" "avx2" "-maes"
+#compile "core-avx2" "avx2" "-maes"
 
 # AMD Zen1 AVX2 SHA
-compile "znver1" "zen" "-mtune=znver1"
+#compile "znver1" "zen" "-mtune=znver1"
 
 # AMD Zen2 AVX2 SHA
 compile "znver2" "zen2" "-mtune=znver2"
@@ -73,16 +73,16 @@ compile "znver3" "zen3" "-mtune=znver3"
 # compile "znver2" "zen3" "-mvaes -mtune=znver2"
 
 # Icelake AVX512 SHA VAES
-compile "icelake-client" "avx512-sha-vaes" "-mtune=intel"
+#compile "icelake-client" "avx512-sha-vaes" "-mtune=intel"
 
 # Rocketlake AVX512 SHA AES
-compile "cascadelake" "avx512-sha" "-msha -mtune=intel"
+#compile "cascadelake" "avx512-sha" "-msha -mtune=intel"
 
 # Slylake-X AVX512 AES
-compile "skylake-avx512" "avx512" "-mtune=intel"
+#compile "skylake-avx512" "avx512" "-mtune=intel"
 
 # Alder Lake
 # GCC 11
 # compile "alderlake" "avx2-sha-vaes" "-mtune=alderlake"
 # GCC < 10
-compile "skylake" "avx2-sha-vaes" "-mvaes -msha -mtune=intel"
+#compile "skylake" "avx2-sha-vaes" "-mvaes -msha -mtune=intel"
