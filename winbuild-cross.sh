@@ -9,7 +9,36 @@
 
 # define some local variables
 
+CUR_DUR="$PWD"
+
+mkdir $HOME/usr/
+mkdir $HOME/usr/lib
 export LOCAL_LIB="$HOME/usr/lib"
+cd $LOCAL_LIB
+
+wget https://gmplib.org/download/gmp/gmp-6.2.1.tar.xz
+wget https://github.com/curl/curl/releases/download/curl-7_80_0/curl-7.80.0.tar.gz
+wget https://github.com/openssl/openssl/archive/refs/tags/OpenSSL_1_1_1l.tar.gz
+tar -xvf gmp-6.2.1.tar.xz && mv gmp-6.2.1 gmp
+tar -xvf curl-7.80.0.tar.gz && mv curl-7.80.0 curl
+tar -xvf OpenSSL_1_1_1l.tar.gz && mv openssl-OpenSSL_1_1_1l openssl
+
+cd $LOCAL_LIB/openssl
+./Configure mingw64 shared --cross-compile-prefix=x86_64-w64-mingw32-
+make -j $(nproc)
+
+cd $LOCAL_LIB/curl
+sudo apt-get install autoconf automake libtool perl
+autoreconf -fi
+./configure --with-winssl --with-winidn --with-schannel --host=x86_64-w64-mingw32
+make
+
+cd $LOCAL_LIB/curl
+./configure --host=x86_64-w64-mingw32
+make
+
+cd $CUR_DUR
+
 export CONFIGURE_ARGS="--with-curl=$LOCAL_LIB/curl --with-crypto=$LOCAL_LIB/openssl --host=x86_64-w64-mingw32"
 export MINGW_LIB="/usr/x86_64-w64-mingw32/lib"
 # set correct gcc version
