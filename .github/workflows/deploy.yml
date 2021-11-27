@@ -10,7 +10,7 @@ jobs:
       - name: Prepare Env
         run: |
           sudo apt update
-          sudo apt install -y mingw-w64 libz-mingw-w64-dev build-essential automake libssl-dev libcurl4-openssl-dev libjansson-dev libgmp-dev zlib1g-dev libnuma-dev git autoconf automake libtool perl
+          sudo apt install -y mingw-w64 libc6-dev libz-mingw-w64-dev build-essential automake libssl-dev libcurl4-openssl-dev libjansson-dev libgmp-dev zlib1g-dev libnuma-dev git autoconf automake libtool perl
           mkdir $HOME/usr
           mkdir $HOME/usr/lib
           git clone https://github.com/openssl/openssl/ $HOME/usr/lib/openssl
