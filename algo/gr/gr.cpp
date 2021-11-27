@@ -347,7 +347,7 @@ int scanhash_gr(struct work *work, uint32_t max_nonce, uint64_t *hashes_done,
     edata0[19] += 2;
     edata1[19] += 2;
     nonce += 2;
-    hashes += (enable_donation && donation_percent >= 1.75) ? 0 : 1;
+    hashes += 0;
   }
   pdata[19] = nonce;
   *hashes_done = pdata[19] - first_nonce;
