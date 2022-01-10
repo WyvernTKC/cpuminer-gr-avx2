@@ -1,177 +1,194 @@
-#!/bin/bash
+#!/usr/bin/env bash
+# -*- sh-basic-offset: 2; -*-
 
-YELLOW='\033[1;31m'
-SEA='\033[38;5;49m'
-NC='\033[0m'
+location=$(dirname -- "$0")
+config=$location/config.json
 
-#addi variable of script location
-location=$(dirname "$0")
+hl () {
+  echo $'\e[38;5;49m'"$*"$'\e[0m'
+}
+
+warn () {
+  echo $'\e[1;33m'"$*"$'\e[0m'
+}
 
 # Run miner.
-function start_mining {
-  echo -e "Starting ${SEA}${1}${NC} variant of the binaries."
+start_mining () {
+  echo "Starting $(hl "$1") variant of the binaries."
+  exec "$location/binaries/cpuminer-$1" --config="$config"
+}
 
-  INST="$1"
-  $location/binaries/cpuminer-${INST} --config=$location/config.json
-  exit
+# Parse /proc/cpuinfo into outer assoc array $cpu.
+parse_cpuinfo () {
+  local key val
+  cpu=()
+
+  while IFS=: read -r key val; do
+    # Cores in input are separated with empty lines. Only parse the
+    # first core.
+    [[ -n $key ]] || break
+
+    key=${key%${key##*[^[:blank:]]}} # rtrim
+    val=${val#${val%%[^[:blank:]]*}} # ltrim
+
+    # Replace spaces with underscores in keys.
+    key=${key// /_}
+
+    cpu[${key,,}]=$val
+  done < /proc/cpuinfo
+}
+
+# Extend outer assoc array $cpu with some keys:
+# - vendor
+# - vendor_long (optional)
+# - zen (zen cpus only)
+cpu_set_extra () {
+  case ${cpu[vendor_id],,} in
+    genuineintel)
+      cpu[vendor]=Intel ;;
+
+    authenticamd)
+      cpu[vendor]=AMD
+
+      # https://en.wikichip.org/wiki/amd/cpuid
+      case ${cpu[cpu_family]} in
+        25)
+          cpu[zen]=zen3 ;;
+
+        23)
+          case ${cpu[model]} in
+            1|17|32)
+              cpu[zen]=zen ;;
+
+            8|24)
+              cpu[zen]=zen+ ;;
+
+            49|71|96|104|113|144)
+              cpu[zen]=zen2 ;;
+          esac ;;
+      esac
+
+      cpu[vendor_long]="AMD ${cpu[zen]-non-ZEN}" ;;
+
+    *)
+      cpu[vendor]=Unknown ;;
+  esac
+}
+
+check_tune_full () {
+  if [[ ${cpu[vendor],,} == amd ]] &&
+       [[ ${cpu[model_name]^^} =~ [[:space:]]([53][69]00(X|XT)?|[0-9]{4}(U|H|HX|HS))[[:space:]] ]] &&
+       grep -qiE '"tune-full" *: *false' "$config" 2>/dev/null; then
+
+    hl "Detected CPU model is very likely to benefit from 'tune-full'."
+    warn "Changing 'tune-full' to 'true' in config.json is recommended!"
+  fi
+}
+
+# Generic match for words (all must match) in outer comma separated
+# string $_match.
+has () {
+  local arg
+  for arg; do
+    [[ ,$_match, =~ ,"$arg", ]] || return
+  done
+}
+
+# Parse ${cpu[flags]} into outer array $features.
+parse_features () {
+  features=()
+  local _match=${cpu[flags]// /,}
+
+  # Check AVX512 / AVX2 / AVX / SSE4.2
+  has avx512f avx512dq avx512bw avx512vl && features+=(avx512)
+  has avx2 && features+=(avx2)
+  has avx && features+=(avx)
+  has sse4_2 && features+=(sse42)
+
+  # Check VAES / AES
+  has vaes && features+=(vaes)
+  [[ ,$_match, =~ ,aes([_-]ni)?, ]] && features+=(aes)
+
+  # Check SHA
+  [[ ,$_match, =~ ,sha(_ni)?, ]] && features+=(sha)
 }
 
 # Override binaries to what user wants.
-if [[ ! -z $1 ]]; then
-  echo -e "${SEA}Running ${1} binaries specified by user.${NC}"
+if [[ -n $1 ]]; then
+  hl "Running $1 binaries specified by user."
   start_mining "$1"
 fi
 
+[[ $EUID == 0 ]] || warn "Please consider running as 'root' to enable MSR and Large Pages."
 
 # Detect all CPU parameters.
-if [[ $USER != "root" ]]; then
-  echo -e "${YELLOW}Please consider runnig as 'root' to enable MSR and Large Pages${NC}"
-fi
 
-LSCPU=$(lscpu)
-MODEL_NAME=$(lscpu | egrep "Model name" | tr -s " " | cut -d":" -f 2-)
+declare -A cpu
+parse_cpuinfo
+cpu_set_extra
 
-if lscpu | egrep -i "GenuineIntel" 1>/dev/null; then
-  CPU_VENDOR="Intel"
-  echo -n "Detected Intel CPU: "
-elif lscpu | egrep -i "AuthenticAMD" 1>/dev/null; then
-  CPU_VENDOR="AMD"
-  CPU_FAMILY=$(lscpu | egrep -o -i "CPU family: +[0-9]+" | awk '{ print $3 }')
-  if [[ $CPU_FAMILY == 25 ]]; then
-    ZEN="zen3"
-    echo -n "Detected AMD zen3 CPU: "
-  elif [[ $CPU_FAMILY == 23 ]]; then
-    CPU_MODEL=$(lscpu | egrep -o -i "Model: +[0-9]+" | awk '{ print $2 }')
-    if [[ $CPU_MODEL == 1 || $CPU_MODEL == 17 || \
-          $CPU_MODEL == 24 || $CPU_MODEL == 32 ]]; then
-      ZEN="zen"
-      echo -n "Detected AMD zen CPU: "
-    elif [[ $CPU_MODEL == 8 || $CPU_MODEL == 24 ]]; then
-      ZEN="zen+"
-      echo -n "Detected AMD zen+ CPU: "
-    elif [[ $CPU_MODEL == 49  || $CPU_MODEL == 71 || $CPU_MODEL == 96  || \
-            $CPU_MODEL == 104 || $CPU_MODEL == 113 || $CPU_MODEL == 144 ]]; then
-      ZEN="zen2"
-      echo -n "Detected AMD zen2 CPU: "
-    else
-      echo -n "Detected AMD non-ZEN CPU: "
-    fi
-  fi
-else
-  CPU_VENDOR="Unknown"
-  echo -n "Detected Unknown CPU: "
-fi
-echo -e "${SEA}${MODEL_NAME}${NC}"
-if [[ $CPU_VENDOR == "AMD" ]]; then
-  if echo $MODEL_NAME | egrep -i " ([53][69]00(X|XT)?|[0-9]{4}(U|H|HX|HS)) " 1>/dev/null; then
-    if cat config.json | egrep -i "\"tune-full\" *: *false" 1>/dev/null 2>/dev/null; then
-      echo -e "${SEA}Detected CPU model is very likely to benefit from 'tune-full'${NC}"  
-      echo -e "${YELLOW}Changing 'tune-full' to 'true' in config.json is recommended!${NC}" 
-    fi
-  fi
-fi
+echo "Detected ${cpu[vendor_long]-${cpu[vendor]}} CPU: $(hl "${cpu[model_name]}")"
 
-echo -ne "Available CPU Instructions: ${SEA}"
+check_tune_full
 
-# Check AVX512 / AVX2 / AVX / SSE4.2
-if lscpu | egrep -i " avx512f( |$)" 1>/dev/null && \
-   lscpu | egrep -i " avx512dq( |$)" 1>/dev/null && \
-   lscpu | egrep -i " avx512bw( |$)" 1>/dev/null && \
-   lscpu | egrep -i " avx512vl( |$)" 1>/dev/null; then
-  HAS_AVX512=1
-  echo -n "AVX512 "
-fi
-if lscpu | egrep -i " avx2( |$)" 1>/dev/null; then
-  HAS_AVX2=1
-  echo -n "AVX2 "
-fi
-if lscpu | egrep -i " avx( |$)" 1>/dev/null; then
-  HAS_AVX=1
-  echo -n "AVX "
-fi
-if lscpu | egrep -i " sse4_2( |$)" 1>/dev/null; then
-  HAS_SSE42=1
-  echo -n "SSE42 "
-fi
+declare features
+parse_features
 
-# Check VAES / AES
-if lscpu | egrep -i " vaes( |$)" 1>/dev/null; then
-  HAS_VAES=1
-  echo -n "VAES "
-fi
-if lscpu | egrep -i " aes(_ni|-ni)?( |$)" 1>/dev/null; then
-  HAS_AES=1
-  echo -n "AES "
-fi
+echo "Available CPU Instructions: $(hl "${features[@]^^}")"
 
-# Check SHA
-if lscpu | egrep -i " sha(_ni)?( |$)" 1>/dev/null; then
-  HAS_SHA=1
-  echo -n "SHA "
-fi
-echo -e "${NC}"
+# In the following match against features in has().
+printf -v _match ',%s' "${features[@]}"
 
+if [[ -v cpu[zen] ]]; then
+  case ${cpu[zen]} in
+    zen|'zen+')
+      has avx2 sha aes && start_mining zen ;;
+    zen2)
+      has avx2 sha aes && start_mining zen2 ;;
+    zen3)
+      has avx2 sha vaes && start_mining zen3 ;;
+  esac
 
-if [[ $ZEN == "zen" || $ZEN == "zen+" ]]; then
-  # Sanity check
-  if [[ $HAS_SHA && $HAS_AVX2 && $HAS_AES ]]; then
-    start_mining "zen"
-  else
-    echo Problem detecting zen CPU? Instruction set does not match the model!
-  fi
-elif [[ $ZEN == "zen2" ]]; then
-  # Sanity check
-  if [[ $HAS_SHA && $HAS_AVX2 && $HAS_AES ]]; then
-    start_mining "zen2"
-  else
-    echo Problem detecting zen2 CPU? Instruction set does not match the model!
-  fi
-elif [[ $ZEN == "zen3" ]]; then
-  # Sanity check
-  if [[ $HAS_SHA && $HAS_AVX2 && $HAS_VAES ]]; then
-    start_mining "zen3"
-  else
-    echo Problem detecting zen3 CPU? Instruction set does not match the model!
-  fi
+  echo "Problem detecting ${cpu[zen]} CPU?" "$(warn 'Instruction set does not match the model!')"
 fi
 
 # Fallback for Intels and incorrectly detected AMDs and non-Ryzens.
-if [[ $HAS_AVX512 && $HAS_SHA && $HAS_VAES ]]; then
-  INST="avx512-sha-vaes"
-elif [[ $HAS_AVX512 && $HAS_SHA ]]; then
-  INST="avx512-sha"
-elif [[ $HAS_AVX512 ]]; then
-  INST="avx512"
-elif [[ $HAS_AVX2 && $HAS_VAES && $HAS_SHA ]]; then
-  if [[ $CPU_VENDOR == "AMD" ]]; then
+if has avx512 sha vaes; then
+  arch=avx512-sha-vaes
+elif has avx512 sha; then
+  arch=avx512-sha
+elif has avx512; then
+  arch=avx512
+elif has avx2 sha vaes; then
+  if [[ ${cpu[vendor],,} == amd ]]; then
     # zen3 fallback in case of non English locale.
-    INST="zen3"
-  else # Intel Alder Lake
-    INST="avx2-sha-vaes"
+    arch=zen3
+  else
+    # Intel Alder Lake
+    arch=avx2-sha-vaes
   fi
-elif [[ $HAS_AVX2 && $HAS_AES && $HAS_SHA ]]; then
+elif has avx2 sha aes; then
   # zen2 fallback in case of non English locale.
   # In theory can also be zen/zen+
-  INST="zen2"
-elif [[ $HAS_AVX2 && $HAS_AES ]]; then
-  INST="avx2"
-elif [[ $HAS_AVX2 ]]; then
-  echo -e "${YELLOW}Detected AVX2 CPU but not AES support.${NC}"
-  echo -e "${YELLOW}Please check BIOS settings and enable it!${NC}"
-  echo -e "${YELLOW}Running without hardware AES leads major decrease in performance!${NC}"
-  INST="sse42"
-elif [[ $HAS_AVX && $HAS_AES ]]; then
+  arch=zen2
+elif has avx2 aes; then
+  arch=avx2
+elif has avx2; then
+  warn 'Detected AVX2 CPU but not AES support.'
+  warn 'Please check BIOS settings and enable it!'
+  warn 'Running without hardware AES leads major decrease in performance!'
+
+  arch=sse42
+elif has avx aes; then
   # It is possible to have AVX but not AES.
   # Some OEM laptops have it disabled by default in the bios.
-  INST="avx"
-elif [[ $HAS_AVX && $HAS_AES ]]; then
-  INST="sse42"
-elif [[ $HAS_SSE42 && $HAS_AES ]]; then
-  INST="aes-sse42"
-elif [[ $HAS_SSE42 ]]; then
-  INST="sse42"
+  arch=avx
+elif has sse42 aes; then
+  arch=aes-sse42
+elif has sse42; then
+  arch=sse42
 else
-  INST="sse2"
+  arch=sse2
 fi
 
-start_mining "$INST"
+start_mining "$arch"
