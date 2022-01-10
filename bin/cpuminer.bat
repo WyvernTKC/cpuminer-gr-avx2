@@ -6,7 +6,7 @@
 set CPU_INST=
 
 REM Add proper binary instruction set in INST_OVERRIDE to force use those binaries.
-REM To check whichi ones are avaliable refer to readme.txt or use program like CPU-Z. 
+REM To check which ones are available refer to readme.txt or use a program like CPU-Z.
 REM Binaries: sse2 sse42 aes-sse42 avx avx2 zen zen2 zen3 avx512 avx512-sha avx512-sha-vaes
 set INST_OVERRIDE=
 if NOT "%INST_OVERRIDE%" == "" (
@@ -67,7 +67,7 @@ REM Detected Intel
 if /I !MANUFACTURER! == GenuineIntel (
   echo Detected !MANUFACTURER! CPU
   if NOT !CPU_FAMILY! EQU 6 (
-    echo Unknowsn CPU Family - !CPU_FAMILY!
+    echo Unknown CPU Family - !CPU_FAMILY!
     call :RunUnknown "Unknown Intel Family"
   )
   
