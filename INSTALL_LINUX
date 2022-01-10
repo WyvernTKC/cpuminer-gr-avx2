@@ -94,4 +94,4 @@ $ ./cpuminer -a algo -o url -u username -p password
 Windows
 -------
 
-See also INSTAL_WINDOWS
+See also INSTALL_WINDOWS
