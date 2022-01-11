@@ -4849,11 +4849,14 @@ int main(int argc, char *argv[]) {
     thr->id = i;
     thr->q = tq_new();
 
-    if (!thr->q)
+    if (!thr->q){
+      pthread_mutex_unlock(&stats_lock);
       return 1;
+    }
     err = thread_create(thr, miner_thread);
     if (err) {
       applog(LOG_ERR, "Miner thread %d create failed", i);
+      pthread_mutex_unlock(&stats_lock);
       return 1;
     }
   }
